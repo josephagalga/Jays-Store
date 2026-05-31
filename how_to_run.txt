@@ -1,0 +1,72 @@
+PROJECT SETUP GUIDE (WINDOWS)
+
+This project requires two servers to be running at the same time: 
+one for the Backend (Django) and one for the Frontend (React).
+
+===========================================================================
+PART 1: BACKEND SETUP (DJANGO)
+===========================================================================
+
+1. PREPARE THE FOLDERS:
+   - Create a folder on your computer named 'project'.
+   - Inside 'project', create a folder named 'backend'.
+
+2. COPY FILES:
+   - Copy all files from the original 'backend' folder into your new 'backend' folder.
+   - IMPORTANT: Do NOT copy the 'venv' folder. We will create a fresh one.
+
+3. CREATE & ACTIVATE VIRTUAL ENVIRONMENT:
+   - Open Command Prompt or PowerShell.
+   - Navigate to your 'backend' folder:
+     cd path\to\your\project\backend
+   - Create the environment:
+     python -m venv venv
+   - Activate the environment:
+     venv\Scripts\activate
+
+4. INSTALL REQUIREMENTS:
+   - With the environment active (you should see (venv) in the prompt), run:
+     pip install -r requirements.txt
+
+5. DATABASE SETUP:
+   - Run the following two commands:
+     python seed.py
+     python manage.py makemigrations
+     python manage.py migrate
+
+6. START SERVER:
+   - Run:
+     python manage.py runserver
+   - KEEP THIS TERMINAL WINDOW OPEN.
+
+===========================================================================
+PART 2: FRONTEND SETUP (REACT)
+===========================================================================
+
+1. INSTALL NODE.JS:
+   - If you don't have it, download and install Node.js from https://nodejs.org/
+
+2. COPY FRONTEND FOLDER:
+   - Copy the 'frontend' folder from the original project and paste it into your 
+     'project' root folder.
+
+3. INSTALL LIBRARIES:
+   - Open a NEW, SECOND terminal window.
+   - Navigate to the 'frontend' folder:
+     cd path\to\your\project\frontend
+   - Run:
+     npm install
+   - Wait for this to finish (it may take a few minutes).
+
+4. START FRONTEND:
+   - Run:
+     npm start
+
+5. VIEW SITE:
+   - Your browser should open automatically. If not, go to: http://localhost:3000
+
+===========================================================================
+IMPORTANT NOTES:
+- Keep BOTH terminals open while using the website.
+- Always ensure the Backend is running before starting the Frontend.
+===========================================================================

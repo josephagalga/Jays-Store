@@ -1,0 +1,45 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Outfit:wght@300;400;500;600&display=swap');
+
+@layer base {
+  :root {
+    --white:   #FFFFFF;
+    --off:     #F8F7F4;
+    --stone:   #E9E6E0;
+    --border:  #E2DED8;
+    --ink:     #1A1A1A;
+    --muted:   #7A7673;
+    --accent:  #B8A898;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: var(--white);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html { scroll-behavior: smooth; }
+}
+
+@layer utilities {
+  .serif { font-family: 'Playfair Display', serif; }
+
+  /* Scroll-triggered fade up */
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s cubic-bezier(.25,.46,.45,.94);
+  }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* Image hover zoom */
+  .zoom-wrap { overflow: hidden; }
+  .zoom-wrap img {
+    transition: transform 0.8s cubic-bezier(.25,.46,.45,.94);
+    will-change: transform;
+  }
+  .zoom-wrap:hover img { transform: scale(1.06); }
+}
