@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'cloudinary_storage', 
+    'django.contrib.staticfiles',
     'cloudinary',
 
     # Our apps (we'll add these as we create them)
@@ -60,18 +61,24 @@ INSTALLED_APPS = [
     'apps.recommendations',
 ]
 
+# Cloudinary
+
+
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
     'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
 
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
 # ============================================================
 # MIDDLEWARE
 # ============================================================
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # Must be at the top
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -188,6 +195,8 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'https://jays-store-steel.vercel.app'  # Create React App default port
 ]
+
+CORS_ALLOW_CREDENTIALS = True
 
 
 # ============================================================

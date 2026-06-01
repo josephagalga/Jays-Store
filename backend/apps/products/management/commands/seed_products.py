@@ -6,6 +6,20 @@ import urllib.request
 import tempfile
 import os
 
+def add_arguments(self, parser):
+    parser.add_argument(
+        '--clear',
+        action='store_true',
+        help='Delete all existing products before seeding',
+    )
+
+def handle(self, *args, **kwargs):
+    if kwargs['clear']:
+        self.stdout.write('Clearing existing products...')
+        ProductImage.objects.all().delete()
+        ProductVariant.objects.all().delete()
+        Product.objects.all().delete()
+        self.stdout.write(self.style.SUCCESS('Cleared.'))
 
 class Command(BaseCommand):
     help = 'Seed the database with sample products'

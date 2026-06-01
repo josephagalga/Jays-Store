@@ -32,9 +32,11 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     def get_product_image(self, obj):
         primary = obj.product.images.filter(is_primary=True).first()
-        if primary:
-            request = self.context.get('request')
-            return request.build_absolute_uri(primary.image.url) if request else primary.image.url
+        if primary and primary.image:
+            try:
+                return primary.image.url
+            except Exception:
+                return None
         return None
 
     def validate(self, data):
