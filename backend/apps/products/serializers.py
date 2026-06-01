@@ -58,13 +58,11 @@ class ProductListSerializer(serializers.ModelSerializer):
         ]
 
     def get_primary_image(self, obj):
+        """Returns just the primary image URL for product cards."""
         primary = obj.images.filter(is_primary=True).first()
-        if primary and primary.image:
-            # Return the URL directly — Cloudinary handles the full URL
-            try:
-                return primary.image.url
-            except Exception:
-                return None
+        if primary:
+            request = self.context.get('request')
+            return request.build_absolute_uri(primary.image.url) if request else primary.image.url
         return None
 
 
