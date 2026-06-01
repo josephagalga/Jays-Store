@@ -185,7 +185,8 @@ SIMPLE_JWT = {
 # Allow the React frontend to talk to Django during development
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',  # Vite default port
-    'http://localhost:3000',  # Create React App default port
+    'http://localhost:3000',
+    'https://jays-store-steel.vercel.app'  # Create React App default port
 ]
 
 
