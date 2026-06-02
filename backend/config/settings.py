@@ -2,6 +2,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 # ============================================================
 # BASE SETUP
@@ -36,23 +38,18 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 # ============================================================
 
 INSTALLED_APPS = [
-    # Django built-in apps
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'cloudinary_storage',
     'django.contrib.staticfiles',
-
-    # Third party packages
+    'cloudinary',
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
     'django_filters',
-    'cloudinary_storage', 
-    'cloudinary',
-
-    # Our apps (we'll add these as we create them)
     'apps.accounts',
     'apps.products',
     'apps.orders',
@@ -197,6 +194,16 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+
+
+
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+}
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # ============================================================
 # STATIC & MEDIA FILES
