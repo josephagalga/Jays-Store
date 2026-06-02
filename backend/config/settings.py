@@ -50,7 +50,6 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'cloudinary_storage', 
-    'django.contrib.staticfiles',
     'cloudinary',
 
     # Our apps (we'll add these as we create them)
