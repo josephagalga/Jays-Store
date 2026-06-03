@@ -20,10 +20,10 @@ else:
 EOF
 
 python manage.py shell << 'EOF'
-from apps.products.models import ProductImage
-print(f'Deleting {ProductImage.objects.count()} existing images...')
+from apps.products.models import ProductImage, Product
 ProductImage.objects.all().delete()
-print('Done')
+Product.objects.all().delete()
+print('Cleared existing products')
 EOF
 
 python manage.py seed_products

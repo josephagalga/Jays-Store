@@ -3,9 +3,11 @@ from .models import Category, SubCategory, Product, ProductVariant, ProductImage
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
+    url = serializers.ReadOnlyField()
+
     class Meta:
         model = ProductImage
-        fields = ['id', 'image', 'is_primary', 'alt_text', 'order']
+        fields = ['id', 'url', 'is_primary', 'alt_text', 'order']
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
@@ -58,11 +60,9 @@ class ProductListSerializer(serializers.ModelSerializer):
         ]
 
     def get_primary_image(self, obj):
-        """Returns just the primary image URL for product cards."""
         primary = obj.images.filter(is_primary=True).first()
         if primary:
-            request = self.context.get('request')
-            return request.build_absolute_uri(primary.image.url) if request else primary.image.url
+            return primary.url
         return None
 
 

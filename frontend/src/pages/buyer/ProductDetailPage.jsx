@@ -13,6 +13,8 @@ import toast from 'react-hot-toast'
 
 // ── Write Review ──────────────────────────────────────────────
 
+
+
 function WriteReview({ productId, slug, autoOpen = false }) {
   const [rating, setRating] = useState(0)
   const [hover, setHover] = useState(0)
@@ -248,9 +250,9 @@ export default function ProductDetailPage() {
           {/* Images */}
           <div className="space-y-3">
             <div className="relative aspect-[4/5] bg-[var(--off)] rounded-2xl overflow-hidden">
-              {images[imgIndex]?.image ? (
+              {images[imgIndex]?.url ? (
                 <img
-                  src={images[imgIndex].image}
+                  src={images[imgIndex].url}
                   alt={product.name}
                   className="w-full h-full object-cover"
                 />
@@ -279,7 +281,7 @@ export default function ProductDetailPage() {
                 {images.map((img, i) => (
                   <button key={i} onClick={() => setImgIndex(i)}
                     className={`flex-shrink-0 w-16 h-20 rounded-lg overflow-hidden border-2 transition-all ${imgIndex === i ? 'border-[var(--ink)]' : 'border-transparent'}`}>
-                    <img src={img.image} alt="" className="w-full h-full object-cover" />
+                    <img src={img.url} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
