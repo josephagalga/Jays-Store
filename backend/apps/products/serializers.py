@@ -26,13 +26,11 @@ class SubCategorySerializer(serializers.ModelSerializer):
 
 class CategorySerializer(serializers.ModelSerializer):
     subcategories = SubCategorySerializer(many=True, read_only=True)
-    # ↑ Nests all subcategories inside the category response
-    #   many=True means it's a list, read_only means we can't edit them here
+    image_url = serializers.ReadOnlyField()
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'slug', 'description', 'image', 'subcategories']
-
+        fields = ['id', 'name', 'slug', 'description', 'image_url', 'subcategories']
 
 # ============================================================
 # PRODUCT SERIALIZERS

@@ -44,8 +44,14 @@ import ContactPage from './pages/ContactPage'
 
 function PrivateRoute({ children, roles }) {
   const { isAuthenticated, user } = useAuthStore()
+
   if (!isAuthenticated) return <Navigate to="/login" replace />
+
+  // If roles required but user role not loaded yet, wait
+  if (roles && !user?.role) return null
+
   if (roles && !roles.includes(user?.role)) return <Navigate to="/" replace />
+
   return children
 }
 

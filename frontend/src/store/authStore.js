@@ -28,7 +28,6 @@ const useAuthStore = create(
           localStorage.setItem('access_token', access)
           localStorage.setItem('refresh_token', refresh)
 
-          // Decode the token to get role and basic info immediately
           const decoded = decodeToken(access)
           if (!decoded) throw new Error('Invalid token')
 
@@ -41,9 +40,10 @@ const useAuthStore = create(
             is_verified: decoded.is_verified,
           }
 
+          // Set user immediately so route guards work right away
           set({ user: basicUser, isAuthenticated: true })
 
-          // Then fetch the full profile for non-admin roles
+          // Then fetch full profile in background
           await get().fetchProfile()
 
           return { success: true }

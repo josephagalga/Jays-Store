@@ -3,14 +3,12 @@ from django.conf import settings
 
 
 class Category(models.Model):
-    """
-    Top level categories e.g. Men, Women, Kids
-    """
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
-    # ↑ slug is a URL-friendly version of the name e.g. "mens-clothing"
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to='categories/', blank=True, null=True)
+    external_url = models.URLField(blank=True)
+    # ↑ Store external image URLs like Unsplash directly
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -21,6 +19,14 @@ class Category(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def image_url(self):
+        if self.external_url:
+            return self.external_url
+        if self.image:
+            return self.image.url
+        return None
 
 
 class SubCategory(models.Model):

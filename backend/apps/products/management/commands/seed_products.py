@@ -31,29 +31,25 @@ class Command(BaseCommand):
         self.stdout.write(f'Using admin: {admin.email}')
 
         cat_data = [
-            {'name': 'Men', 'slug': 'men'},
-            {'name': 'Women', 'slug': 'women'},
-            {'name': 'Kids', 'slug': 'kids'},
-            {'name': 'Accessories', 'slug': 'accessories'},
+            {'name': 'Men', 'slug': 'men', 'external_url': 'https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600&auto=format&fit=crop&q=80'},
+            {'name': 'Women', 'slug': 'women', 'external_url': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=600&auto=format&fit=crop&q=80'},
+            {'name': 'Kids', 'slug': 'kids', 'external_url': 'https://images.unsplash.com/photo-1622290291468-a28f7a7dc6a8?w=600&auto=format&fit=crop&q=80'},
+            {'name': 'Accessories', 'slug': 'accessories', 'external_url': 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80'},
         ]
-
-        cat_images = {
-            'men': 'https://images.unsplash.com/photo-1617137968427-85924c800a22?w=600&auto=format&fit=crop&q=80',
-            'women': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=600&auto=format&fit=crop&q=80',
-            'kids': 'https://images.unsplash.com/photo-1622290291468-a28f7a7dc6a8?w=600&auto=format&fit=crop&q=80',
-            'accessories': 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80',
-        }
 
         cats = {}
         for c in cat_data:
-            cat, _ = Category.objects.get_or_create(
+            cat, created = Category.objects.get_or_create(
                 slug=c['slug'],
                 defaults={
                     'name': c['name'],
                     'is_active': True,
-                    'image': cat_images[c['slug']],
+                    'external_url': c['external_url'],
                 }
             )
+            if not created and not cat.external_url:
+                cat.external_url = c['external_url']
+                cat.save()
             cats[c['slug']] = cat
             self.stdout.write(f'Category ready: {cat.name}')
 

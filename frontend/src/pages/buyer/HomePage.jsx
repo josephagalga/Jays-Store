@@ -16,6 +16,9 @@ function useFeaturedProducts() {
       const res = await api.get('/products/featured/')
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
+    staleTime: 0,
+    // ↑ Always fetch fresh data on mount
+    refetchOnMount: true,
   })
 }
 
@@ -214,7 +217,7 @@ function Categories({ categories }) {
               {hasImage && (
                 <>
                   {/* Image is now fully visible (no opacity-20) */}
-                  <img src={cat.image} alt={cat.name}
+                  <img src={cat.image_url} alt={cat.name}
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 z-0" 
                   />
                   {/* Gradient overlay to ensure text readability */}
@@ -240,12 +243,11 @@ function Categories({ categories }) {
 
 // ── Featured products (New Arrivals) ─────────────────────────
 
-function Featured({ products }) {
+function Featured({ products, isLoading }) {
   const [ref, visible] = useReveal()
   return (
-    // Reduced padding: pt-16 (top), pb-0 (bottom) to close the gap
-    <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 pt-16 pb-0 reveal ${visible ? 'visible' : ''}`}>
-      <div className="flex items-end justify-between mb-8">
+    <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-10 reveal ${visible ? 'visible' : ''}`}>
+      <div className="flex items-end justify-between mb-10">
         <h2 className="serif text-4xl font-medium text-[var(--ink)]">New Arrivals</h2>
         <Link to="/catalog"
           className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group">
@@ -254,10 +256,10 @@ function Featured({ products }) {
         </Link>
       </div>
 
-      {!products ? (
-        <div className="flex justify-center py-12"><Spinner /></div>
-      ) : products.length === 0 ? (
-        <div className="text-center py-12 rounded-2xl bg-[var(--off)]">
+      {isLoading ? (
+        <div className="flex justify-center py-24"><Spinner /></div>
+      ) : !products?.length ? (
+        <div className="text-center py-20 rounded-2xl bg-[var(--off)]">
           <ShoppingBag size={32} className="mx-auto text-[var(--border)] mb-3" />
           <p className="text-sm text-[var(--muted)]">No products yet — check back soon</p>
         </div>
@@ -419,7 +421,7 @@ function JoinSection() {
 // ── Page ─────────────────────────────────────────────────────
 
 export default function HomePage() {
-  const { data: featured } = useFeaturedProducts()
+  const { data: featured, isLoading: featuredLoading } = useFeaturedProducts()
   const { data: categories } = useCategories()
 
   return (
@@ -427,7 +429,7 @@ export default function HomePage() {
       <Hero />
       <TrustBar />
       <Categories categories={categories} />
-      <Featured products={featured} />
+      <Featured products={featured} isLoading={featuredLoading} />
       <SliderBanner products={featured} />
       <AIBanner />
       <JoinSection />
