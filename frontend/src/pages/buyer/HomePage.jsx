@@ -276,55 +276,38 @@ function Featured({ products, isLoading }) {
 
 // ── Horizontal auto-scroll banner (The "Sandwich" Section) ──────────
 
-function SliderBanner({ products }) {
-  const [ref, visible] = useReveal()
-  
-  if (!products?.length) return null
-
-  const items = [...products, ...products]
-
+function SliderBanner({ products, isLoading }) {
+  // We keep the section container always present in the DOM
   return (
-    // Tightened padding: py-8 (shrunk from 20/12)
-    <section ref={ref} className={`py-8 bg-[var(--off)] mt-16 reveal ${visible ? 'visible' : ''}`}>
-      <div className="max-w-7xl mx-auto px-6 lg:px-10 mb-6 flex items-end justify-between">
-        <div>
-          <p className="text-[10px] font-bold text-[var(--accent)] uppercase tracking-widest mb-1">
-            Trending Now
-          </p>
-          <h2 className="serif text-2xl font-medium text-[var(--ink)]">Popular Picks</h2>
-        </div>
-        <Link to="/catalog"
-          className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group">
-          Shop All <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-        </Link>
+    <section className="py-12 bg-[var(--off)] mt-16 min-h-[400px]">
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 mb-6">
+        <h2 className="serif text-2xl font-medium text-[var(--ink)]">Popular Picks</h2>
       </div>
 
-      <HorizontalSlider>
-        {items.map((product, i) => (
-          <Link key={`${product.id}-${i}`} to={`/products/${product.slug}`}
-            className="flex-shrink-0 w-52 group">
-            <div className="rounded-xl overflow-hidden aspect-[3/4] bg-white mb-3 relative shadow-sm">
-              {product.primary_image ? (
-                <img src={product.primary_image} alt={product.name}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <ShoppingBag size={24} className="text-[var(--border)]" />
-                </div>
-              )}
-            </div>
-            <p className="text-[11px] font-medium text-[var(--muted)] truncate group-hover:text-[var(--ink)] transition-colors">
-              {product.name}
-            </p>
-            <p className="text-xs font-bold text-[var(--ink)] mt-0.5">
-              GHS {parseFloat(product.effective_price).toFixed(2)}
-            </p>
-          </Link>
-        ))}
-      </HorizontalSlider>
+      {isLoading ? (
+        <div className="flex justify-center items-center h-[300px]">
+          <Spinner />
+        </div>
+      ) : products?.length > 0 ? (
+        <HorizontalSlider>
+          {products.map((p) => (
+            <Link key={p.id} to={`/products/${p.slug}`} className="flex-shrink-0 w-52 group">
+              <div className="rounded-xl overflow-hidden aspect-[3/4] bg-white mb-3 shadow-sm relative">
+                <img 
+                  src={p.images?.[0]?.image || ''} 
+                  alt={p.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                />
+              </div>
+              <p className="text-[11px] font-medium text-[var(--muted)] truncate">{p.name}</p>
+            </Link>
+          ))}
+        </HorizontalSlider>
+      ) : null}
     </section>
   )
 }
+
 
 // ── AI banner ────────────────────────────────────────────────
 
