@@ -17,7 +17,6 @@ function useFeaturedProducts() {
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
     staleTime: 0,
-    // ↑ Always fetch fresh data on mount
     refetchOnMount: true,
   })
 }
@@ -40,7 +39,7 @@ function useReveal() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([e]) => { if (e.isIntersecting) setVisible(true) },
-      { threshold: 0.1 }
+      { threshold: 0 }
     )
     if (ref.current) observer.observe(ref.current)
     return () => observer.disconnect()
@@ -48,7 +47,7 @@ function useReveal() {
   return [ref, visible]
 }
 
-// ── Horizontal Drag Slider ───────────────────────────────────
+// ── Horizontal Slider ─────────────────────────────────────────
 
 function HorizontalSlider({ children }) {
   const trackRef = useRef()
@@ -84,7 +83,6 @@ function HorizontalSlider({ children }) {
     >
       <div ref={trackRef} className="flex gap-4 w-max will-change-transform">
         {children}
-        {/* Duplicate for seamless loop */}
         {children}
       </div>
     </div>
@@ -93,41 +91,32 @@ function HorizontalSlider({ children }) {
 
 // ── Hero ─────────────────────────────────────────────────────
 
-// ── Hero ─────────────────────────────────────────────────────
-
 function Hero() {
   return (
     <section className="relative w-full overflow-hidden flex items-center justify-center" style={{ height: '92vh', minHeight: 560 }}>
-      {/* Background Image */}
       <img
         src="https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=1600&auto=format&fit=crop&q=80"
         alt="Fashion hero"
         className="absolute inset-0 w-full h-full object-cover"
       />
-      {/* Dark Overlay */}
       <div className="absolute inset-0 bg-black/40" />
 
-      {/* Content Wrapper */}
       <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 max-w-3xl mx-auto mt-8">
-        
         <p className="text-[10px] tracking-[0.3em] text-white/80 mb-6 fade-up uppercase"
           style={{ animationDelay: '0s' }}>
           New Season — 2026 Collection
         </p>
-        
         <h1 className="serif font-medium text-white leading-[1.1] mb-6 fade-up"
           style={{ fontSize: 'clamp(40px, 8vw, 96px)', animationDelay: '0.15s' }}>
           Fashion <em className="font-normal italic opacity-80">curated</em><br />
           for you.
         </h1>
-        
-        <p className="text-white/80 text-sm sm:text-base md:text-lg font-light leading-relaxed max-w-md mb-10 fade-up"
+        <p className="text-white/80 text-sm sm:text-base font-light leading-relaxed max-w-md mb-10 fade-up"
           style={{ animationDelay: '0.25s' }}>
           Discover premium clothing from Ghana's finest local sellers, delivered to your door.
         </p>
-        
-        {/* Buttons */}
-        <div className="flex flex-col sm:flex-row flex-wrap gap-4 w-full sm:w-auto justify-center fade-up" style={{ animationDelay: '0.35s' }}>
+        <div className="flex flex-col sm:flex-row flex-wrap gap-4 w-full sm:w-auto justify-center fade-up"
+          style={{ animationDelay: '0.35s' }}>
           <Link to="/catalog"
             className="inline-flex items-center justify-center gap-2.5 px-8 py-3.5 bg-white text-[var(--ink)] text-sm font-semibold rounded-full hover:bg-[var(--off)] transition-colors group">
             Shop Now
@@ -192,7 +181,12 @@ function Categories({ categories }) {
   const [ref, visible] = useReveal()
   const items = categories?.length
     ? categories.slice(0, 4)
-    : [{ id: 1, name: 'Men', slug: 'men' }, { id: 2, name: 'Women', slug: 'women' }, { id: 3, name: 'Kids', slug: 'kids' }, { id: 4, name: 'Accessories', slug: 'unisex' }]
+    : [
+        { id: 1, name: 'Men', slug: 'men' },
+        { id: 2, name: 'Women', slug: 'women' },
+        { id: 3, name: 'Kids', slug: 'kids' },
+        { id: 4, name: 'Accessories', slug: 'unisex' },
+      ]
 
   return (
     <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-20 reveal ${visible ? 'visible' : ''}`}>
@@ -207,29 +201,32 @@ function Categories({ categories }) {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {items.map((cat, i) => {
-          const hasImage = !!cat.image;
-          
+          // ↓ Use image_url which comes from the serializer ReadOnlyField
+          const imageUrl = cat.image_url
+
           return (
             <Link key={cat.id || cat.slug}
               to={`/catalog?${categories?.length ? 'category' : 'gender'}=${cat.slug}`}
-              className={`${hasImage ? 'bg-[var(--ink)] text-white' : `${CAT_STYLES[i % 4].bg} ${CAT_STYLES[i % 4].text}`} rounded-2xl p-6 aspect-[4/5] flex flex-col justify-between group overflow-hidden relative`}
-            >
-              {hasImage && (
+              className={`${CAT_STYLES[i % 4].bg} ${CAT_STYLES[i % 4].text} rounded-2xl p-6 aspect-[4/5] flex flex-col justify-between group overflow-hidden relative`}>
+
+              {imageUrl && (
                 <>
-                  {/* Image is now fully visible (no opacity-20) */}
-                  <img src={cat.image_url} alt={cat.name}
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 z-0" 
+                  <img
+                    src={imageUrl}
+                    alt={cat.name}
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 z-0"
                   />
-                  {/* Gradient overlay to ensure text readability */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/10 to-black/80 z-10 transition-opacity duration-300" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/10 to-black/80 z-10" />
                 </>
               )}
-              
-              <div className={`relative z-20 w-8 h-8 rounded-full bg-current opacity-10`} />
-              
+
+              <div className="relative z-20 w-8 h-8 rounded-full bg-current opacity-10" />
+
               <div className="relative z-20 mt-auto">
-                <h3 className="serif text-2xl font-medium mb-2">{cat.name}</h3>
-                <div className="flex items-center gap-1.5 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                <h3 className={`serif text-2xl font-medium mb-2 ${imageUrl ? 'text-white' : ''}`}>
+                  {cat.name}
+                </h3>
+                <div className={`flex items-center gap-1.5 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity ${imageUrl ? 'text-white' : ''}`}>
                   Explore <ArrowRight size={11} />
                 </div>
               </div>
@@ -241,10 +238,11 @@ function Categories({ categories }) {
   )
 }
 
-// ── Featured products (New Arrivals) ─────────────────────────
+// ── Featured products ─────────────────────────────────────────
 
 function Featured({ products, isLoading }) {
   const [ref, visible] = useReveal()
+
   return (
     <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-10 reveal ${visible ? 'visible' : ''}`}>
       <div className="flex items-end justify-between mb-10">
@@ -274,49 +272,58 @@ function Featured({ products, isLoading }) {
   )
 }
 
-// ── Horizontal auto-scroll banner (The "Sandwich" Section) ──────────
+// ── Slider banner ─────────────────────────────────────────────
 
-function SliderBanner({ products, isLoading }) {
-  // We keep the section container always present in the DOM
+function SliderBanner({ products }) {
+  if (!products?.length) return null
+
   return (
-    <section className="py-12 bg-[var(--off)] mt-16 min-h-[400px]">
-      <div className="max-w-7xl mx-auto px-6 lg:px-10 mb-6">
+    <section className="py-12 bg-[var(--off)] mt-10">
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 mb-6 flex items-end justify-between">
         <h2 className="serif text-2xl font-medium text-[var(--ink)]">Popular Picks</h2>
+        <Link to="/catalog"
+          className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group">
+          Shop All <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+        </Link>
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center items-center h-[300px]">
-          <Spinner />
-        </div>
-      ) : products?.length > 0 ? (
-        <HorizontalSlider>
-          {products.map((p) => (
-            <Link key={p.id} to={`/products/${p.slug}`} className="flex-shrink-0 w-52 group">
-              <div className="rounded-xl overflow-hidden aspect-[3/4] bg-white mb-3 shadow-sm relative">
-                <img 
-                  src={p.images?.[0]?.image || ''} 
+      <HorizontalSlider>
+        {products.map((p, i) => (
+          <Link key={`${p.id}-${i}`} to={`/products/${p.slug}`}
+            className="flex-shrink-0 w-52 group">
+            <div className="rounded-xl overflow-hidden aspect-[3/4] bg-white mb-3 shadow-sm">
+              {p.primary_image ? (
+                <img
+                  src={p.primary_image}
                   alt={p.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
-              </div>
-              <p className="text-[11px] font-medium text-[var(--muted)] truncate">{p.name}</p>
-            </Link>
-          ))}
-        </HorizontalSlider>
-      ) : null}
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-[var(--off)]">
+                  <ShoppingBag size={24} className="text-[var(--border)]" />
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] font-medium text-[var(--muted)] truncate group-hover:text-[var(--ink)] transition-colors">
+              {p.name}
+            </p>
+            <p className="text-sm font-semibold text-[var(--ink)] mt-0.5">
+              GHS {parseFloat(p.effective_price).toFixed(2)}
+            </p>
+          </Link>
+        ))}
+      </HorizontalSlider>
     </section>
   )
 }
-
 
 // ── AI banner ────────────────────────────────────────────────
 
 function AIBanner() {
   const [ref, visible] = useReveal()
   return (
-    // Minimal top padding (pt-8) to stay close to the slider above
     <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 pt-8 pb-16 reveal ${visible ? 'visible' : ''}`}>
-      <div className="bg-[var(--ink)] rounded-3xl p-8 lg:p-14 grid lg:grid-cols-2 gap-10 items-center shadow-2xl">
+      <div className="bg-[var(--ink)] rounded-3xl p-8 lg:p-14 grid lg:grid-cols-2 gap-10 items-center">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full text-white/70 text-[10px] font-bold uppercase tracking-wider mb-6">
             <Sparkles size={12} />
@@ -337,7 +344,6 @@ function AIBanner() {
           </Link>
         </div>
 
-        {/* Sample chat bubbles */}
         <div className="flex flex-col gap-3">
           {[
             ['user', 'I need a casual outfit for a beach day under GHS 200'],
@@ -347,8 +353,8 @@ function AIBanner() {
             <div key={i}
               className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm font-light ${
                 role === 'user'
-                  ? 'self-end bg-white text-[var(--ink)] rounded-br-sm shadow-lg'
-                  : 'self-start bg-white/10 text-white/80 rounded-bl-sm border border-white/5'
+                  ? 'self-end bg-white text-[var(--ink)] rounded-br-sm'
+                  : 'self-start bg-white/10 text-white/80 rounded-bl-sm'
               }`}>
               {msg}
             </div>
