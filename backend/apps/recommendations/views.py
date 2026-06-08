@@ -15,11 +15,6 @@ from apps.core.permissions import IsBuyer
 
 
 class AIChatView(APIView):
-    """
-    The main AI chat endpoint.
-    Buyer sends a message, Gemini responds with text
-    and optionally a list of recommended products.
-    """
     permission_classes = [permissions.IsAuthenticated, IsBuyer]
 
     def post(self, request):
@@ -27,35 +22,35 @@ class AIChatView(APIView):
         serializer.is_valid(raise_exception=True)
         user_message = serializer.validated_data['message']
 
-        # Get or create this buyer's conversation
         conversation, _ = AIConversation.objects.get_or_create(buyer=request.user)
 
-        # Send message to Gemini with full history for context
-        result = chat_with_gemini(
-            user_message=user_message,
-            conversation_history=conversation.messages,
-            buyer=request.user
-        )
+        try:
+            result = chat_with_gemini(
+                user_message=user_message,
+                conversation_history=conversation.messages,
+                buyer=request.user
+            )
+        except Exception as e:
+            return Response(
+                {'error': 'AI service is temporarily unavailable. Please try again.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
 
-        # Save both messages to conversation history
         conversation.add_message('user', user_message)
         conversation.add_message('model', result['message'])
 
-        # Save to search history
         SearchHistory.objects.create(
             buyer=request.user,
             query=user_message,
             results_count=len(result['product_ids'])
         )
 
-        # Fetch full product data for recommended products
         products = []
         if result['product_ids']:
             products = Product.objects.filter(
                 id__in=result['product_ids'],
                 is_active=True
             ).prefetch_related('images')
-            # Preserve the order Gemini returned them in
             product_map = {p.id: p for p in products}
             products = [product_map[pid] for pid in result['product_ids'] if pid in product_map]
 
