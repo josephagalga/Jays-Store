@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Order, OrderItem, Cart, CartItem, DeliveryRating
+from decimal import Decimal
+from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, PLATFORM_COMMISSION_RATE
 from apps.products.serializers import ProductListSerializer
 
 
@@ -102,13 +103,29 @@ class AddToCartSerializer(serializers.Serializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     total_price = serializers.ReadOnlyField()
+    product_slug = serializers.CharField(source='product.slug', read_only=True)
 
     class Meta:
         model = OrderItem
         fields = [
             'id', 'product', 'product_name', 'product_image',
-            'size', 'color', 'unit_price', 'quantity', 'total_price',
+            'product_slug', 'size', 'color', 'unit_price', 'quantity', 'total_price',
         ]
+
+
+class CouponSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Coupon
+        fields = [
+            'id', 'code', 'discount_type', 'discount_value',
+            'min_order_amount', 'max_discount_amount',
+            'is_active', 'valid_from', 'valid_until',
+        ]
+
+
+class ValidateCouponSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=50)
+    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -120,13 +137,16 @@ class OrderSerializer(serializers.ModelSerializer):
     is_active = serializers.ReadOnlyField()
     buyer_name = serializers.CharField(source='buyer.full_name', read_only=True)
     driver_name = serializers.CharField(source='driver.full_name', read_only=True)
+    driver_phone = serializers.CharField(source='driver.phone_number', read_only=True)
+    coupon_code = serializers.CharField(source='coupon.code', read_only=True)
 
     class Meta:
         model = Order
         fields = [
-            'id', 'status', 'buyer_name', 'driver_name',
+            'id', 'status', 'buyer_name', 'driver_name', 'driver_phone',
             'delivery_address', 'delivery_phone', 'delivery_note',
-            'subtotal', 'delivery_fee', 'total', 'driver_earnings',
+            'subtotal', 'discount_amount', 'delivery_fee', 'total', 'driver_earnings',
+            'coupon_code', 'payment_method', 'payment_status', 'payment_reference', 'paid_at',
             'items', 'is_active',
             'created_at', 'accepted_at', 'delivered_at',
         ]
@@ -137,13 +157,14 @@ class OrderListSerializer(serializers.ModelSerializer):
     Lightweight order serializer for lists — no items included.
     """
     buyer_name = serializers.CharField(source='buyer.full_name', read_only=True)
+    driver_name = serializers.CharField(source='driver.full_name', read_only=True)
     item_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
-            'id', 'status', 'buyer_name',
-            'total', 'item_count', 'created_at',
+            'id', 'status', 'buyer_name', 'driver_name',
+            'total', 'payment_status', 'payment_method', 'item_count', 'created_at',
         ]
 
     def get_item_count(self, obj):
@@ -159,6 +180,12 @@ class PlaceOrderSerializer(serializers.Serializer):
     delivery_phone = serializers.CharField()
     delivery_note = serializers.CharField(required=False, allow_blank=True)
     delivery_fee = serializers.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    payment_method = serializers.ChoiceField(
+        choices=['momo', 'card', 'cash_on_delivery'],
+        default='momo'
+    )
+    payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate(self, data):
         buyer = self.context['request'].user
@@ -173,36 +200,70 @@ class PlaceOrderSerializer(serializers.Serializer):
         return data
 
 
+class SellerOrderListSerializer(serializers.ModelSerializer):
+    """
+    Serializer for sellers to view their orders.
+    Includes buyer info and driver info.
+    """
+    buyer_name = serializers.CharField(source='buyer.full_name', read_only=True)
+    buyer_phone = serializers.CharField(source='buyer.phone_number', read_only=True)
+    driver_name = serializers.CharField(source='driver.full_name', read_only=True)
+    item_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'status', 'buyer_name', 'buyer_phone',
+            'driver_name', 'total', 'payment_status',
+            'payment_method', 'item_count', 'created_at',
+            'delivery_fee', 'delivery_pin', 'pin_verified',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_item_count(self, obj):
+        return obj.items.count()
+
+
 class DriverOrderListSerializer(serializers.ModelSerializer):
     """
     What drivers see when browsing available orders to accept.
     Deliberately excludes buyer personal info until they accept.
+    Now includes vendor (seller) info per item.
     """
     item_count = serializers.SerializerMethodField()
     area = serializers.SerializerMethodField()
+    vendors = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'status', 'total', 'delivery_fee',
-            'driver_earnings', 'item_count', 'area', 'created_at',
+            'driver_earnings', 'item_count', 'area', 'created_at', 'vendors',
         ]
-        # ↑ Notice delivery_address is NOT here — drivers only get
-        #   the full address after they accept the order
 
     def get_item_count(self, obj):
         return obj.items.count()
 
     def get_area(self, obj):
-        """
-        Returns only the general area from the address, not the full address.
-        e.g. "East Legon, Accra" instead of "House 5, Boundary Road, East Legon"
-        This gives drivers enough info to decide without exposing full details.
-        """
         parts = obj.delivery_address.split(',')
         if len(parts) >= 2:
             return ','.join(parts[-2:]).strip()
         return obj.delivery_address
+
+    def get_vendors(self, obj):
+        vendors = []
+        for item in obj.items.select_related('seller').all():
+            if item.seller and item.seller.role == 'seller':
+                vendors.append({
+                    'seller_id': item.seller.id,
+                    'store_name': item.seller.store_name,
+                    'store_slug': item.seller.store_slug,
+                    'store_address': item.seller.store_address,
+                    'pickup_location': item.seller.pickup_location,
+                    'phone_number': item.seller.phone_number,
+                    'product': item.product.name,
+                })
+        return vendors
 
 
 class DriverAcceptOrderSerializer(serializers.ModelSerializer):
@@ -270,3 +331,52 @@ class DeliveryRatingSerializer(serializers.ModelSerializer):
         if hasattr(value, 'delivery_rating'):
             raise serializers.ValidationError('You have already rated this delivery')
         return value
+
+
+class PayoutSerializer(serializers.ModelSerializer):
+    seller_name = serializers.CharField(source='seller.full_name', read_only=True)
+    seller_email = serializers.CharField(source='seller.email', read_only=True)
+
+    class Meta:
+        model = Payout
+        fields = [
+            'id', 'seller', 'seller_name', 'seller_email',
+            'amount', 'momo_number', 'momo_network', 'account_name',
+            'status', 'admin_note', 'requested_at', 'processed_at',
+        ]
+        read_only_fields = ['id', 'seller', 'status', 'admin_note', 'requested_at', 'processed_at']
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Amount must be greater than zero')
+        request = self.context.get('request')
+        if request:
+            from django.db.models import Sum
+            seller = request.user
+            gross = OrderItem.objects.filter(
+                seller=seller, order__status='delivered'
+            ).aggregate(total=Sum('unit_price'))['total'] or Decimal('0.00')
+            # unit_price * quantity — compute properly
+            gross = Decimal('0.00')
+            for item in OrderItem.objects.filter(seller=seller, order__status='delivered').select_related('order'):
+                gross += Decimal(str(item.unit_price)) * item.quantity
+            net_earnings = gross * (Decimal('1.00') - Decimal(str(PLATFORM_COMMISSION_RATE)))
+            paid_out = Payout.objects.filter(
+                seller=seller, status__in=['pending', 'approved', 'paid']
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            available = net_earnings - Decimal(str(paid_out))
+            if Decimal(str(value)) > available:
+                raise serializers.ValidationError(
+                    f'Insufficient balance. Available: GHS {available:.2f}'
+                )
+        return value
+
+
+class SellerWalletSerializer(serializers.Serializer):
+    gross_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
+    commission_rate = serializers.FloatField()
+    commission_paid = serializers.DecimalField(max_digits=12, decimal_places=2)
+    net_earnings = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_out = serializers.DecimalField(max_digits=12, decimal_places=2)
+    pending_payouts = serializers.DecimalField(max_digits=12, decimal_places=2)
+    available_balance = serializers.DecimalField(max_digits=12, decimal_places=2)

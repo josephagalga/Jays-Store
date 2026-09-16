@@ -21,7 +21,9 @@ export default function DriverOrdersPage() {
     mutationFn: (id) => api.post(`/driver/orders/${id}/accept/`),
     onSuccess: (res) => {
       qc.invalidateQueries(['driver-available-orders'])
-      toast.success(`Order accepted! Deliver to: ${res.data.delivery_address}`)
+      qc.invalidateQueries(['driver-active'])
+      const vendors = res.data?.vendors?.map(v => v.store_name).join(', ')
+      toast.success(`Order accepted!${vendors ? ` Pickup: ${vendors}` : ''}`)
     },
     onError: () => toast.error('Could not accept order'),
   })
@@ -61,6 +63,19 @@ export default function DriverOrdersPage() {
                     <MapPin size={15} className="text-[var(--muted)] flex-shrink-0" />
                     <span className="text-sm text-[var(--ink)] font-medium">{order.area}</span>
                   </div>
+
+                  {order.vendors?.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4 text-xs text-amber-800 space-y-1">
+                      <p className="font-semibold">Pickup / Vendor:</p>
+                      {order.vendors.map(v => (
+                        <p key={v.seller_id}>
+                          <strong>{v.store_name}</strong> — {v.phone_number || 'N/A'}
+                          <br />
+                          <span>{v.pickup_location || v.store_address || ''}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-3 gap-4">
                     <div>

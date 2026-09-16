@@ -15,13 +15,31 @@ urlpatterns = [
     path('orders/<int:pk>/cancel/', views.CancelOrderView.as_view(), name='cancel-order'),
     path('orders/<int:pk>/rate/', views.DeliveryRatingView.as_view(), name='rate-delivery'),
 
+    # Payment verification (Cash on Delivery PIN)
+    path('orders/<int:pk>/verify-pin/', views.VerifyDeliveryPinView.as_view(), name='verify-pin'),
+
+    # Coupons & Promo Codes
+    path('coupons/validate/', views.ValidateCouponView.as_view(), name='validate-coupon'),
+
     # Driver
     path('driver/orders/', views.DriverAvailableOrdersView.as_view(), name='driver-available-orders'),
     path('driver/orders/<int:pk>/accept/', views.DriverAcceptOrderView.as_view(), name='driver-accept-order'),
     path('driver/orders/<int:pk>/status/', views.DriverUpdateOrderStatusView.as_view(), name='driver-update-status'),
     path('driver/history/', views.DriverOrderHistoryView.as_view(), name='driver-history'),
 
+    # Seller orders
+    path('seller/orders/', views.SellerOrderListView.as_view(), name='seller-orders'),
+
     # Admin
     path('admin/orders/', views.AdminOrderListView.as_view(), name='admin-orders'),
     path('admin/orders/<int:pk>/', views.AdminOrderDetailView.as_view(), name='admin-order-detail'),
+
+    # Seller wallet & payouts
+    path('seller/wallet/', views.SellerWalletView.as_view(), name='seller-wallet'),
+    path('seller/payouts/', views.SellerPayoutListCreateView.as_view(), name='seller-payouts'),
+    path('admin/payouts/', views.SellerPayoutListCreateView.as_view(), name='admin-payout-list'),
+    path('admin/payouts/<int:pk>/', views.AdminPayoutActionView.as_view(), name='admin-payout-action'),
+
+    # Payment webhooks
+    path('webhooks/paystack/', views.PaystackWebhookView.as_view(), name='paystack-webhook'),
 ]

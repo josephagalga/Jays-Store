@@ -9,13 +9,14 @@ import Button from '../../components/ui/Button'
 import api from '../../services/api'
 import useCartStore from '../../store/cartStore'
 import useAuthStore from '../../store/authStore'
+import useWishlistStore from '../../store/wishlistStore'
 import toast from 'react-hot-toast'
 
 // ── Write Review ──────────────────────────────────────────────
 
 
 
-function WriteReview({ productId, slug, autoOpen = false }) {
+function WriteReview({ productId, slug, autoOpen = false, requirePurchase = false, hasPurchased = null }) {
   const [rating, setRating] = useState(0)
   const [hover, setHover] = useState(0)
   const [title, setTitle] = useState('')
@@ -66,6 +67,12 @@ function WriteReview({ productId, slug, autoOpen = false }) {
   if (submitted) return (
     <div className="bg-green-50 border border-green-100 rounded-2xl p-5 text-sm text-green-700 font-medium mb-6">
       ✓ Your review has been submitted. Thank you!
+    </div>
+  )
+
+  if (requirePurchase && hasPurchased === false) return (
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-800 mb-6">
+      Only buyers who have received this product can write a review. Order it and review after delivery.
     </div>
   )
 
@@ -159,6 +166,7 @@ export default function ProductDetailPage() {
   const location = useLocation()
   const { addToCart, isLoading } = useCartStore()
   const { user } = useAuthStore()
+  const { toggleWishlist, isWishlisted } = useWishlistStore()
   const [selectedSize, setSelectedSize] = useState(null)
   const [selectedColor, setSelectedColor] = useState(null)
   const [imgIndex, setImgIndex] = useState(0)
@@ -191,6 +199,24 @@ export default function ProductDetailPage() {
     },
     enabled: !!product?.id,
   })
+
+  const { data: myOrders } = useQuery({
+    queryKey: ['my-orders-check', product?.id],
+    queryFn: async () => {
+      const res = await api.get('/orders/')
+      const orders = Array.isArray(res.data) ? res.data : res.data.results || []
+      return orders
+    },
+    enabled: !!product?.id && user?.role === 'buyer',
+  })
+
+  const hasPurchased = (() => {
+    if (user?.role !== 'buyer' || !product?.id || !myOrders) return null
+    return myOrders.some(o =>
+      o.status === 'delivered' &&
+      (o.items?.some(i => i.product === product.id || i.product_slug === slug))
+    )
+  })()
 
   useEffect(() => {
     if (product?.id && user?.role === 'buyer') {
@@ -425,8 +451,11 @@ export default function ProductDetailPage() {
                   <ShoppingBag size={16} />
                   Add to Cart
                 </Button>
-                <button className="w-12 h-12 border border-[var(--border)] rounded-xl flex items-center justify-center hover:border-[var(--ink)] transition-colors">
-                  <Heart size={16} className="text-[var(--muted)]" />
+                <button
+                  type="button"
+                  onClick={() => toggleWishlist(product)}
+                  className="w-12 h-12 border border-[var(--border)] rounded-xl flex items-center justify-center hover:border-[var(--ink)] transition-colors">
+                  <Heart size={16} className={isWishlisted(product.id) ? 'fill-rose-500 text-rose-500' : 'text-[var(--muted)]'} />
                 </button>
               </div>
             ) : !user ? (
@@ -457,6 +486,8 @@ export default function ProductDetailPage() {
               productId={product.id}
               slug={slug}
               autoOpen={autoOpenReview}
+              requirePurchase={true}
+              hasPurchased={hasPurchased}
             />
           )}
 

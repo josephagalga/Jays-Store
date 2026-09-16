@@ -148,6 +148,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     store_slug = models.SlugField(max_length=100, unique=True, blank=True, null=True)
     # ↑ URL-friendly store name e.g. /stores/jays-streetwear/
 
+    store_address = models.TextField(blank=True, null=True)
+    # ↑ Seller's store/pickup address for delivery handoff
+
+    pickup_location = models.CharField(max_length=200, blank=True, null=True)
+    # ↑ Human-readable pickup location e.g. "Shop 5, Mallam"
+
     # Seller analytics
     seller_total_sales = models.PositiveIntegerField(default=0)
     # ↑ Total number of items sold across all their products
@@ -223,3 +229,33 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         if self.role == self.Role.DRIVER:
             self.is_verified = self.verification_status == 'approved'
         super().save(*args, **kwargs)
+
+
+class ContactMessage(models.Model):
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+    subject = models.CharField(max_length=200, blank=True)
+    message = models.TextField()
+    role = models.CharField(max_length=20, default='buyer')
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'contact_messages'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} <{self.email}> — {self.subject or "No subject"}'
+
+
+class NewsletterSubscriber(models.Model):
+    email = models.EmailField(unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'newsletter_subscribers'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.email

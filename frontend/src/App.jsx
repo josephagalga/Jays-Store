@@ -15,14 +15,17 @@ import ProductDetailPage from './pages/buyer/ProductDetailPage'
 import CartPage from './pages/buyer/CartPage'
 import CheckoutPage from './pages/buyer/CheckoutPage'
 import OrdersPage from './pages/buyer/OrdersPage'
+import OrderTrackingPage from './pages/buyer/OrderTrackingPage'
 import AIChatPage from './pages/buyer/AIChatPage'
 import BuyerProfilePage from './pages/buyer/BuyerProfilePage'
+import WishlistPage from './pages/buyer/WishlistPage'
 
 // Seller pages
 import SellerDashboardPage from './pages/seller/SellerDashboardPage'
 import SellerProductsPage from './pages/seller/SellerProductsPage'
 import SellerAddProductPage from './pages/seller/SellerAddProductPage'
 import SellerStorePage from './pages/seller/SellerStorePage'
+import SellerOrdersPage from './pages/seller/SellerOrdersPage'
 
 // Driver pages
 import DriverDashboardPage from './pages/driver/DriverDashboardPage'
@@ -35,6 +38,7 @@ import AdminProductsPage from './pages/admin/AdminProductsPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
 import AdminDriversPage from './pages/admin/AdminDriversPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
+import AdminPayoutsPage from './pages/admin/AdminPayoutsPage'
 
 // General pages
 import AboutPage from './pages/AboutPage'
@@ -79,6 +83,7 @@ function DashboardLayout({ children }) {
       { label: 'Dashboard', to: '/seller/dashboard' },
       { label: 'My Products', to: '/seller/products' },
       { label: 'Add Product', to: '/seller/products/add' },
+      { label: 'My Orders', to: '/seller/orders' },
       { label: 'View Store', to: user?.store_slug ? `/stores/${user.store_slug}` : '/' },
     ],
     driver: [
@@ -90,6 +95,7 @@ function DashboardLayout({ children }) {
       { label: 'Dashboard', to: '/admin/dashboard' },
       { label: 'Products', to: '/admin/products' },
       { label: 'Orders', to: '/admin/orders' },
+      { label: 'Payouts', to: '/admin/payouts' },
       { label: 'Drivers', to: '/admin/drivers' },
       { label: 'Users', to: '/admin/users' },
     ],
@@ -162,6 +168,8 @@ export default function App() {
       <Route path="/cart" element={<PrivateRoute roles={['buyer']}><CartPage /></PrivateRoute>} />
       <Route path="/checkout" element={<PrivateRoute roles={['buyer']}><CheckoutPage /></PrivateRoute>} />
       <Route path="/orders" element={<PrivateRoute roles={['buyer']}><OrdersPage /></PrivateRoute>} />
+      <Route path="/orders/:id/track" element={<PrivateRoute roles={['buyer']}><OrderTrackingPage /></PrivateRoute>} />
+      <Route path="/wishlist" element={<PrivateRoute roles={['buyer']}><WishlistPage /></PrivateRoute>} />
       <Route path="/assistant" element={<PrivateRoute roles={['buyer']}><AIChatPage /></PrivateRoute>} />
       <Route path="/profile" element={<PrivateRoute roles={['buyer']}><BuyerProfilePage /></PrivateRoute>} />
 
@@ -179,6 +187,11 @@ export default function App() {
       <Route path="/seller/products/add" element={
         <PrivateRoute roles={['seller']}>
           <DashboardLayout><SellerAddProductPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/seller/orders" element={
+        <PrivateRoute roles={['seller']}>
+          <DashboardLayout><SellerOrdersPage /></DashboardLayout>
         </PrivateRoute>
       } />
 
@@ -223,6 +236,11 @@ export default function App() {
       <Route path="/admin/users" element={
         <PrivateRoute roles={['admin']}>
           <DashboardLayout><AdminUsersPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/payouts" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminPayoutsPage /></DashboardLayout>
         </PrivateRoute>
       } />
     </Routes>

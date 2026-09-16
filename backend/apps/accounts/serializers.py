@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from .models import ContactMessage, NewsletterSubscriber
 
 User = get_user_model()
 
@@ -151,7 +152,8 @@ class SellerProfileSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'full_name',
             'role', 'phone_number', 'avatar',
             'store_name', 'store_description', 'store_logo',
-            'store_banner', 'store_slug',
+            'store_banner', 'store_slug', 'store_address',
+            'pickup_location',
             'seller_total_sales', 'seller_total_revenue',
             'seller_total_products', 'seller_average_rating',
             'seller_total_ratings',
@@ -265,3 +267,17 @@ class AdminDashboardSerializer(serializers.Serializer):
     pending_orders = serializers.IntegerField()
     completed_orders = serializers.IntegerField()
     total_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class ContactMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactMessage
+        fields = ['id', 'name', 'email', 'subject', 'message', 'role', 'is_read', 'created_at']
+        read_only_fields = ['id', 'is_read', 'created_at']
+
+
+class NewsletterSubscriberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NewsletterSubscriber
+        fields = ['id', 'email', 'is_active', 'created_at']
+        read_only_fields = ['id', 'is_active', 'created_at']

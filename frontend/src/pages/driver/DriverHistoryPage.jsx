@@ -1,4 +1,5 @@
-﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+﻿import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle, XCircle, Truck, Package } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
 import Button from '../../components/ui/Button'
@@ -7,6 +8,7 @@ import toast from 'react-hot-toast'
 
 export default function DriverHistoryPage() {
   const qc = useQueryClient()
+  const [pinInputs, setPinInputs] = useState({})
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ['driver-history'],
@@ -22,7 +24,20 @@ export default function DriverHistoryPage() {
       qc.invalidateQueries(['driver-history'])
       toast.success('Order updated')
     },
-    onError: (err) => toast.error(err.response?.data?.detail || 'Failed to update'),
+    onError: (err) => {
+      const msg = err.response?.data?.error || err.response?.data?.detail || err.response?.data?.status?.[0] || 'Failed to update'
+      toast.error(msg)
+    },
+  })
+
+  const pinMutation = useMutation({
+    mutationFn: ({ id, code }) => api.verifyDeliveryPin(id, code),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries(['driver-history'])
+      toast.success('PIN verified — you can now mark as delivered')
+      setPinInputs(prev => ({ ...prev, [vars.id]: '' }))
+    },
+    onError: (err) => toast.error(err.response?.data?.error || 'Invalid PIN'),
   })
 
   const STATUS_ICONS = {
@@ -74,9 +89,26 @@ export default function DriverHistoryPage() {
                 </Button>
               )}
               {order.status === 'picked_up' && (
-                <Button size="sm" onClick={() => statusMutation.mutate({ id: order.id, status: 'delivered' })}>
-                  Mark as Delivered
-                </Button>
+                <div className="space-y-3">
+                  {order.payment_method === 'cash_on_delivery' && (
+                    <div className="flex gap-2 items-center bg-amber-50 border border-amber-100 rounded-xl p-3">
+                      <input
+                        value={pinInputs[order.id] || ''}
+                        onChange={e => setPinInputs(prev => ({ ...prev, [order.id]: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                        placeholder="4-digit PIN"
+                        inputMode="numeric"
+                        maxLength={4}
+                        className="w-32 px-3 py-2 text-sm text-center tracking-widest font-bold rounded-lg border border-amber-200 bg-white outline-none"
+                      />
+                      <Button size="sm" onClick={() => pinMutation.mutate({ id: order.id, code: pinInputs[order.id] || '' })}>
+                        Verify PIN
+                      </Button>
+                    </div>
+                  )}
+                  <Button size="sm" onClick={() => statusMutation.mutate({ id: order.id, status: 'delivered' })}>
+                    Mark as Delivered
+                  </Button>
+                </div>
               )}
             </div>
           ))}

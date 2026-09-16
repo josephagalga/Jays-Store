@@ -7,10 +7,6 @@ const api = axios.create({
   },
 })
 
-// ============================================================
-// REQUEST INTERCEPTOR
-// Automatically attaches the JWT token to every request
-// ============================================================
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token')
@@ -22,10 +18,6 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// ============================================================
-// RESPONSE INTERCEPTOR
-// Automatically refreshes the token if it expires (401 error)
-// ============================================================
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -33,22 +25,21 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
-      // ↑ Flag to prevent infinite retry loops
 
       try {
         const refreshToken = localStorage.getItem('refresh_token')
-        const response = await axios.post('/api/auth/refresh/', {
+        if (!refreshToken) throw new Error('No refresh token')
+
+        const response = await api.post('/auth/refresh/', {
           refresh: refreshToken,
         })
 
         const newAccessToken = response.data.access
         localStorage.setItem('access_token', newAccessToken)
 
-        // Retry the original request with the new token
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
         return api(originalRequest)
       } catch (refreshError) {
-        // Refresh token is also expired — log the user out
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         window.location.href = '/login'
@@ -61,3 +52,13 @@ api.interceptors.response.use(
 )
 
 export default api
+
+// ── Order / payment helpers ─────────────────────────────────
+export const verifyDeliveryPin = (orderId, code) =>
+  api.post(`/orders/${orderId}/verify-pin/`, { code })
+
+export const placeOrder = (payload) =>
+  api.post('/orders/place/', payload)
+
+api.placeOrder = placeOrder
+api.verifyDeliveryPin = verifyDeliveryPin

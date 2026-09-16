@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-set -o errexit
+set -o errexit -o pipefail -o nounset
 
 pip install -r requirements.txt
 
 python manage.py migrate
+
+python manage.py collectstatic --noinput
 
 python manage.py shell << 'EOF'
 from apps.accounts.models import CustomUser
@@ -20,10 +22,16 @@ else:
 EOF
 
 python manage.py shell << 'EOF'
-from apps.products.models import ProductImage, Product
-ProductImage.objects.all().delete()
-Product.objects.all().delete()
-print('Cleared existing products')
+from apps.products.models import Product
+# Only seed if this is a fresh deploy (no products exist yet)
+if not Product.objects.exists():
+    print('SEED_NEEDED')
+else:
+    print('SKIP_SEED')
 EOF
 
-python manage.py seed_products
+if python manage.py shell -c "from apps.products.models import Product; exit(0 if Product.objects.exists() else 1)"; then
+  echo "Products already exist, skipping seed"
+else
+  python manage.py seed_products
+fi

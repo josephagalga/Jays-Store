@@ -1,12 +1,12 @@
-from django.shortcuts import render
+import random
 
-# Create your views here.
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
 from django.db import transaction
-from .models import Order, OrderItem, Cart, CartItem, DeliveryRating
+from django.conf import settings
+from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, PLATFORM_COMMISSION_RATE, DeliveryPinLog, calculate_delivery_fee
 from .serializers import (
     CartSerializer,
     AddToCartSerializer,
@@ -17,9 +17,37 @@ from .serializers import (
     DriverAcceptOrderSerializer,
     UpdateOrderStatusSerializer,
     DeliveryRatingSerializer,
+    CouponSerializer,
+    ValidateCouponSerializer,
+    PayoutSerializer,
+    SellerWalletSerializer,
+    SellerOrderListSerializer,
 )
-from apps.core.permissions import IsBuyer, IsDriver, IsAdmin
+from apps.core.permissions import IsBuyer, IsDriver, IsAdmin, IsAdminOrSeller
 from decimal import Decimal
+from django.db.models import Sum
+
+
+def get_seller_wallet(seller):
+    gross = Decimal('0.00')
+    for item in OrderItem.objects.filter(seller=seller, order__status='delivered').select_related('order'):
+        gross += Decimal(str(item.unit_price)) * item.quantity
+    commission = gross * Decimal(str(PLATFORM_COMMISSION_RATE))
+    net = gross - commission
+    agg = Payout.objects.filter(seller=seller, status__in=['approved', 'paid']).aggregate(total=Sum('amount'))
+    paid_out = agg['total'] or Decimal('0.00')
+    agg2 = Payout.objects.filter(seller=seller, status='pending').aggregate(total=Sum('amount'))
+    pending = agg2['total'] or Decimal('0.00')
+    available = net - Decimal(str(paid_out)) - Decimal(str(pending))
+    return {
+        'gross_revenue': gross,
+        'commission_rate': PLATFORM_COMMISSION_RATE,
+        'commission_paid': commission,
+        'net_earnings': net,
+        'paid_out': paid_out,
+        'pending_payouts': pending,
+        'available_balance': max(Decimal('0.00'), available),
+    }
 
 
 # ============================================================
@@ -117,11 +145,42 @@ class UpdateCartItemView(APIView):
 # ORDER VIEWS — BUYER
 # ============================================================
 
+class ValidateCouponView(APIView):
+    """Validates a coupon code and returns the discount amount."""
+    permission_classes = [permissions.IsAuthenticated, IsBuyer]
+
+    def post(self, request):
+        serializer = ValidateCouponSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        code = serializer.validated_data['code'].strip().upper()
+        subtotal = Decimal(str(serializer.validated_data.get('subtotal', 0)))
+
+        try:
+            coupon = Coupon.objects.get(code=code)
+        except Coupon.DoesNotExist:
+            return Response({'valid': False, 'message': 'Invalid coupon code'}, status=status.HTTP_400_BAD_REQUEST)
+
+        valid, msg = coupon.is_valid(subtotal)
+        if not valid:
+            return Response({'valid': False, 'message': msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        discount_amount = coupon.calculate_discount(subtotal)
+        return Response({
+            'valid': True,
+            'code': coupon.code,
+            'discount_type': coupon.discount_type,
+            'discount_value': str(coupon.discount_value),
+            'discount_amount': str(discount_amount),
+            'message': f'Coupon applied! Saved GHS {discount_amount:.2f}',
+        })
+
+
 class PlaceOrderView(APIView):
     """
-    Buyer checks out — converts their cart into an order.
-    Uses a database transaction so if anything fails,
-    nothing is saved — prevents partial orders.
+    Takes the buyer's cart and turns it into a real order.
+    Delivery fee is calculated server-side from item count.
+    For cash_on_delivery, a 4-digit PIN is generated.
     """
     permission_classes = [permissions.IsAuthenticated, IsBuyer]
 
@@ -131,11 +190,34 @@ class PlaceOrderView(APIView):
         serializer.is_valid(raise_exception=True)
 
         cart = serializer.validated_data['cart']
-        # Convert delivery_fee to Decimal to avoid type errors
-        delivery_fee = Decimal(str(serializer.validated_data['delivery_fee']))
-
+        total_items = sum(ci.quantity for ci in cart.cart_items.all())
+        delivery_fee = calculate_delivery_fee(total_items)
         subtotal = cart.total
-        total = subtotal + delivery_fee
+
+        # Process coupon if provided
+        coupon_code = serializer.validated_data.get('coupon_code', '')
+        coupon = None
+        discount_amount = Decimal('0.00')
+
+        if coupon_code:
+            try:
+                coupon = Coupon.objects.get(code=coupon_code.strip().upper())
+                valid, _ = coupon.is_valid(subtotal)
+                if valid:
+                    discount_amount = Decimal(str(coupon.calculate_discount(subtotal)))
+                    coupon.used_count += 1
+                    coupon.save()
+            except Coupon.DoesNotExist:
+                pass
+
+        total = max(Decimal('0.00'), subtotal - discount_amount + delivery_fee)
+
+        payment_method = serializer.validated_data.get('payment_method', 'momo')
+        payment_reference = serializer.validated_data.get('payment_reference', '') or f'PAY-{int(timezone.now().timestamp())}'
+        payment_status = 'paid' if payment_method != 'cash_on_delivery' else 'unpaid'
+        paid_at = timezone.now() if payment_status == 'paid' else None
+
+        driver_earnings = total * PLATFORM_COMMISSION_RATE if delivery_fee > 0 else Decimal('0.00')
 
         order = Order.objects.create(
             buyer=request.user,
@@ -143,19 +225,34 @@ class PlaceOrderView(APIView):
             delivery_phone=serializer.validated_data['delivery_phone'],
             delivery_note=serializer.validated_data.get('delivery_note', ''),
             subtotal=subtotal,
+            coupon=coupon,
+            discount_amount=discount_amount,
             delivery_fee=delivery_fee,
             total=total,
-            driver_earnings=Decimal('10.00'),
+            payment_method=payment_method,
+            payment_status=payment_status,
+            payment_reference=payment_reference,
+            paid_at=paid_at,
+            driver_earnings=driver_earnings,
         )
+
+        # Generate delivery PIN for cash on delivery
+        pin_code = None
+        if payment_method == 'cash_on_delivery':
+            pin_code = f'{random.randint(0, 9999):04d}'
+            order.delivery_pin = pin_code
+            order.save(update_fields=['delivery_pin'])
+            DeliveryPinLog.objects.create(
+                order=order,
+                driver=None,
+                code=pin_code,
+            )
 
         for cart_item in cart.cart_items.select_related('product', 'variant'):
             primary_image = cart_item.product.images.filter(is_primary=True).first()
             image_url = ''
-            if primary_image and primary_image.image:
-                try:
-                    image_url = request.build_absolute_uri(primary_image.image.url)
-                except Exception:
-                    image_url = ''
+            if primary_image:
+                image_url = primary_image.url or ''
 
             OrderItem.objects.create(
                 order=order,
@@ -178,8 +275,16 @@ class PlaceOrderView(APIView):
 
         cart.cart_items.all().delete()
 
+        response_data = OrderSerializer(order).data
+        response_data['delivery_fee'] = str(delivery_fee)
+        if pin_code:
+            response_data['delivery_pin'] = pin_code
+            response_data['pin_required'] = True
+        else:
+            response_data['pin_required'] = False
+
         return Response(
-            OrderSerializer(order).data,
+            response_data,
             status=status.HTTP_201_CREATED
         )
 
@@ -257,7 +362,8 @@ class DriverAvailableOrdersView(generics.ListAPIView):
 class DriverAcceptOrderView(APIView):
     """
     Driver accepts a pending order.
-    After this, they get the buyer's full address and phone.
+    After this, they get the buyer's full address, phone,
+    AND the vendor (seller) info + store pickup location.
     """
     permission_classes = [permissions.IsAuthenticated, IsDriver]
 
@@ -265,8 +371,6 @@ class DriverAcceptOrderView(APIView):
     def post(self, request, pk):
         try:
             order = Order.objects.select_for_update().get(pk=pk, status='pending')
-            # ↑ select_for_update locks the row so two drivers
-            #   can't accept the same order at the same time
         except Order.DoesNotExist:
             return Response(
                 {'error': 'Order not available'},
@@ -278,18 +382,45 @@ class DriverAcceptOrderView(APIView):
         order.accepted_at = timezone.now()
         order.save()
 
-        # Mark driver as currently delivering
+        # Attach driver to PIN log if COD order
+        if order.payment_method == 'cash_on_delivery':
+            try:
+                pin_log = order.pin_log
+                pin_log.driver = request.user
+                pin_log.save(update_fields=['driver'])
+            except DeliveryPinLog.DoesNotExist:
+                pass
+
         request.user.currently_delivering = True
         request.user.save()
 
-        return Response(
-            DriverAcceptOrderSerializer(order).data,
-            status=status.HTTP_200_OK
-        )
+        # Build vendor info per item (each item has a seller)
+        vendor_info = []
+        for item in order.items.select_related('seller').all():
+            if item.seller and item.seller.role == 'seller':
+                vendor_info.append({
+                    'seller_id': item.seller.id,
+                    'store_name': item.seller.store_name,
+                    'store_slug': item.seller.store_slug,
+                    'store_address': item.seller.store_address,
+                    'pickup_location': item.seller.pickup_location,
+                    'phone_number': item.seller.phone_number,
+                    'product': item.product.name,
+                })
+
+        response_data = DriverAcceptOrderSerializer(order).data
+        response_data['vendors'] = vendor_info
+        response_data['delivery_pin_required'] = order.payment_method == 'cash_on_delivery'
+        if order.payment_method == 'cash_on_delivery' and order.delivery_pin:
+            response_data['delivery_pin'] = order.delivery_pin
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class DriverUpdateOrderStatusView(APIView):
-    """Driver updates order to picked_up or delivered."""
+    """Driver updates order to picked_up or delivered.
+    Delivered requires correct 4-digit PIN for cash_on_delivery orders.
+    """
     permission_classes = [permissions.IsAuthenticated, IsDriver]
 
     @transaction.atomic
@@ -301,7 +432,22 @@ class DriverUpdateOrderStatusView(APIView):
 
         serializer = UpdateOrderStatusSerializer(order, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        order = serializer.save()
+        new_status = serializer.validated_data['status']
+
+        if new_status == 'delivered' and order.payment_method == 'cash_on_delivery':
+            # PIN verification required before marking delivered
+            pin_log = getattr(order, 'pin_log', None)
+            if not pin_log or not pin_log.is_verified:
+                return Response(
+                    {'error': 'Delivery PIN verification required before marking as delivered'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        order.status = new_status
+        order.save()
+
+        if order.status == 'picked_up':
+            order.save()
 
         # When order is delivered, update all relevant stats
         if order.status == 'delivered':
@@ -385,3 +531,160 @@ class AdminOrderDetailView(generics.RetrieveAPIView):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdmin]
     queryset = Order.objects.all().prefetch_related('items').select_related('buyer', 'driver')
+
+
+# ============================================================
+# SELLER WALLET & PAYOUT VIEWS
+# ============================================================
+
+class SellerWalletView(APIView):
+    """Seller sees gross revenue, commission, net earnings and available balance."""
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSeller]
+
+    def get(self, request):
+        seller = request.user
+        # Admins querying with ?seller_id= can inspect a seller wallet
+        if seller.role == 'admin':
+            from django.contrib.auth import get_user_model
+            seller_id = request.query_params.get('seller_id')
+            if seller_id:
+                try:
+                    seller = get_user_model().objects.get(pk=seller_id, role='seller')
+                except Exception:
+                    return Response({'error': 'Seller not found'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                return Response({'error': 'seller_id query param required for admins'}, status=status.HTTP_400_BAD_REQUEST)
+        wallet = get_seller_wallet(seller)
+        return Response(SellerWalletSerializer(wallet).data)
+
+
+class SellerPayoutListCreateView(generics.ListCreateAPIView):
+    """Seller lists own payouts and requests new withdrawals."""
+    serializer_class = PayoutSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSeller]
+
+    def get_queryset(self):
+        if self.request.user.role == 'admin':
+            return Payout.objects.all().select_related('seller').order_by('-requested_at')
+        return Payout.objects.filter(seller=self.request.user).order_by('-requested_at')
+
+    def perform_create(self, serializer):
+        serializer.save(seller=self.request.user)
+
+
+class AdminPayoutActionView(APIView):
+    """Admin approves / marks paid / rejects a payout request."""
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def patch(self, request, pk):
+        try:
+            payout = Payout.objects.get(pk=pk)
+        except Payout.DoesNotExist:
+            return Response({'error': 'Payout not found'}, status=status.HTTP_404_NOT_FOUND)
+        action = request.data.get('action', '')
+        note = request.data.get('admin_note', '')
+        if action not in ['approve', 'pay', 'reject']:
+            return Response({'error': 'action must be approve, pay or reject'}, status=status.HTTP_400_BAD_REQUEST)
+        mapping = {'approve': 'approved', 'pay': 'paid', 'reject': 'rejected'}
+        payout.status = mapping[action]
+        payout.admin_note = note
+        payout.processed_at = timezone.now()
+        payout.save()
+        return Response(PayoutSerializer(payout).data)
+
+
+class SellerOrderListView(generics.ListAPIView):
+    """Seller sees all their own orders (orders for their products)."""
+    serializer_class = SellerOrderListSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSeller]
+
+    def get_queryset(self):
+        seller = self.request.user
+        if seller.role == 'admin':
+            return Order.objects.all().prefetch_related('items').select_related('buyer', 'driver').order_by('-created_at')
+        return Order.objects.filter(items__seller=seller).distinct().prefetch_related('items').select_related('buyer', 'driver').order_by('-created_at')
+
+
+class VerifyDeliveryPinView(APIView):
+    """Verify the 4-digit delivery PIN for a cash_on_delivery order."""
+    permission_classes = [permissions.IsAuthenticated, IsDriver]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.get(pk=pk, driver=request.user)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.payment_method != 'cash_on_delivery':
+            return Response({'error': 'PIN not required for this order'}, status=status.HTTP_400_BAD_REQUEST)
+
+        code = request.data.get('code', '').strip()
+        if not code or len(code) != 4 or not code.isdigit():
+            return Response({'error': 'PIN must be a 4-digit code'}, status=status.HTTP_400_BAD_REQUEST)
+
+        pin_log = getattr(order, 'pin_log', None)
+        if not pin_log:
+            return Response({'error': 'PIN log not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if pin_log.is_verified:
+            return Response({'message': 'PIN already verified', 'verified': True})
+
+        if code == pin_log.code:
+            pin_log.is_verified = True
+            pin_log.verified_at = timezone.now()
+            pin_log.save()
+            order.pin_verified = True
+            order.save()
+            return Response({'message': 'PIN verified successfully', 'verified': True})
+        else:
+            pin_log.attempts += 1
+            pin_log.save()
+            remaining = max(0, 3 - pin_log.attempts)
+            return Response({'error': f'Invalid PIN. {remaining} attempts remaining.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PaystackWebhookView(APIView):
+    """Receive Paystack webhook for payment verification."""
+    permission_classes = []  # Allow webhook access without auth
+
+    def post(self, request):
+        """Handle Paystack webhook events."""
+        # Verify Paystack secret signature
+        secret = settings.PAYSTACK_WEBHOOK_SECRET
+        # Paystack sends signature in headers
+        signature = request.META.get('HTTP_X_PAYSTACK_SIGNATURE', '')
+
+        try:
+            data = request.data
+            event = data.get('event', '')
+            reference = data.get('data', {}).get('reference', '')
+            status_val = data.get('data', {}).get('status', '')
+
+            if event == 'charge.success' and status_val == 'success':
+                # Mark order as paid
+                try:
+                    order = Order.objects.get(payment_reference=reference)
+                except Order.DoesNotExist:
+                    try:
+                        order = Order.objects.get(paystack_reference=reference)
+                    except Order.DoesNotExist:
+                        return Response({'message': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+                order.payment_status = 'paid'
+                order.paid_at = timezone.now()
+                order.paystack_reference = reference
+                order.save()
+                return Response({'message': 'Payment verified and order marked as paid'})
+
+            elif event == 'charge.failed':
+                try:
+                    order = Order.objects.get(payment_reference=reference)
+                except Order.DoesNotExist:
+                    return Response({'message': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+                order.payment_status = 'failed'
+                order.save()
+                return Response({'message': 'Payment marked as failed'})
+
+            return Response({'message': 'Webhook received'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

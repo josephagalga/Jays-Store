@@ -1,39 +1,18 @@
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import timedelta
 import os
+import dj_database_url
 
-
-# ============================================================
-# BASE SETUP
-# ============================================================
-
-# Load environment variables from .env file
 load_dotenv()
 
-# Root directory of the project (the backend folder)
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Secret key loaded from .env — never hardcode this
-SECRET_KEY = os.getenv('SECRET_KEY')
-
-# Debug mode loaded from .env — will be False in production
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-me')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
-
-# Hosts that are allowed to access this server
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
-
-
-
-
-
-
-
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-
-
-# ============================================================
-# APPLICATIONS
-# ============================================================
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
+if 'testserver' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('testserver')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -41,6 +20,9 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'cloudinary_storage',
+    'cloudinary',
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
@@ -52,16 +34,10 @@ INSTALLED_APPS = [
     'apps.recommendations',
 ]
 
-
-
-# ============================================================
-# MIDDLEWARE
-# ============================================================
-
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.common.CommonMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -71,18 +47,8 @@ MIDDLEWARE = [
     'apps.core.middleware.UpdateLastActiveMiddleware',
 ]
 
-
-# ============================================================
-# URLS & WSGI
-# ============================================================
-
 ROOT_URLCONF = 'config.urls'
 WSGI_APPLICATION = 'config.wsgi.application'
-
-
-# ============================================================
-# TEMPLATES
-# ============================================================
 
 TEMPLATES = [
     {
@@ -100,26 +66,22 @@ TEMPLATES = [
     },
 ]
 
-
-# ============================================================
-# DATABASE
-# ============================================================
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'jays_store',
-        'USER': 'postgres',
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': 'localhost',
-        'PORT': '5432',
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
-}
-
-
-# ============================================================
-# AUTHENTICATION
-# ============================================================
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -128,16 +90,9 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# We'll use a custom user model (defined later in apps.accounts)
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
-
-# ============================================================
-# DJANGO REST FRAMEWORK
-# ============================================================
-
 REST_FRAMEWORK = {
-    # All endpoints require authentication by default
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
@@ -153,93 +108,78 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
-
-# ============================================================
-# JWT SETTINGS
-# ============================================================
-
-from datetime import timedelta
-
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
 }
 
-
-# ============================================================
-# CORS (Cross Origin Resource Sharing)
-# ============================================================
-
-# Allow the React frontend to talk to Django during development
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',  # Vite default port
-    'http://localhost:3000',
-    'https://jays-store-steel.vercel.app'  # Create React App default port
+    origin.strip()
+    for origin in os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,https://jays-store-steel.vercel.app',
+    ).split(',')
+    if origin.strip()
 ]
-
 CORS_ALLOW_CREDENTIALS = True
-
-
-
-
-
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-
-# ============================================================
-# STATIC & MEDIA FILES
-# ============================================================
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-# Media files = user uploaded content (product images, etc.)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+}
 
-# ============================================================
-# INTERNATIONALISATION
-# ============================================================
+USE_CLOUDINARY = all([
+    os.getenv('CLOUDINARY_CLOUD_NAME'),
+    os.getenv('CLOUDINARY_API_KEY'),
+    os.getenv('CLOUDINARY_API_SECRET'),
+    not DEBUG,
+])
+
+if USE_CLOUDINARY:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
+else:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-
-# ============================================================
-# MISC
-# ============================================================
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Gemini AI
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
-import dj_database_url
+# Paystack
+PAYSTACK_WEBHOOK_SECRET = os.getenv('PAYSTACK_WEBHOOK_SECRET', '')
+PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY', '')
+PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '')
 
-# WhiteNoise serves static files in production
-MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-
-# Ensure you have a fallback for local development
-DATABASE_URL = os.environ.get('DATABASE_URL')
-
-if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            ssl_require=True  # Important for Render Postgres
-        )
-    }
-else:
-    # Local database fallback
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+# Security hardening for production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    HSTS_SECONDS = 31536000
+    # Note: CSRF_TRUSTED_ORIGINS is handled by django-cors-headers / middleware for prod proxies
