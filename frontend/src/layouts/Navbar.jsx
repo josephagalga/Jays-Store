@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, ShoppingBag, X, Menu, User } from 'lucide-react'
-import { useState } from 'react'
+import { Search, ShoppingBag, Heart, X, Menu, User } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import useAuthStore from '../store/authStore'
 import useCartStore from '../store/cartStore'
+import useWishlistStore from '../store/wishlistStore'
 
 export default function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false)
@@ -10,8 +11,21 @@ export default function Navbar() {
   const [query, setQuery] = useState('')
   const { user, isAuthenticated, logout } = useAuthStore()
   const { cart } = useCartStore()
+  const { wishlistIds, fetchWishlistIds } = useWishlistStore()
   const navigate = useNavigate()
   const itemCount = cart?.item_count || 0
+  const wishlistCount = wishlistIds?.length || 0
+
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'buyer') {
+      fetchWishlistIds()
+    }
+  }, [isAuthenticated, user?.role])
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -65,15 +79,27 @@ export default function Navbar() {
               </button>
 
               {(!isAuthenticated || user?.role === 'buyer') && (
-                <Link to="/cart"
-                  className="relative w-9 h-9 flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">
-                  <ShoppingBag size={17} />
-                  {itemCount > 0 && (
-                    <span className="absolute top-1 right-1 w-[14px] h-[14px] bg-[var(--ink)] text-white text-[8px] font-semibold rounded-full flex items-center justify-center">
-                      {itemCount}
-                    </span>
-                  )}
-                </Link>
+                <>
+                  <Link to="/wishlist"
+                    className="relative w-9 h-9 flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">
+                    <Heart size={17} />
+                    {wishlistCount > 0 && (
+                      <span className="absolute top-1 right-1 w-[14px] h-[14px] bg-rose-500 text-white text-[8px] font-semibold rounded-full flex items-center justify-center">
+                        {wishlistCount}
+                      </span>
+                    )}
+                  </Link>
+
+                  <Link to="/cart"
+                    className="relative w-9 h-9 flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">
+                    <ShoppingBag size={17} />
+                    {itemCount > 0 && (
+                      <span className="absolute top-1 right-1 w-[14px] h-[14px] bg-[var(--ink)] text-white text-[8px] font-semibold rounded-full flex items-center justify-center">
+                        {itemCount}
+                      </span>
+                    )}
+                  </Link>
+                </>
               )}
 
               {isAuthenticated ? (
@@ -89,16 +115,17 @@ export default function Navbar() {
                     <div className="p-1.5">
                       {user?.role === 'buyer' && <>
                         <Link to="/profile" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">Profile</Link>
+                        <Link to="/wishlist" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">My Wishlist</Link>
                         <Link to="/orders" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">My Orders</Link>
                         <Link to="/assistant" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">AI Stylist</Link>
-                        <Link to="/about" className="text-sm text-[var(--muted)] hover:text-[var(--ink)] transition-colors">About</Link>
-                        <Link to="/contact" className="text-sm text-[var(--muted)] hover:text-[var(--ink)] transition-colors">Contact</Link>
+                        <Link to="/about" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">About</Link>
+                        <Link to="/contact" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">Contact</Link>
                       </>}
                       {user?.role === 'seller' && <Link to="/seller/dashboard" className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Dashboard</Link>}
                       {user?.role === 'driver' && <Link to="/driver/dashboard" className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Dashboard</Link>}
                       {user?.role === 'admin' && <Link to="/admin/dashboard" className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Admin Panel</Link>}
                       <div className="border-t border-[var(--border)] mt-1.5 pt-1.5">
-                        <button onClick={logout} className="w-full text-left px-3 py-2 text-sm text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
+                        <button onClick={handleLogout} className="w-full text-left px-3 py-2 text-sm text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
                           Sign out
                         </button>
                       </div>

@@ -1,5 +1,6 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import useAuthStore from './store/authStore'
 
 // Auth pages
@@ -46,10 +47,33 @@ import ContactPage from './pages/ContactPage'
 
 // ── Route guards ──────────────────────────────────────────────
 
+function useIsHydrated() {
+  const [hydrated, setHydrated] = useState(
+    () => useAuthStore.persist?.hasHydrated?.() ?? true
+  )
+  useEffect(() => {
+    if (!useAuthStore.persist?.onFinishHydration) return
+    const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true))
+    return unsub
+  }, [])
+  return hydrated
+}
+
+function hasToken() {
+  return !!localStorage.getItem('access_token')
+}
+
 function PrivateRoute({ children, roles }) {
+  const hydrated = useIsHydrated()
   const { isAuthenticated, user } = useAuthStore()
 
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  // Wait for persisted auth to rehydrate — otherwise a reload on a
+  // protected page flashes /login while the landing page also renders.
+  if (!hydrated) {
+    return <div className="flex justify-center py-32 text-sm text-[var(--muted)]">Loading…</div>
+  }
+
+  if (!isAuthenticated || !hasToken()) return <Navigate to="/login" replace />
 
   // If roles required but user role not loaded yet, wait
   if (roles && !user?.role) return null
@@ -60,8 +84,16 @@ function PrivateRoute({ children, roles }) {
 }
 
 function PublicOnlyRoute({ children }) {
+  const hydrated = useIsHydrated()
   const { isAuthenticated, user } = useAuthStore()
-  if (isAuthenticated) {
+
+  if (!hydrated) {
+    return <div className="flex justify-center py-32 text-sm text-[var(--muted)]">Loading…</div>
+  }
+
+  // Only bounce logged-in users with a live token; a stale persisted
+  // flag + expired token used to flip /login and / at the same time.
+  if (isAuthenticated && hasToken()) {
     const map = {
       buyer: '/',
       seller: '/seller/dashboard',
@@ -77,6 +109,12 @@ function PublicOnlyRoute({ children }) {
 
 function DashboardLayout({ children }) {
   const { user, logout } = useAuthStore()
+  const navigate = useNavigate()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   const navLinks = {
     seller: [
@@ -128,7 +166,7 @@ function DashboardLayout({ children }) {
               <p className="text-xs text-[var(--muted)] capitalize mt-0.5">{user?.role}</p>
             </div>
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="text-sm font-medium text-rose-500 hover:text-rose-600 transition-colors">
               Sign out
             </button>
@@ -242,6 +280,17 @@ export default function App() {
         <PrivateRoute roles={['admin']}>
           <DashboardLayout><AdminPayoutsPage /></DashboardLayout>
         </PrivateRoute>
+      } />
+
+      {/* 404 — unknown URLs used to render blank, which looked like a stuck double-render */}
+      <Route path="*" element={
+        <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
+          <p className="serif text-4xl font-medium text-[var(--ink)]">Page not found</p>
+          <p className="text-sm text-[var(--muted)]">The page you’re looking for doesn’t exist.</p>
+          <Link to="/" className="text-sm font-medium text-[var(--ink)] underline underline-offset-4">
+            Back to home
+          </Link>
+        </div>
       } />
     </Routes>
   )

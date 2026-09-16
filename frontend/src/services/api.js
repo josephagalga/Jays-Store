@@ -21,28 +21,43 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config
+    const originalRequest = error.config || {}
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't try to refresh for the refresh call itself — prevents loops
+      if (originalRequest.url?.includes('/auth/refresh/')) {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        window.dispatchEvent(new Event('auth:expired'))
+        return Promise.reject(error)
+      }
+
       originalRequest._retry = true
 
       try {
         const refreshToken = localStorage.getItem('refresh_token')
         if (!refreshToken) throw new Error('No refresh token')
 
-        const response = await api.post('/auth/refresh/', {
-          refresh: refreshToken,
-        })
+        // Use a bare axios call so the refresh never re-enters this interceptor
+        const response = await axios.post(
+          `${api.defaults.baseURL}/auth/refresh/`,
+          { refresh: refreshToken },
+          { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
+        )
 
         const newAccessToken = response.data.access
         localStorage.setItem('access_token', newAccessToken)
 
+        originalRequest.headers = originalRequest.headers || {}
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
         return api(originalRequest)
       } catch (refreshError) {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
-        window.location.href = '/login'
+        // Notify the auth store; route guards decide where to go.
+        // No hard window.location here — that was yanking users
+        // from the landing page to /login on every expired token.
+        window.dispatchEvent(new Event('auth:expired'))
         return Promise.reject(refreshError)
       }
     }

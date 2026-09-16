@@ -91,7 +91,6 @@ const useAuthStore = create(
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         set({ user: null, isAuthenticated: false })
-        window.location.href = '/login'
       },
     }),
     {
@@ -103,5 +102,16 @@ const useAuthStore = create(
     }
   )
 )
+
+// If tokens were cleared (expired refresh), drop auth state without a full reload.
+// Route guards will redirect from protected pages; public pages stay put.
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:expired', () => {
+    const { isAuthenticated } = useAuthStore.getState()
+    if (isAuthenticated) {
+      useAuthStore.setState({ user: null, isAuthenticated: false })
+    }
+  })
+}
 
 export default useAuthStore

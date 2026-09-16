@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -14,6 +14,7 @@ const schema = z.object({
 
 export default function LoginPage() {
   const { login } = useAuthStore()
+  const navigate = useNavigate()
   const [error, setError] = useState('')
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
@@ -23,7 +24,20 @@ export default function LoginPage() {
   const onSubmit = async (data) => {
     setError('')
     const result = await login(data.email, data.password)
-    if (!result.success) setError(result.error)
+    if (!result.success) {
+      setError(result.error)
+      return
+    }
+    // Navigate explicitly by role so the app lands once,
+    // instead of flashing /login + / together via the guard.
+    const role = useAuthStore.getState().user?.role
+    const map = {
+      buyer: '/',
+      seller: '/seller/dashboard',
+      driver: '/driver/dashboard',
+      admin: '/admin/dashboard',
+    }
+    navigate(map[role] || '/', { replace: true })
   }
 
   return (
