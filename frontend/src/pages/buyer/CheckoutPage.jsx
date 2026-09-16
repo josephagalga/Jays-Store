@@ -10,7 +10,22 @@ import Button from '../../components/ui/Button'
 import api from '../../services/api'
 import useCartStore from '../../store/cartStore'
 import useAuthStore from '../../store/authStore'
+import { deliveryFeeForCount, cartItemCount, cartSubtotal } from '../../utils/pricing'
 import toast from 'react-hot-toast'
+
+const PAYSTACK_INLINE_URL = 'https://js.paystack.co/v1/inline.js'
+
+function loadPaystackInline() {
+  return new Promise((resolve, reject) => {
+    if (window.PaystackPop) return resolve(window.PaystackPop)
+    const script = document.createElement('script')
+    script.src = PAYSTACK_INLINE_URL
+    script.async = true
+    script.onload = () => (window.PaystackPop ? resolve(window.PaystackPop) : reject(new Error('Paystack failed to load')))
+    script.onerror = () => reject(new Error('Could not load Paystack. Check your connection.'))
+    document.body.appendChild(script)
+  })
+}
 
 const schema = z.object({
   delivery_address: z.string().min(5, 'Enter your full delivery address'),
@@ -28,11 +43,10 @@ export default function CheckoutPage() {
   const [coupon, setCoupon] = useState(null)
   const [couponMsg, setCouponMsg] = useState('')
   const [couponLoading, setCouponLoading] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState('momo')
-  const [deliveryFeeServer, setDeliveryFeeServer] = useState(null)
+  const [paymentMethod, setPaymentMethod] = useState('paystack')
   const [deliveryPin, setDeliveryPin] = useState(null)
   const [pinRequired, setPinRequired] = useState(false)
-  const [paystackRef, setPaystackRef] = useState('')
+  const [paying, setPaying] = useState(false)
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
@@ -43,11 +57,12 @@ export default function CheckoutPage() {
   })
 
   const items = cart?.cart_items || []
-  const itemCount = items.reduce((s, i) => s + i.quantity, 0)
-  const subtotal = items.reduce((acc, item) => acc + (parseFloat(item.unit_price) * item.quantity), 0)
+  const itemCount = cartItemCount(items)
+  const subtotal = cartSubtotal(items)
   const discount = coupon ? parseFloat(coupon.discount_amount || 0) : 0
-  // Server-calculated delivery fee (falls back to tiered logic if server not yet integrated)
-  const delivery_fee = deliveryFeeServer !== null ? parseFloat(deliveryFeeServer) : (itemCount <= 5 ? 5 : itemCount <= 10 ? 10 : 20)
+  // Display-only estimate. The server recalculates the fee from item count
+  // (1–5 → GHS 5, 6–10 → GHS 10, 11+ → GHS 20) when the order is placed.
+  const delivery_fee = deliveryFeeForCount(itemCount)
   const total = Math.max(0, subtotal - discount + delivery_fee)
 
   const applyCoupon = async () => {
@@ -75,21 +90,91 @@ export default function CheckoutPage() {
     setCouponMsg('')
   }
 
+  const placeCashOrder = async (data) => {
+    const res = await api.placeOrder({
+      ...data,
+      coupon_code: coupon?.code || '',
+      payment_method: 'cash_on_delivery',
+    })
+    setOrderId(res.data.id)
+    setDeliveryPin(res.data.delivery_pin || null)
+    setPinRequired(res.data.pin_required || false)
+    clearCart()
+    setPlaced(true)
+  }
+
+  const placePaystackOrder = async (data) => {
+    const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || ''
+    if (!publicKey) {
+      toast.error('Paystack is not configured (missing public key). Use Cash on Delivery or contact support.')
+      return
+    }
+    setPaying(true)
+    try {
+      // 1. Create the order (unpaid) — server computes fee + total.
+      const orderRes = await api.placeOrder({
+        ...data,
+        coupon_code: coupon?.code || '',
+        payment_method: 'paystack',
+      })
+      const order = orderRes.data
+      setOrderId(order.id)
+
+      // 2. Initialize the transaction server-side (gets reference + fallback URL).
+      let init
+      try {
+        const initRes = await api.post('/payments/paystack/initialize/', { order_id: order.id })
+        init = initRes.data
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Could not start Paystack payment. Your order is placed as unpaid — retry payment from My Orders.')
+        clearCart()
+        setPlaced(true)
+        return
+      }
+
+      // 3. Open the Paystack popup (MoMo + Card).
+      const PaystackPop = await loadPaystackInline()
+      const handler = PaystackPop.setup({
+        key: publicKey,
+        email: user?.email,
+        amount: Math.round(parseFloat(order.total) * 100), // pesewas
+        currency: 'GHS',
+        ref: init.reference,
+        metadata: { order_id: order.id },
+        callback: async (response) => {
+          // 4. Verify server-side, then confirm.
+          try {
+            await api.post('/payments/paystack/verify/', { reference: response.reference })
+            toast.success('Payment confirmed!')
+          } catch {
+            toast.error('Payment received — verification pending. Check My Orders.')
+          }
+          clearCart()
+          setPlaced(true)
+          setPaying(false)
+        },
+        onClose: () => {
+          // Popup closed before paying — order exists as unpaid.
+          toast('Payment window closed. Your order is saved — complete payment from My Orders.', { icon: 'ℹ️' })
+          clearCart()
+          setPlaced(true)
+          setPaying(false)
+        },
+      })
+      handler.openIframe()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || 'Failed to place order')
+      setPaying(false)
+    }
+  }
+
   const onSubmit = async (data) => {
     try {
-      setDeliveryFeeServer(delivery_fee)
-      const res = await api.placeOrder({
-        ...data,
-        delivery_fee,
-        coupon_code: coupon?.code || '',
-        payment_method: paymentMethod,
-        payment_reference: paymentMethod === 'paystack' ? paystackRef : '',
-      })
-      setOrderId(res.data.id)
-      setDeliveryPin(res.data.delivery_pin || null)
-      setPinRequired(res.data.pin_required || false)
-      clearCart()
-      setPlaced(true)
+      if (paymentMethod === 'paystack') {
+        await placePaystackOrder(data)
+      } else {
+        await placeCashOrder(data)
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || err.response?.data?.delivery_address?.[0] || 'Failed to place order')
     }
@@ -147,10 +232,8 @@ export default function CheckoutPage() {
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    ['momo', 'MoMo'],
-                    ['card', 'Card'],
-                    ['paystack', 'Paystack'],
-                    ['cash_on_delivery', 'Cash'],
+                    ['paystack', 'Paystack (MoMo / Card)'],
+                    ['cash_on_delivery', 'Cash on Delivery'],
                   ].map(([val, label]) => (
                     <button key={val} type="button"
                       onClick={() => setPaymentMethod(val)}
@@ -164,19 +247,13 @@ export default function CheckoutPage() {
                   ))}
                 </div>
                 <p className="text-xs text-[var(--muted)]">
-                  {paymentMethod === 'momo' && 'Pay with MTN MoMo, Telecel Cash or AT Money on delivery confirmation.'}
-                  {paymentMethod === 'card' && 'Pay securely with Visa / Mastercard.'}
-                  {paymentMethod === 'paystack' && 'Pay securely online with Paystack (MoMo / Card). Enter reference after payment.'}
+                  {paymentMethod === 'paystack' && 'Pay securely online with Paystack — MTN MoMo, Telecel Cash, AT Money or card.'}
                   {paymentMethod === 'cash_on_delivery' && 'Pay cash when your order arrives. You will receive a 4-digit PIN to give the driver.'}
                 </p>
-                {paymentMethod === 'paystack' && (
-                  <Input label="Paystack Reference (optional)" placeholder="e.g. T123456789"
-                    value={paystackRef} onChange={e => setPaystackRef(e.target.value)} />
-                )}
               </div>
 
-              <Button type="submit" size="full" loading={isSubmitting} className="mt-4 rounded-xl">
-                Place Order — GHS {total.toFixed(2)}
+              <Button type="submit" size="full" loading={isSubmitting || paying} className="mt-4 rounded-xl">
+                {paymentMethod === 'paystack' ? `Pay with Paystack — GHS ${total.toFixed(2)}` : `Place Order — GHS ${total.toFixed(2)}`}
               </Button>
             </form>
           </div>

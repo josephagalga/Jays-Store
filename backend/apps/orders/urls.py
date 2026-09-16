@@ -40,6 +40,10 @@ urlpatterns = [
     path('admin/payouts/', views.SellerPayoutListCreateView.as_view(), name='admin-payout-list'),
     path('admin/payouts/<int:pk>/', views.AdminPayoutActionView.as_view(), name='admin-payout-action'),
 
+    # Payments (Paystack)
+    path('payments/paystack/initialize/', views.PaystackInitializeView.as_view(), name='paystack-initialize'),
+    path('payments/paystack/verify/', views.PaystackVerifyView.as_view(), name='paystack-verify'),
+
     # Payment webhooks
     path('webhooks/paystack/', views.PaystackWebhookView.as_view(), name='paystack-webhook'),
 ]

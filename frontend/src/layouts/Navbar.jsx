@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Search, ShoppingBag, Heart, X, Menu, User } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import useAuthStore from '../store/authStore'
 import useCartStore from '../store/cartStore'
 import useWishlistStore from '../store/wishlistStore'
@@ -8,11 +8,13 @@ import useWishlistStore from '../store/wishlistStore'
 export default function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [query, setQuery] = useState('')
   const { user, isAuthenticated, logout } = useAuthStore()
   const { cart } = useCartStore()
   const { wishlistIds, fetchWishlistIds } = useWishlistStore()
   const navigate = useNavigate()
+  const userMenuRef = useRef(null)
   const itemCount = cart?.item_count || 0
   const wishlistCount = wishlistIds?.length || 0
 
@@ -22,8 +24,29 @@ export default function Navbar() {
     }
   }, [isAuthenticated, user?.role])
 
+  // Close the account menu on outside tap / Escape (touch devices have no hover)
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const onPointerDown = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false)
+      }
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setUserMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [userMenuOpen])
+
   const handleLogout = () => {
     logout()
+    setUserMenuOpen(false)
+    setMenuOpen(false)
     navigate('/login', { replace: true })
   }
 
@@ -103,27 +126,31 @@ export default function Navbar() {
               )}
 
               {isAuthenticated ? (
-                <div className="relative group ml-1">
-                  <button className="w-8 h-8 rounded-full bg-[var(--ink)] text-white text-xs font-semibold flex items-center justify-center hover:opacity-75 transition-opacity">
+                <div className="relative ml-1" ref={userMenuRef}>
+                  <button
+                    onClick={() => setUserMenuOpen(v => !v)}
+                    aria-haspopup="menu"
+                    aria-expanded={userMenuOpen}
+                    className="w-8 h-8 rounded-full bg-[var(--ink)] text-white text-xs font-semibold flex items-center justify-center hover:opacity-75 transition-opacity">
                     {user?.first_name?.[0]?.toUpperCase()}
                   </button>
-                  <div className="absolute right-0 top-full mt-2 w-52 bg-white border border-[var(--border)] rounded-2xl shadow-lg shadow-black/5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 overflow-hidden">
+                  <div className={`absolute right-0 top-full mt-2 w-52 bg-white border border-[var(--border)] rounded-2xl shadow-lg shadow-black/5 transition-all duration-200 overflow-hidden z-50 ${userMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
                     <div className="px-4 py-3 bg-[var(--off)] border-b border-[var(--border)]">
                       <p className="text-sm font-semibold text-[var(--ink)]">{user?.full_name}</p>
                       <p className="text-xs text-[var(--muted)] capitalize mt-0.5">{user?.role}</p>
                     </div>
-                    <div className="p-1.5">
+                    <div className="p-1.5" role="menu">
                       {user?.role === 'buyer' && <>
-                        <Link to="/profile" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">Profile</Link>
-                        <Link to="/wishlist" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">My Wishlist</Link>
-                        <Link to="/orders" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">My Orders</Link>
-                        <Link to="/assistant" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">AI Stylist</Link>
-                        <Link to="/about" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">About</Link>
-                        <Link to="/contact" className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">Contact</Link>
+                        <Link to="/profile" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">Profile</Link>
+                        <Link to="/wishlist" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">My Wishlist</Link>
+                        <Link to="/orders" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">My Orders</Link>
+                        <Link to="/assistant" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">AI Stylist</Link>
+                        <Link to="/about" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">About</Link>
+                        <Link to="/contact" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">Contact</Link>
                       </>}
-                      {user?.role === 'seller' && <Link to="/seller/dashboard" className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Dashboard</Link>}
-                      {user?.role === 'driver' && <Link to="/driver/dashboard" className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Dashboard</Link>}
-                      {user?.role === 'admin' && <Link to="/admin/dashboard" className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Admin Panel</Link>}
+                      {user?.role === 'seller' && <Link to="/seller/dashboard" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Dashboard</Link>}
+                      {user?.role === 'driver' && <Link to="/driver/dashboard" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Dashboard</Link>}
+                      {user?.role === 'admin' && <Link to="/admin/dashboard" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm rounded-lg hover:bg-[var(--off)] transition-colors">Admin Panel</Link>}
                       <div className="border-t border-[var(--border)] mt-1.5 pt-1.5">
                         <button onClick={handleLogout} className="w-full text-left px-3 py-2 text-sm text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
                           Sign out
@@ -165,6 +192,72 @@ export default function Navbar() {
                   Sign in
                 </Link>
               )}
+              {isAuthenticated && user?.role === 'buyer' && (<>
+                <div className="border-t border-[var(--border)] mt-2 pt-2">
+                  <p className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                    {user?.full_name}
+                  </p>
+                  {[
+                    ['Profile', '/profile'],
+                    ['My Wishlist', '/wishlist'],
+                    ['My Orders', '/orders'],
+                    ['AI Stylist', '/assistant'],
+                  ].map(([label, to]) => (
+                    <Link key={to} to={to} onClick={() => setMenuOpen(false)}
+                      className="block px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">
+                      {label}
+                    </Link>
+                  ))}
+                  <button onClick={handleLogout}
+                    className="w-full text-left px-3 py-2.5 text-sm font-medium text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
+                    Sign out
+                  </button>
+                </div>
+              </>)}
+              {isAuthenticated && user?.role === 'seller' && (<>
+                <div className="border-t border-[var(--border)] mt-2 pt-2">
+                  <Link to="/seller/dashboard" onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">
+                    Seller Dashboard
+                  </Link>
+                  <Link to="/seller/orders" onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">
+                    My Orders
+                  </Link>
+                  <button onClick={handleLogout}
+                    className="w-full text-left px-3 py-2.5 text-sm font-medium text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
+                    Sign out
+                  </button>
+                </div>
+              </>)}
+              {isAuthenticated && user?.role === 'driver' && (<>
+                <div className="border-t border-[var(--border)] mt-2 pt-2">
+                  <Link to="/driver/dashboard" onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">
+                    Driver Dashboard
+                  </Link>
+                  <Link to="/driver/orders" onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">
+                    Available Orders
+                  </Link>
+                  <button onClick={handleLogout}
+                    className="w-full text-left px-3 py-2.5 text-sm font-medium text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
+                    Sign out
+                  </button>
+                </div>
+              </>)}
+              {isAuthenticated && user?.role === 'admin' && (<>
+                <div className="border-t border-[var(--border)] mt-2 pt-2">
+                  <Link to="/admin/dashboard" onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">
+                    Admin Panel
+                  </Link>
+                  <button onClick={handleLogout}
+                    className="w-full text-left px-3 py-2.5 text-sm font-medium text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
+                    Sign out
+                  </button>
+                </div>
+              </>)}
             </nav>
           </div>
         )}

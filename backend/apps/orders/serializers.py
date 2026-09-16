@@ -147,6 +147,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'delivery_address', 'delivery_phone', 'delivery_note',
             'subtotal', 'discount_amount', 'delivery_fee', 'total', 'driver_earnings',
             'coupon_code', 'payment_method', 'payment_status', 'payment_reference', 'paid_at',
+            'delivery_pin', 'pin_verified',
             'items', 'is_active',
             'created_at', 'accepted_at', 'delivered_at',
         ]
@@ -182,8 +183,8 @@ class PlaceOrderSerializer(serializers.Serializer):
     delivery_fee = serializers.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     payment_method = serializers.ChoiceField(
-        choices=['momo', 'card', 'cash_on_delivery'],
-        default='momo'
+        choices=['momo', 'card', 'paystack', 'cash_on_delivery'],
+        default='paystack'
     )
     payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
 

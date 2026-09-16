@@ -3,6 +3,7 @@ import { Mail, Phone, MapPin, Clock, Send } from 'lucide-react'
 import MainLayout from '../layouts/MainLayout'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
+import api from '../services/api'
 import toast from 'react-hot-toast'
 
 export default function ContactPage() {
@@ -22,11 +23,16 @@ export default function ContactPage() {
       return toast.error('Please fill in all required fields')
     }
     setSubmitting(true)
-    // Simulate submission — connect to email service in production
-    await new Promise(r => setTimeout(r, 1200))
-    setSubmitting(false)
-    setSubmitted(true)
-    toast.success('Message sent! We\'ll get back to you soon.')
+    try {
+      await api.post('/accounts/contact/', form)
+      setSubmitted(true)
+      toast.success('Message sent! We\'ll get back to you soon.')
+    } catch (err) {
+      const msg = err.response?.data?.email?.[0] || err.response?.data?.detail || 'Failed to send message. Try again.'
+      toast.error(msg)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const contacts = [
@@ -75,7 +81,7 @@ export default function ContactPage() {
     },
     {
       q: 'How much does delivery cost?',
-      a: 'Delivery is free on all orders over GHS 300. A flat GHS 30 fee applies to orders below that.',
+      a: 'Delivery is based on item count: GHS 5 for 1–5 items, GHS 10 for 6–10 items, and GHS 20 for 11 or more items.',
     },
     {
       q: 'How do I return a product?',

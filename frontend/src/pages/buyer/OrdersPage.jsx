@@ -1,10 +1,13 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { Package, Clock, CheckCircle, XCircle, Truck, Star } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Package, Clock, CheckCircle, XCircle, Truck, Star, Eye } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import Spinner from '../../components/ui/Spinner'
 import Badge from '../../components/ui/Badge'
 import api from '../../services/api'
+import useAuthStore from '../../store/authStore'
+import { payForOrder } from '../../utils/paystack'
 import toast from 'react-hot-toast'
 
 const STATUS_CONFIG = {
@@ -18,6 +21,9 @@ const STATUS_CONFIG = {
 
 export default function OrdersPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const [payingId, setPayingId] = useState(null)
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ['buyer-orders'],
@@ -35,6 +41,22 @@ export default function OrdersPage() {
     },
     onError: (err) => toast.error(err.response?.data?.error || 'Cannot cancel this order'),
   })
+
+  const handlePayNow = async (order) => {
+    setPayingId(order.id)
+    try {
+      await payForOrder({
+        orderId: order.id,
+        email: user?.email,
+        amount: order.total,
+        onVerified: () => qc.invalidateQueries(['buyer-orders']),
+      })
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.message || 'Payment failed')
+    } finally {
+      setPayingId(null)
+    }
+  }
 
   if (isLoading) return (
     <MainLayout>
@@ -136,7 +158,7 @@ export default function OrdersPage() {
                       {/* Review button — only for delivered orders */}
                       {isDelivered && item.product && (
                         <Link
-                          to={`/products/${item.product}`}
+                          to={`/products/${item.product_slug}`}
                           state={{ openReview: true }}
                           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 bg-amber-50 text-amber-700 text-xs font-semibold rounded-full hover:bg-amber-100 transition-colors">
                           <Star size={11} />
@@ -160,6 +182,14 @@ export default function OrdersPage() {
                     <span className="font-bold text-[var(--ink)]">
                       GHS {parseFloat(order.total).toFixed(2)}
                     </span>
+                    {order.payment_method === 'paystack' && order.payment_status === 'unpaid' && order.status !== 'cancelled' && (
+                      <button
+                        onClick={() => handlePayNow(order)}
+                        disabled={payingId === order.id}
+                        className="px-4 py-1.5 bg-[var(--ink)] text-white text-xs font-semibold rounded-full hover:opacity-80 transition-opacity disabled:opacity-40">
+                        {payingId === order.id ? 'Processing…' : 'Pay Now'}
+                      </button>
+                    )}
                     {isPending && (
                       <button
                         onClick={() => cancelMutation.mutate(order.id)}
@@ -168,8 +198,41 @@ export default function OrdersPage() {
                         Cancel Order
                       </button>
                     )}
+                    <button
+                      onClick={() => navigate(`/orders/${order.id}/track`)}
+                      className="flex items-center gap-1 text-xs font-medium text-[var(--ink)] hover:text-[var(--muted)] transition-colors">
+                      <Eye size={12} /> Track Order
+                    </button>
                   </div>
                 </div>
+
+                {/* Track Timeline */}
+                {isPending && (
+                  <div className="px-6 py-3 bg-[var(--off)] border-t border-[var(--border)]">
+                    <div className="flex items-center gap-2">
+                      {['Placed', 'Confirmed', 'Out for Delivery', 'Delivered'].map((label, i) => {
+                        const currentIdx = ['pending', 'accepted', 'picked_up', 'delivered'].indexOf(order.status)
+                        const isCompleted = i <= currentIdx
+                        const isCurrent = i === currentIdx
+                        return (
+                          <button
+                            key={label}
+                            onClick={() => navigate(`/orders/${order.id}/track`)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-medium transition-all ${
+                              isCompleted
+                                ? isCurrent
+                                  ? 'bg-[var(--ink)] text-white ring-2 ring-[var(--ink)]/30 cursor-pointer hover:ring-[var(--ink)]/50'
+                                  : 'bg-green-100 text-green-700 cursor-pointer hover:bg-green-200'
+                                : 'bg-[var(--off)] text-[var(--muted)] cursor-default'
+                            }`}>
+                            <Eye size={10} />
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Delivered info strip */}
                 {isDelivered && (

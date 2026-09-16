@@ -5,9 +5,10 @@ import MainLayout from '../../layouts/MainLayout'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 import useCartStore from '../../store/cartStore'
+import { deliveryFeeForCount, cartItemCount, cartSubtotal } from '../../utils/pricing'
 
 export default function CartPage() {
-  const { cart, fetchCart, removeFromCart, updateQuantity, isLoading } = useCartStore()
+  const { cart, fetchCart, removeFromCart, updateQuantity } = useCartStore()
   const navigate = useNavigate()
 
   useEffect(() => { fetchCart() }, [])
@@ -33,8 +34,9 @@ export default function CartPage() {
     </MainLayout>
   )
 
-  const subtotal = items.reduce((acc, item) => acc + (parseFloat(item.unit_price) * item.quantity), 0)
-  const delivery = subtotal >= 300 ? 0 : 30
+  const subtotal = cartSubtotal(items)
+  const itemCount = cartItemCount(items)
+  const delivery = deliveryFeeForCount(itemCount)
   const total = subtotal + delivery
 
   return (
@@ -119,7 +121,7 @@ export default function CartPage() {
                 </div>
                 {delivery > 0 && (
                   <p className="text-xs text-[var(--muted)]">
-                    Add GHS {(300 - subtotal).toFixed(2)} more for free delivery
+                    GHS 5 for 1–5 items · GHS 10 for 6–10 items · GHS 20 for 11+ items
                   </p>
                 )}
                 <div className="border-t border-[var(--border)] pt-3 flex justify-between">

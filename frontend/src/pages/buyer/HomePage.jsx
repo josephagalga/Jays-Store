@@ -150,7 +150,7 @@ function TrustBar() {
       <div className="max-w-7xl mx-auto px-6 lg:px-10">
         <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[var(--border)]">
           {[
-            [<Truck size={18} />, 'Free Delivery', 'On orders over GHS 300'],
+            [<Truck size={18} />, 'Fair Delivery', 'From just GHS 5'],
             [<Shield size={18} />, 'Secure Checkout', 'Your data is always safe'],
             [<ShoppingBag size={18} />, 'Local Sellers', 'Supporting Ghanaian fashion'],
           ].map(([icon, title, desc]) => (

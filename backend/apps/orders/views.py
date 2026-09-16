@@ -1,5 +1,8 @@
+import hashlib
+import hmac
 import random
 
+import requests
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -212,9 +215,17 @@ class PlaceOrderView(APIView):
 
         total = max(Decimal('0.00'), subtotal - discount_amount + delivery_fee)
 
-        payment_method = serializer.validated_data.get('payment_method', 'momo')
+        payment_method = serializer.validated_data.get('payment_method', 'paystack')
         payment_reference = serializer.validated_data.get('payment_reference', '') or f'PAY-{int(timezone.now().timestamp())}'
-        payment_status = 'paid' if payment_method != 'cash_on_delivery' else 'unpaid'
+        # Only cash_on_delivery stays unpaid at placement; online methods
+        # (paystack/momo/card) are marked paid only after verification.
+        # Legacy momo/card orders keep old behaviour via verify endpoints.
+        if payment_method == 'cash_on_delivery':
+            payment_status = 'unpaid'
+        elif payment_method == 'paystack':
+            payment_status = 'unpaid'
+        else:
+            payment_status = 'paid'
         paid_at = timezone.now() if payment_status == 'paid' else None
 
         driver_earnings = total * PLATFORM_COMMISSION_RATE if delivery_fee > 0 else Decimal('0.00')
@@ -410,9 +421,8 @@ class DriverAcceptOrderView(APIView):
 
         response_data = DriverAcceptOrderSerializer(order).data
         response_data['vendors'] = vendor_info
+        # Never expose the PIN to the driver — the buyer hands it over in person.
         response_data['delivery_pin_required'] = order.payment_method == 'cash_on_delivery'
-        if order.payment_method == 'cash_on_delivery' and order.delivery_pin:
-            response_data['delivery_pin'] = order.delivery_pin
 
         return Response(response_data, status=status.HTTP_200_OK)
 
@@ -477,7 +487,11 @@ class DriverUpdateOrderStatusView(APIView):
                     item.seller.seller_total_revenue += item.total_price
                     item.seller.save()
 
-        return Response(OrderSerializer(order).data)
+        data = OrderSerializer(order).data
+        # Never leak the COD PIN to the driver app.
+        data.pop('delivery_pin', None)
+
+        return Response(data)
 
 
 class DriverOrderHistoryView(generics.ListAPIView):
@@ -649,37 +663,51 @@ class PaystackWebhookView(APIView):
 
     def post(self, request):
         """Handle Paystack webhook events."""
-        # Verify Paystack secret signature
-        secret = settings.PAYSTACK_WEBHOOK_SECRET
-        # Paystack sends signature in headers
+        secret = (settings.PAYSTACK_SECRET_KEY or settings.PAYSTACK_WEBHOOK_SECRET or '').strip()
         signature = request.META.get('HTTP_X_PAYSTACK_SIGNATURE', '')
+
+        # Verify HMAC-SHA512 signature when a secret is configured.
+        # Paystack signs the raw request body with the SECRET key.
+        if secret and signature:
+            computed = hmac.new(secret.encode(), request.body, hashlib.sha512).hexdigest()
+            if not hmac.compare_digest(computed, signature):
+                return Response({'error': 'Invalid signature'}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
             data = request.data
             event = data.get('event', '')
-            reference = data.get('data', {}).get('reference', '')
-            status_val = data.get('data', {}).get('status', '')
+            txn = data.get('data', {}) or {}
+            reference = txn.get('reference', '')
+            status_val = txn.get('status', '')
+            metadata = txn.get('metadata', {}) or {}
+            order_id = metadata.get('order_id')
 
-            if event == 'charge.success' and status_val == 'success':
-                # Mark order as paid
+            order = None
+            if order_id:
                 try:
-                    order = Order.objects.get(payment_reference=reference)
+                    order = Order.objects.get(pk=order_id)
+                except Order.DoesNotExist:
+                    order = None
+            if order is None and reference:
+                try:
+                    order = Order.objects.get(paystack_reference=reference)
                 except Order.DoesNotExist:
                     try:
-                        order = Order.objects.get(paystack_reference=reference)
+                        order = Order.objects.get(payment_reference=reference)
                     except Order.DoesNotExist:
-                        return Response({'message': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+                        order = None
 
+            if event == 'charge.success' and status_val == 'success':
+                if order is None:
+                    return Response({'message': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
                 order.payment_status = 'paid'
                 order.paid_at = timezone.now()
                 order.paystack_reference = reference
                 order.save()
                 return Response({'message': 'Payment verified and order marked as paid'})
 
-            elif event == 'charge.failed':
-                try:
-                    order = Order.objects.get(payment_reference=reference)
-                except Order.DoesNotExist:
+            if event == 'charge.failed':
+                if order is None:
                     return Response({'message': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
                 order.payment_status = 'failed'
                 order.save()
@@ -688,3 +716,139 @@ class PaystackWebhookView(APIView):
             return Response({'message': 'Webhook received'}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def _paystack_headers():
+    secret = (settings.PAYSTACK_SECRET_KEY or '').strip()
+    return {
+        'Authorization': f'Bearer {secret}',
+        'Content-Type': 'application/json',
+    }
+
+
+class PaystackInitializeView(APIView):
+    """Start a Paystack transaction for an order. Returns authorization_url + reference."""
+    permission_classes = [permissions.IsAuthenticated, IsBuyer]
+
+    def post(self, request):
+        order_id = request.data.get('order_id')
+        if not order_id:
+            return Response({'error': 'order_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            order = Order.objects.get(pk=order_id, buyer=request.user)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status == 'cancelled':
+            return Response({'error': 'Order was cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+        if order.payment_status == 'paid':
+            return Response({'message': 'Order already paid', 'paid': True})
+
+        secret = (settings.PAYSTACK_SECRET_KEY or '').strip()
+        if not secret:
+            return Response(
+                {'error': 'Paystack is not configured on the server (PAYSTACK_SECRET_KEY missing)'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        amount_pesewas = int(order.total * 100)
+        reference = order.paystack_reference or f'JAYS-{order.id}-{int(timezone.now().timestamp())}'
+        payload = {
+            'email': request.user.email,
+            'amount': amount_pesewas,
+            'currency': 'GHS',
+            'reference': reference,
+            'metadata': {'order_id': order.id, 'buyer': request.user.email},
+        }
+        callback_url = (getattr(settings, 'FRONTEND_URL', '') or '').strip()
+        if callback_url:
+            payload['callback_url'] = callback_url.rstrip('/') + f'/orders/{order.id}/track'
+
+        try:
+            resp = requests.post(
+                'https://api.paystack.co/transaction/initialize',
+                json=payload, headers=_paystack_headers(), timeout=20,
+            )
+        except requests.RequestException:
+            return Response({'error': 'Could not reach Paystack. Try again.'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        try:
+            body = resp.json()
+        except ValueError:
+            return Response({'error': 'Invalid response from Paystack'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if not body.get('status') or 'data' not in body:
+            return Response(
+                {'error': body.get('message', 'Paystack rejected the transaction')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        order.payment_method = 'paystack'
+        order.paystack_reference = body['data'].get('reference', reference)
+        order.save(update_fields=['payment_method', 'paystack_reference'])
+
+        return Response({
+            'authorization_url': body['data'].get('authorization_url'),
+            'access_code': body['data'].get('access_code'),
+            'reference': order.paystack_reference,
+            'amount': str(order.total),
+        })
+
+
+class PaystackVerifyView(APIView):
+    """Verify a Paystack reference after checkout. Marks the order paid on success."""
+    permission_classes = [permissions.IsAuthenticated, IsBuyer]
+
+    def post(self, request):
+        reference = (request.data.get('reference') or '').strip()
+        if not reference:
+            return Response({'error': 'reference is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        secret = (settings.PAYSTACK_SECRET_KEY or '').strip()
+        if not secret:
+            return Response(
+                {'error': 'Paystack is not configured on the server (PAYSTACK_SECRET_KEY missing)'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            resp = requests.get(
+                f'https://api.paystack.co/transaction/verify/{reference}',
+                headers=_paystack_headers(), timeout=20,
+            )
+        except requests.RequestException:
+            return Response({'error': 'Could not reach Paystack. Try again.'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        try:
+            body = resp.json()
+        except ValueError:
+            return Response({'error': 'Invalid response from Paystack'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        txn = (body.get('data') or {}) if body.get('status') else {}
+        if not txn or txn.get('status') != 'success':
+            return Response({'paid': False, 'message': 'Payment not successful'}, status=status.HTTP_400_BAD_REQUEST)
+
+        metadata = txn.get('metadata') or {}
+        order = None
+        if metadata.get('order_id'):
+            order = Order.objects.filter(pk=metadata['order_id'], buyer=request.user).first()
+        if order is None:
+            order = Order.objects.filter(paystack_reference=reference, buyer=request.user).first()
+        if order is None:
+            order = Order.objects.filter(payment_reference=reference, buyer=request.user).first()
+        if order is None:
+            return Response({'error': 'Order not found for this reference'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Confirm the paid amount covers the order total (tolerate 1 pesewa rounding).
+        paid_pesewas = int(txn.get('amount') or 0)
+        expected = int(order.total * 100)
+        if paid_pesewas + 1 < expected:
+            return Response({'paid': False, 'message': 'Amount paid does not match order total'}, status=status.HTTP_400_BAD_REQUEST)
+
+        order.payment_method = 'paystack'
+        order.payment_status = 'paid'
+        order.paid_at = timezone.now()
+        order.paystack_reference = reference
+        order.save()
+
+        return Response({'paid': True, 'order_id': order.id, 'message': 'Payment confirmed'})
