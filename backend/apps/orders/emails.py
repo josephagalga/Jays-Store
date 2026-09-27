@@ -1,0 +1,249 @@
+"""Email helpers: payment confirmations, delivery OTP and receipts.
+
+All sends are wrapped so a mail failure never breaks checkout/delivery.
+In local dev EMAIL_BACKEND defaults to console, so messages print to the
+Django terminal instead of sending real mail.
+"""
+import logging
+import time
+
+from django.conf import settings
+from django.core.mail import send_mail, get_connection
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
+
+def _send(to_email, subject, message, html_message=None, kind='', order=None,
+          connection=None, _retried=False):
+    """Send one email and RECORD the outcome in EmailLog.
+
+    Failures never raise (checkout/delivery must not break), but they are
+    now impossible to miss: full stack trace in server logs + a row the
+    admin can inspect at GET /admin/email-logs/.
+
+    Gmail's SMTP intermittently drops rapid back-to-back sends
+    ("Connection unexpectedly closed"), so on a first failure we retry
+    once with a fresh connection after a short pause.
+    """
+    if not to_email:
+        _log_email(to_email or '', subject, kind, order, False, 'no recipient address')
+        return False
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@jaysstore.com'),
+            recipient_list=[to_email],
+            html_message=html_message,
+            fail_silently=False,
+            connection=connection,
+        )
+        _log_email(to_email, subject, kind, order, True, '')
+        return True
+    except Exception as exc:  # never break checkout because of mail
+        if not _retried:
+            logger.warning('Email "%s" to %s failed (%s) — retrying once',
+                           subject, to_email, exc)
+            try:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+                time.sleep(2)
+                return _send(to_email, subject, message, html_message,
+                             kind, order, connection=None, _retried=True)
+            except Exception:
+                pass
+        logger.exception('Email "%s" to %s failed', subject, to_email)
+        _log_email(to_email, subject, kind, order, False, str(exc)[:500])
+        return False
+
+
+def _log_email(to_email, subject, kind, order, ok, error):
+    try:
+        from .models import EmailLog
+        EmailLog.objects.create(
+            to_email=to_email or '',
+            subject=(subject or '')[:200],
+            kind=kind or '',
+            order=order,
+            ok=ok,
+            error=error or '',
+        )
+    except Exception as exc:
+        logger.warning('Could not write EmailLog: %s', exc)
+
+
+def order_lines(order):
+    lines = []
+    for item in order.items.all():
+        lines.append(
+            f'- {item.product_name} ({item.size} / {item.color}) x{item.quantity} — '
+            f'GHS {float(item.unit_price) * item.quantity:.2f}'
+        )
+    return '\n'.join(lines)
+
+
+def send_payment_confirmation(order, otp_code=None, connection=None):
+    """Buyer receipt + payment confirmation. Called on every successful payment."""
+    buyer = order.buyer
+    if not buyer or not buyer.email:
+        return False
+    subject = f"Jay's Store — Payment confirmed for Order #{order.id}"
+    fee = float(getattr(order, 'processing_fee', 0) or 0)
+    charged = float(order.total) + fee
+    body = (
+        f"Hi {buyer.first_name or 'there'},\n\n"
+        f"Your payment of GHS {charged:.2f} for Order #{order.id} was confirmed.\n\n"
+        f"{order_lines(order)}\n\n"
+        f"Subtotal: GHS {float(order.subtotal):.2f}\n"
+        f"Delivery fee: GHS {float(order.delivery_fee):.2f}\n"
+        + (f"Processing fee: GHS {fee:.2f}\n" if fee > 0 else '')
+        + f"Total charged: GHS {charged:.2f} via {order.payment_method}\n\n"
+        f"Deliver to: {order.delivery_address}\n"
+        f"Phone: {order.delivery_phone}\n"
+        + (f"Nearest landmark: {order.delivery_landmark}\n" if getattr(order, 'delivery_landmark', '') else '')
+        + (f"Note: {order.delivery_note}\n" if order.delivery_note else '')
+        + (f"\nYour delivery OTP is {otp_code}. Give it to the driver on arrival.\n" if otp_code else '')
+        + f"\nTrack your order: {getattr(settings, 'FRONTEND_URL', '').rstrip('/')}/orders/{order.id}/track\n\n"
+        f"Thank you for shopping with Jay's Store!"
+    )
+    html = (
+        f"<h2>Payment confirmed — Order #{order.id}</h2>"
+        f"<p>Hi {buyer.first_name or 'there'}, your payment of "
+        f"<strong>GHS {charged:.2f}</strong> was confirmed.</p>"
+        + (f"<p style='font-size:20px'>Delivery OTP: <strong>{otp_code}</strong></p>"
+           f"<p>Give this 4-digit code to your driver on arrival.</p>" if otp_code else '')
+        + f"<p><a href='{getattr(settings, 'FRONTEND_URL', '').rstrip('/')}/orders/{order.id}/track'>"
+        f"View receipt & track order</a></p>"
+    )
+    return _send(buyer.email, subject, body, html, kind='payment_confirmation', order=order,
+                connection=connection)
+
+
+def send_delivery_otp(order, otp_code, connection=None):
+    """OTP email to the buyer (SMS is simulated — email is the real channel)."""
+    buyer = order.buyer
+    if not buyer or not buyer.email:
+        return False
+    subject = f"Jay's Store — Your delivery OTP for Order #{order.id}"
+    body = (
+        f"Hi {buyer.first_name or 'there'},\n\n"
+        f"Your delivery OTP for Order #{order.id} is: {otp_code}\n\n"
+        f"Give this 4-digit code to the driver when they arrive. "
+        f"They cannot mark your order as delivered without it.\n\n"
+        f"Deliver to: {order.delivery_address}\n"
+        f"Track: {getattr(settings, 'FRONTEND_URL', '').rstrip('/')}/orders/{order.id}/track"
+    )
+    return _send(buyer.email, subject, body, kind='delivery_otp', order=order,
+                connection=connection)
+
+
+def send_seller_sale_alert(order, connection=None):
+    """Notify each vendor of their sale — payout only, no platform money details.
+
+    Flow: buyer pays -> admin gets the payment alert -> system informs
+    the seller of THEIR expected payout. Seller never sees buyer totals,
+    commission breakdown, gateway fees, or other sellers.
+    """
+    # Expected payout per seller from the split settlements (fallback: recompute).
+    nets = {}
+    try:
+        for s in order.settlements.all():
+            if s.seller_id:
+                nets[s.seller_id] = s
+    except Exception:
+        nets = {}
+    sent = 0
+    seller_items = {}
+    for item in order.items.select_related('seller').all():
+        seller = item.seller
+        if not seller or not seller.email or seller.role != 'seller':
+            continue
+        seller_items.setdefault(seller.id, {'seller': seller, 'items': []})
+        seller_items[seller.id]['items'].append(item)
+
+    for entry in seller_items.values():
+        seller = entry['seller']
+        items = entry['items']
+        s = nets.get(seller.id)
+        if s is not None:
+            net = float(s.net_share)
+        else:
+            gross = sum(float(i.unit_price) * i.quantity for i in items)
+            net = round(gross * 0.90, 2)
+        subject = f"Jay's Store — New sale! Order #{order.id}"
+        lines = '\n'.join(
+            f'- {i.product_name} ({i.size} / {i.color}) x{i.quantity}'
+            for i in items
+        )
+        body = (
+            f"Hi {seller.store_name or seller.first_name},\n\n"
+            f"You have a new sale in Order #{order.id}:\n{lines}\n\n"
+            f"Your expected payout: GHS {net:.2f}\n"
+            f"Payment has been received by Jay's Store and your share "
+            f"settles to your payout account. Track it in Seller Dashboard "
+            f"under Settlements.\n\n"
+            f"A driver will pick up from your store — please have the items ready.\n\n"
+            f"Jay's Store"
+        )
+        if _send(seller.email, subject, body, kind='seller_alert', order=order,
+                 connection=connection):
+            sent += 1
+    return sent
+
+
+def send_admin_payment_alert(order, connection=None):
+    """Notify the store owner of THEIR money: commission + delivery fee.
+
+    Nobody emailed the platform before — the admin never knew they'd been
+    paid. Sent on every confirmed payment (verify endpoint + webhook).
+    """
+    admin_email = (getattr(settings, 'ADMIN_NOTIFICATION_EMAIL', '') or '').strip()
+    if not admin_email:
+        return False
+    settlements = list(order.settlements.select_related('seller').all())
+    lines = []
+    sellers_total = 0.0
+    for s in settlements:
+        name = (s.seller.store_name if s.seller and s.seller.store_name
+                else (s.seller.email if s.seller else 'platform item'))
+        lines.append(f'- {name}: net GHS {float(s.net_share):.2f} '
+                     f'(gross {float(s.gross_share):.2f}, commission {float(s.commission):.2f}, '
+                     f'fee slice {float(s.fee_slice):.2f}) [{s.status}]')
+        sellers_total += float(s.net_share)
+    fee = float(getattr(order, 'processing_fee', 0) or 0)
+    charged = float(order.total) + fee
+    # Platform keeps: everything Paystack didn't send to sellers or take as fees.
+    # (Paystack fee ≈ the buyer-paid processing fee, so this ≈ commission + delivery.)
+    subject = f"Jay's Store — You were paid! Order #{order.id}"
+    body = (
+        f"Payment confirmed for Order #{order.id}.\n\n"
+        f"Buyer charged: GHS {charged:.2f} (incl. GHS {fee:.2f} processing fee)\n"
+        f"To sellers: GHS {sellers_total:.2f}\n\n"
+        f"Seller breakdown:\n" + ('\n'.join(lines) if lines else '(no vendor items)') + '\n\n'
+        f"Buyer: {order.buyer.full_name if order.buyer else ''} — {order.delivery_phone}\n"
+        f"Deliver to: {order.delivery_address}\n"
+        f"Paystack ref: {order.paystack_reference}\n"
+        f"Split: {order.paystack_split_code}\n"
+    )
+    return _send(admin_email, subject, body, kind='admin_alert', order=order,
+                connection=connection)
+
+
+def send_delivered_email(order, connection=None):
+    buyer = order.buyer
+    if not buyer or not buyer.email:
+        return False
+    subject = f"Jay's Store — Order #{order.id} delivered"
+    body = (
+        f"Hi {buyer.first_name or 'there'},\n\n"
+        f"Your Order #{order.id} was delivered at "
+        f"{timezone.now().strftime('%d %b %Y, %H:%M')}.\n\n"
+        f"Enjoy! Please leave a review for your items in My Orders.\n\n"
+        f"Jay's Store"
+    )
+    return _send(buyer.email, subject, body, kind='delivered', order=order,
+                connection=connection)
