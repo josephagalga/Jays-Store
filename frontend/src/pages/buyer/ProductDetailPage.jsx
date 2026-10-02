@@ -3,6 +3,7 @@ import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Star, ShoppingBag, Heart, ChevronLeft, ChevronRight } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
+import SafeImage from '../../components/common/SafeImage'
 import ProductCard from '../../components/common/ProductCard'
 import Spinner from '../../components/ui/Spinner'
 import Button from '../../components/ui/Button'
@@ -251,6 +252,12 @@ export default function ProductDetailPage() {
     (!selectedColor || v.color === selectedColor)
   )
 
+  // When a colour with its own photo is picked, preview that variant image first
+  const selectedVariant = getVariant()
+  const variantPreview = selectedVariant?.image_url || selectedVariant?.image || null
+  const gallery = variantPreview ? [{ url: variantPreview }, ...images] : images
+  const activeImg = gallery[imgIndex]?.url || null
+
   const handleAddToCart = async () => {
     const variant = getVariant()
     if (!variant) return toast.error('Please select size and colour')
@@ -271,14 +278,15 @@ export default function ProductDetailPage() {
           <span className="text-[var(--ink)]">{product.name}</span>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-12">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
 
           {/* Images */}
           <div className="space-y-3">
             <div className="relative aspect-[4/5] bg-[var(--off)] rounded-2xl overflow-hidden">
-              {images[imgIndex]?.url ? (
-                <img
-                  src={images[imgIndex].url}
+              {activeImg ? (
+                <SafeImage
+                  key={activeImg}
+                  src={activeImg}
                   alt={product.name}
                   className="w-full h-full object-cover"
                 />
@@ -287,7 +295,12 @@ export default function ProductDetailPage() {
                   <ShoppingBag size={48} className="text-[var(--border)]" />
                 </div>
               )}
-              {images.length > 1 && (
+              {variantPreview && imgIndex === 0 && (
+                <span className="absolute top-3 left-3 text-[10px] font-semibold bg-[var(--ink)] text-white px-2.5 py-1 rounded-full">
+                  {selectedColor} colourway
+                </span>
+              )}
+              {gallery.length > 1 && (
                 <>
                   <button
                     onClick={() => setImgIndex(Math.max(0, imgIndex - 1))}
@@ -295,19 +308,19 @@ export default function ProductDetailPage() {
                     <ChevronLeft size={16} />
                   </button>
                   <button
-                    onClick={() => setImgIndex(Math.min(images.length - 1, imgIndex + 1))}
+                    onClick={() => setImgIndex(Math.min(gallery.length - 1, imgIndex + 1))}
                     className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/90 rounded-full flex items-center justify-center shadow-sm hover:bg-white transition-colors">
                     <ChevronRight size={16} />
                   </button>
                 </>
               )}
             </div>
-            {images.length > 1 && (
+            {gallery.length > 1 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
-                {images.map((img, i) => (
+                {gallery.map((img, i) => (
                   <button key={i} onClick={() => setImgIndex(i)}
                     className={`flex-shrink-0 w-16 h-20 rounded-lg overflow-hidden border-2 transition-all ${imgIndex === i ? 'border-[var(--ink)]' : 'border-transparent'}`}>
-                    <img src={img.url} alt="" className="w-full h-full object-cover" />
+                    <SafeImage src={img.url} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
@@ -323,7 +336,7 @@ export default function ProductDetailPage() {
             )}
 
             <div>
-              <h1 className="serif text-4xl font-medium text-[var(--ink)] leading-tight mb-3">
+              <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] leading-tight mb-3">
                 {product.name}
               </h1>
               <div className="flex items-center gap-3">
@@ -356,6 +369,24 @@ export default function ProductDetailPage() {
                 </span>
               )}
             </div>
+
+            {product.commission_rate > 0 && (
+              <div className="bg-[var(--off)] rounded-xl p-4 text-xs text-[var(--muted)] space-y-1">
+                <p className="font-medium text-[var(--ink)] mb-2">Price breakdown:</p>
+                <div className="flex justify-between">
+                  <span>Seller price</span>
+                  <span>GHS {parseFloat(product.price).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Marketplace fee ({product.commission_rate}%)</span>
+                  <span>+ GHS {parseFloat(product.effective_price - product.price).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-medium text-[var(--ink)] pt-1 border-t border-[var(--border)]">
+                  <span>Total you pay</span>
+                  <span>GHS {parseFloat(product.effective_price).toFixed(2)}</span>
+                </div>
+              </div>
+            )}
 
             <p className="text-sm text-[var(--muted)] leading-relaxed">
               {product.description}

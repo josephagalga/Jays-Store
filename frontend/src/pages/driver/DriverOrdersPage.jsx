@@ -1,4 +1,5 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { MapPin, Package, Clock } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
 import Button from '../../components/ui/Button'
@@ -7,6 +8,7 @@ import toast from 'react-hot-toast'
 
 export default function DriverOrdersPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ['driver-available-orders'],
@@ -22,8 +24,10 @@ export default function DriverOrdersPage() {
     onSuccess: (res) => {
       qc.invalidateQueries(['driver-available-orders'])
       qc.invalidateQueries(['driver-active'])
+      qc.invalidateQueries(['driver-history'])
       const vendors = res.data?.vendors?.map(v => v.store_name).join(', ')
-      toast.success(`Order accepted!${vendors ? ` Pickup: ${vendors}` : ''}`)
+      toast.success(`Order accepted!${vendors ? ` Pickup: ${vendors}` : ''} — find it under My Deliveries.`)
+      navigate('/driver/history')
     },
     onError: () => toast.error('Could not accept order'),
   })
@@ -32,8 +36,8 @@ export default function DriverOrdersPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
-      <div className="flex items-center justify-between mb-10">
-        <h1 className="serif text-4xl font-medium text-[var(--ink)]">Available Orders</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-8 md:mb-10">
+        <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">Available Orders</h1>
         <span className="text-sm text-[var(--muted)]">Auto-refreshes every 30s</span>
       </div>
 
@@ -47,7 +51,7 @@ export default function DriverOrdersPage() {
         <div className="space-y-4">
           {orders.map(order => (
             <div key={order.id} className="bg-white border border-[var(--border)] rounded-2xl p-6">
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-3">
                     <span className="text-xs font-medium text-[var(--muted)] bg-[var(--off)] px-2.5 py-1 rounded-full">
@@ -77,7 +81,7 @@ export default function DriverOrdersPage() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs text-[var(--muted)] mb-0.5">Items</p>
                       <p className="text-sm font-semibold">{order.item_count}</p>
@@ -86,16 +90,13 @@ export default function DriverOrdersPage() {
                       <p className="text-xs text-[var(--muted)] mb-0.5">Order Value</p>
                       <p className="text-sm font-semibold">GHS {parseFloat(order.total).toFixed(2)}</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-[var(--muted)] mb-0.5">Your Earnings</p>
-                      <p className="text-sm font-bold text-green-600">GHS {parseFloat(order.driver_earnings).toFixed(2)}</p>
-                    </div>
                   </div>
+                  <p className="text-[11px] text-[var(--muted)] mt-3">Your pay is settled physically by the store admin.</p>
                 </div>
 
                 <Button onClick={() => acceptMutation.mutate(order.id)}
                   loading={acceptMutation.isPending}
-                  className="flex-shrink-0 rounded-xl">
+                  className="w-full sm:w-auto flex-shrink-0 rounded-xl">
                   Accept
                 </Button>
               </div>

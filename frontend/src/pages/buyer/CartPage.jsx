@@ -1,7 +1,9 @@
 ﻿import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Trash2, ShoppingBag, ArrowRight } from 'lucide-react'
-import MainLayout from '../../layouts/MainLayout'
+import MainLayout from
+'../../layouts/MainLayout'
+import SafeImage from '../../components/common/SafeImage'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 import useCartStore from '../../store/cartStore'
@@ -42,18 +44,18 @@ export default function CartPage() {
   return (
     <MainLayout>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-        <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-10">
+        <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">
           Shopping Bag <span className="text-[var(--muted)] font-normal">({items.length})</span>
         </h1>
 
-        <div className="grid lg:grid-cols-3 gap-12">
+        <div className="grid lg:grid-cols-3 gap-8 lg:gap-12">
           {/* Items */}
           <div className="lg:col-span-2 space-y-5">
             {items.map(item => (
               <div key={item.id} className="flex gap-5 p-4 bg-white border border-[var(--border)] rounded-2xl">
                 <div className="w-24 h-28 bg-[var(--off)] rounded-xl overflow-hidden flex-shrink-0">
                   {item.product_image ? (
-                    <img src={item.product_image} alt={item.product_name}
+                    <SafeImage src={item.product_image} alt={item.product_name}
                       className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">

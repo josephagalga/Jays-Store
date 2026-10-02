@@ -1,10 +1,11 @@
-﻿import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ShoppingBag, CheckCircle } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
+import SafeImage from '../../components/common/SafeImage'
 import Input from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
 import api from '../../services/api'
@@ -13,24 +14,12 @@ import useAuthStore from '../../store/authStore'
 import { deliveryFeeForCount, cartItemCount, cartSubtotal } from '../../utils/pricing'
 import toast from 'react-hot-toast'
 
-const PAYSTACK_INLINE_URL = 'https://js.paystack.co/v1/inline.js'
-
-function loadPaystackInline() {
-  return new Promise((resolve, reject) => {
-    if (window.PaystackPop) return resolve(window.PaystackPop)
-    const script = document.createElement('script')
-    script.src = PAYSTACK_INLINE_URL
-    script.async = true
-    script.onload = () => (window.PaystackPop ? resolve(window.PaystackPop) : reject(new Error('Paystack failed to load')))
-    script.onerror = () => reject(new Error('Could not load Paystack. Check your connection.'))
-    document.body.appendChild(script)
-  })
-}
-
 const schema = z.object({
   delivery_address: z.string().min(5, 'Enter your full delivery address'),
   delivery_phone: z.string().min(10, 'Enter a valid phone number'),
+  delivery_landmark: z.string().optional(),
   delivery_note: z.string().optional(),
+  terms_accepted: z.boolean().refine(val => val === true, { message: 'You must accept the terms' }),
 })
 
 export default function CheckoutPage() {
@@ -39,14 +28,7 @@ export default function CheckoutPage() {
   const navigate = useNavigate()
   const [placed, setPlaced] = useState(false)
   const [orderId, setOrderId] = useState(null)
-  const [couponCode, setCouponCode] = useState('')
-  const [coupon, setCoupon] = useState(null)
-  const [couponMsg, setCouponMsg] = useState('')
-  const [couponLoading, setCouponLoading] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState('paystack')
-  const [deliveryPin, setDeliveryPin] = useState(null)
-  const [pinRequired, setPinRequired] = useState(false)
-  const [paying, setPaying] = useState(false)
+  const [charge, setCharge] = useState(null) // {processing_fee, charged_total, authorization_url}
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
@@ -59,124 +41,40 @@ export default function CheckoutPage() {
   const items = cart?.cart_items || []
   const itemCount = cartItemCount(items)
   const subtotal = cartSubtotal(items)
-  const discount = coupon ? parseFloat(coupon.discount_amount || 0) : 0
-  // Display-only estimate. The server recalculates the fee from item count
-  // (1–5 → GHS 5, 6–10 → GHS 10, 11+ → GHS 20) when the order is placed.
   const delivery_fee = deliveryFeeForCount(itemCount)
-  const total = Math.max(0, subtotal - discount + delivery_fee)
-
-  const applyCoupon = async () => {
-    if (!couponCode.trim()) return
-    setCouponLoading(true)
-    setCouponMsg('')
-    try {
-      const res = await api.post('/coupons/validate/', { code: couponCode.trim(), subtotal })
-      setCoupon(res.data)
-      setCouponMsg(res.data.message)
-      toast.success(res.data.message)
-    } catch (err) {
-      setCoupon(null)
-      const msg = err.response?.data?.message || 'Invalid coupon code'
-      setCouponMsg(msg)
-      toast.error(msg)
-    } finally {
-      setCouponLoading(false)
-    }
-  }
-
-  const removeCoupon = () => {
-    setCoupon(null)
-    setCouponCode('')
-    setCouponMsg('')
-  }
-
-  const placeCashOrder = async (data) => {
-    const res = await api.placeOrder({
-      ...data,
-      coupon_code: coupon?.code || '',
-      payment_method: 'cash_on_delivery',
-    })
-    setOrderId(res.data.id)
-    setDeliveryPin(res.data.delivery_pin || null)
-    setPinRequired(res.data.pin_required || false)
-    clearCart()
-    setPlaced(true)
-  }
-
-  const placePaystackOrder = async (data) => {
-    const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || ''
-    if (!publicKey) {
-      toast.error('Paystack is not configured (missing public key). Use Cash on Delivery or contact support.')
-      return
-    }
-    setPaying(true)
-    try {
-      // 1. Create the order (unpaid) — server computes fee + total.
-      const orderRes = await api.placeOrder({
-        ...data,
-        coupon_code: coupon?.code || '',
-        payment_method: 'paystack',
-      })
-      const order = orderRes.data
-      setOrderId(order.id)
-
-      // 2. Initialize the transaction server-side (gets reference + fallback URL).
-      let init
-      try {
-        const initRes = await api.post('/payments/paystack/initialize/', { order_id: order.id })
-        init = initRes.data
-      } catch (err) {
-        toast.error(err.response?.data?.error || 'Could not start Paystack payment. Your order is placed as unpaid — retry payment from My Orders.')
-        clearCart()
-        setPlaced(true)
-        return
-      }
-
-      // 3. Open the Paystack popup (MoMo + Card).
-      const PaystackPop = await loadPaystackInline()
-      const handler = PaystackPop.setup({
-        key: publicKey,
-        email: user?.email,
-        amount: Math.round(parseFloat(order.total) * 100), // pesewas
-        currency: 'GHS',
-        ref: init.reference,
-        metadata: { order_id: order.id },
-        callback: async (response) => {
-          // 4. Verify server-side, then confirm.
-          try {
-            await api.post('/payments/paystack/verify/', { reference: response.reference })
-            toast.success('Payment confirmed!')
-          } catch {
-            toast.error('Payment received — verification pending. Check My Orders.')
-          }
-          clearCart()
-          setPlaced(true)
-          setPaying(false)
-        },
-        onClose: () => {
-          // Popup closed before paying — order exists as unpaid.
-          toast('Payment window closed. Your order is saved — complete payment from My Orders.', { icon: 'ℹ️' })
-          clearCart()
-          setPlaced(true)
-          setPaying(false)
-        },
-      })
-      handler.openIframe()
-    } catch (err) {
-      toast.error(err.response?.data?.detail || err.message || 'Failed to place order')
-      setPaying(false)
-    }
-  }
+  const total = Math.max(0, subtotal + delivery_fee)
 
   const onSubmit = async (data) => {
     try {
-      if (paymentMethod === 'paystack') {
-        await placePaystackOrder(data)
+      // Paystack only: order is created UNPAID, then buyer pays on Paystack.
+      // Sellers settle instantly to their own accounts via split.
+      const res = await api.placeOrder({
+        ...data,
+        payment_method: 'paystack',
+      })
+      const order = res.data
+      setOrderId(order.id)
+      clearCart()
+      if (order.authorization_url) {
+        setCharge({
+          processing_fee: order.processing_fee,
+          charged_total: order.charged_total,
+          authorization_url: order.authorization_url,
+        })
+        setPlaced(true)
+        toast.success('Order created! Redirecting to Paystack…')
+        setTimeout(() => window.location.assign(order.authorization_url), 1500)
+      } else if (order.payment_init_failed) {
+        toast.error('Order saved but payment could not start. Pay from My Orders.')
+        navigate('/orders')
       } else {
-        await placeCashOrder(data)
+        setPlaced(true)
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || err.response?.data?.delivery_address?.[0] || 'Failed to place order')
+      const d = err.response?.data
+      const msg = typeof d === 'string' ? d
+        : d?.non_field_errors?.[0] || d?.detail || d?.delivery_address?.[0] || 'Failed to place order'
+      toast.error(msg)
     }
   }
 
@@ -186,16 +84,26 @@ export default function CheckoutPage() {
         <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
           <CheckCircle size={32} className="text-green-500" />
         </div>
-        <h2 className="serif text-3xl font-medium text-[var(--ink)] mb-3">Order Placed!</h2>
+        <h2 className="serif text-3xl font-medium text-[var(--ink)] mb-3">Order Created!</h2>
         <p className="text-[var(--muted)] text-sm leading-relaxed mb-2">
-          Your order #{orderId} has been placed successfully.
+          Your order #{orderId} is ready. Complete payment on Paystack.
         </p>
-        {pinRequired && deliveryPin && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-amber-800 text-sm font-medium">
-            Cash on Delivery — Give driver PIN: <span className="font-bold text-xl tracking-widest">{deliveryPin}</span>
+        {charge && (
+          <div className="bg-[var(--off)] border border-[var(--border)] rounded-xl px-4 py-4 mb-4 text-sm space-y-1">
+            <div className="flex justify-between"><span className="text-[var(--muted)]">Processing fee</span><span>GHS {parseFloat(charge.processing_fee || 0).toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold"><span>Total charged</span><span>GHS {parseFloat(charge.charged_total || 0).toFixed(2)}</span></div>
           </div>
         )}
-        <Button onClick={() => navigate('/orders')}>View My Orders</Button>
+        <p className="text-[var(--muted)] text-sm leading-relaxed mb-4">
+          Your delivery OTP and receipt will be emailed to <strong>{user?.email}</strong> once payment confirms.
+          Your OTP is also shown in My Orders.
+        </p>
+        <div className="flex gap-3 justify-center">
+          {charge?.authorization_url && (
+            <Button onClick={() => window.location.assign(charge.authorization_url)}>Pay Now</Button>
+          )}
+          <Button variant="secondary" onClick={() => navigate('/orders')}>View My Orders</Button>
+        </div>
       </div>
     </MainLayout>
   )
@@ -203,10 +111,8 @@ export default function CheckoutPage() {
   return (
     <MainLayout>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-        <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-10">Checkout</h1>
-
-        <div className="grid lg:grid-cols-2 gap-12">
-          {/* Form */}
+        <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">Checkout — Paystack</h1>
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
           <div>
             <h2 className="serif text-2xl font-medium text-[var(--ink)] mb-6">Delivery Details</h2>
             <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
@@ -216,129 +122,51 @@ export default function CheckoutPage() {
               <Input label="Phone Number" type="tel" placeholder="024 000 0000"
                 error={errors.delivery_phone?.message}
                 {...register('delivery_phone')} />
+              <Input label="Nearest Landmark" placeholder="e.g. Opposite Palace Mall, near the fuel station (optional)"
+                error={errors.delivery_landmark?.message}
+                {...register('delivery_landmark')} />
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">
-                  Delivery Note <span className="text-[var(--muted)] font-normal normal-case">(optional)</span>
-                </label>
+                <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">Delivery Note <span className="text-[var(--muted)] font-normal normal-case">(optional)</span></label>
                 <textarea rows={3} placeholder="e.g. Call when you arrive..."
                   className="w-full px-4 py-3 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors resize-none placeholder:text-[var(--border)]"
                   {...register('delivery_note')} />
               </div>
-
-              {/* Payment method */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">
-                  Payment Method
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    ['paystack', 'Paystack (MoMo / Card)'],
-                    ['cash_on_delivery', 'Cash on Delivery'],
-                  ].map(([val, label]) => (
-                    <button key={val} type="button"
-                      onClick={() => setPaymentMethod(val)}
-                      className={`px-3 py-2.5 text-sm font-medium rounded-xl border transition-all ${
-                        paymentMethod === val
-                          ? 'bg-[var(--ink)] text-white border-[var(--ink)]'
-                          : 'bg-white text-[var(--muted)] border-[var(--border)] hover:border-[var(--ink)]'
-                      }`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-[var(--muted)]">
-                  {paymentMethod === 'paystack' && 'Pay securely online with Paystack — MTN MoMo, Telecel Cash, AT Money or card.'}
-                  {paymentMethod === 'cash_on_delivery' && 'Pay cash when your order arrives. You will receive a 4-digit PIN to give the driver.'}
-                </p>
+              <div className="p-3 bg-green-50 border border-green-100 rounded-xl text-sm text-green-700">
+                <strong>Paystack checkout.</strong> Pay with MoMo or card. Your payment splits instantly —
+                sellers are paid straight to their own accounts. OTP + receipt come by email after payment.
               </div>
-
-              <Button type="submit" size="full" loading={isSubmitting || paying} className="mt-4 rounded-xl">
-                {paymentMethod === 'paystack' ? `Pay with Paystack — GHS ${total.toFixed(2)}` : `Place Order — GHS ${total.toFixed(2)}`}
+              <div className="flex items-start gap-2">
+                <input type="checkbox" id="terms" className="mt-1 w-4 h-4 accent-[var(--ink)]"
+                  {...register('terms_accepted')} />
+                <label htmlFor="terms" className="text-xs text-[var(--muted)] leading-relaxed">
+                  I agree to the <Link to="/terms" className="underline text-[var(--ink)] hover:no-underline">Terms of Service</Link>, <Link to="/refund" className="underline text-[var(--ink)] hover:no-underline">Refund Policy</Link>, and <Link to="/shipping" className="underline text-[var(--ink)] hover:no-underline">Shipping Policy</Link>
+                </label>
+              </div>
+              {errors.terms_accepted && <p className="text-xs text-red-500">{errors.terms_accepted.message}</p>}
+              <Button type="submit" size="full" loading={isSubmitting} className="mt-4 rounded-xl">
+                Continue to Payment — GHS {total.toFixed(2)} + fee
               </Button>
             </form>
           </div>
-
-          {/* Summary */}
           <div>
             <h2 className="serif text-2xl font-medium text-[var(--ink)] mb-6">Order Summary</h2>
             <div className="bg-[var(--off)] rounded-2xl p-6 space-y-4">
               {items.map(item => (
                 <div key={item.id} className="flex items-center gap-4">
                   <div className="w-14 h-16 bg-white rounded-xl overflow-hidden flex-shrink-0">
-                    {item.product_image ? (
-                      <img src={item.product_image} alt={item.product_name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <ShoppingBag size={16} className="text-[var(--border)]" />
-                      </div>
-                    )}
+                    {item.product_image ? <SafeImage src={item.product_image} alt={item.product_name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ShoppingBag size={16} className="text-[var(--border)]" /></div>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[var(--ink)] line-clamp-1">{item.product_name}</p>
                     <p className="text-xs text-[var(--muted)]">{item.size} · {item.color} · x{item.quantity}</p>
                   </div>
-                  <p className="text-sm font-semibold flex-shrink-0">
-                    GHS {parseFloat(item.total_price).toFixed(2)}
-                  </p>
+                  <p className="text-sm font-semibold flex-shrink-0">GHS {parseFloat(item.total_price).toFixed(2)}</p>
                 </div>
               ))}
-
-              {/* Promo code */}
-              <div className="border-t border-[var(--border)] pt-4">
-                {coupon ? (
-                  <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-xl px-4 py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-green-700">{coupon.code} applied</p>
-                      <p className="text-xs text-green-600">{couponMsg}</p>
-                    </div>
-                    <button type="button" onClick={removeCoupon}
-                      className="text-xs font-medium text-green-700 hover:text-green-900 underline">
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex gap-2">
-                      <input
-                        value={couponCode}
-                        onChange={e => setCouponCode(e.target.value.toUpperCase())}
-                        placeholder="Promo code (e.g. WELCOME10)"
-                        className="flex-1 px-4 py-2.5 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors uppercase placeholder:normal-case placeholder:text-[var(--border)]"
-                      />
-                      <button type="button" onClick={applyCoupon} disabled={couponLoading || !couponCode.trim()}
-                        className="px-5 py-2.5 bg-[var(--ink)] text-white text-sm font-medium rounded-xl hover:opacity-80 transition-opacity disabled:opacity-30">
-                        {couponLoading ? '...' : 'Apply'}
-                      </button>
-                    </div>
-                    {couponMsg && !coupon && (
-                      <p className="text-xs text-rose-500 mt-2">{couponMsg}</p>
-                    )}
-                    <p className="text-xs text-[var(--muted)] mt-2">Try WELCOME10, JAY50 or SUMMER20</p>
-                  </div>
-                )}
-              </div>
-
               <div className="border-t border-[var(--border)] pt-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--muted)]">Subtotal</span>
-                  <span>GHS {subtotal.toFixed(2)}</span>
-                </div>
-                {coupon && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-green-600">Discount ({coupon.code})</span>
-                    <span className="text-green-600 font-medium">-GHS {discount.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--muted)]">Delivery</span>
-                  <span className={delivery_fee === 0 ? 'text-green-600 font-medium' : ''}>
-                    {delivery_fee === 0 ? 'Free' : `GHS ${delivery_fee.toFixed(2)}`}
-                  </span>
-                </div>
-                <div className="flex justify-between font-bold text-base pt-2 border-t border-[var(--border)]">
-                  <span>Total</span>
-                  <span>GHS {total.toFixed(2)}</span>
-                </div>
+                <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Subtotal</span><span>GHS {subtotal.toFixed(2)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Delivery</span><span>GHS {delivery_fee.toFixed(2)}</span></div>
+                <div className="flex justify-between font-bold text-base pt-2 border-t border-[var(--border)]"><span>Total</span><span>GHS {total.toFixed(2)}</span></div>
               </div>
             </div>
           </div>

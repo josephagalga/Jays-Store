@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 
 class CustomUserManager(BaseUserManager):
@@ -170,6 +171,43 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     seller_total_ratings = models.PositiveIntegerField(default=0)
     # ↑ Total number of ratings received across all products
 
+    # Seller balance — legacy ledger from the old simulated-payout model.
+    # Instant Paystack split settlement now pays sellers directly, so this is
+    # no longer credited. Kept so old rows still read.
+    seller_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    # Instant settlement — Paystack Split subaccount. Buyer payments settle
+    # each seller's share straight to their own account; funds never sit
+    # with the platform.
+    payout_account_number = models.CharField(max_length=30, blank=True, default='')
+    # ↑ MoMo number or bank account number that receives settlements
+    payout_bank_code = models.CharField(max_length=20, blank=True, default='')
+    # ↑ Paystack settlement bank code (see /seller/banks/ for the Ghana list)
+    payout_account_name = models.CharField(max_length=100, blank=True, default='')
+    paystack_subaccount_code = models.CharField(max_length=50, blank=True, default='')
+    # ↑ e.g. "ACCT_..." — created via Paystack once payout details are saved
+    subaccount_status = models.CharField(
+        max_length=20,
+        choices=[('none', 'None'), ('pending', 'Pending'), ('active', 'Active'), ('failed', 'Failed')],
+        default='none',
+    )
+    subaccount_note = models.TextField(blank=True, default='')
+
+    # COMMISSION SYSTEM — Buyer-pays model
+    # Commission is added on top of seller's listed price; seller receives full amount
+    commission_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=10.00,
+        validators=[MinValueValidator(0.00), MaxValueValidator(30.00)],
+        help_text="Commission percentage (0.00-30.00%). Buyers pay this on top of seller's listed price."
+    )
+    commission_rate_updated_at = models.DateTimeField(null=True, blank=True)
+    # ↑ Timestamp of last commission rate change (for audit purposes)
+
+    # Sales record flag — admin notified when buyer places order
+    sales_record_sent = models.BooleanField(default=False)
+
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
@@ -220,8 +258,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             self.is_staff = True
             self.verification_status = 'approved'
         if self.role == self.Role.SELLER:
-            self.is_verified = True
-            self.verification_status = 'approved'
+            self.is_verified = self.verification_status == 'approved'
             # Auto generate store slug from store name if not set
             if self.store_name and not self.store_slug:
                 from django.utils.text import slugify
@@ -259,3 +296,40 @@ class NewsletterSubscriber(models.Model):
 
     def __str__(self):
         return self.email
+
+
+class CommissionRateAuditLog(models.Model):
+    """Complete audit trail for commission rate changes.
+    
+    Tracks every commission rate modification for transparency,
+    dispute resolution, and compliance.
+    """
+    seller = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='commission_rate_history'
+    )
+    old_rate = models.DecimalField(max_digits=5, decimal_places=2)
+    new_rate = models.DecimalField(max_digits=5, decimal_places=2)
+    changed_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='commission_rate_changes_made'
+    )
+    # ↑ The admin user who made the change
+    reason = models.TextField(blank=True)
+    # ↑ Optional explanation for the change
+    affected_products_count = models.IntegerField(default=0)
+    # ↑ How many products were updated (if retroactive)
+    apply_to_existing = models.BooleanField(default=False)
+    # ↑ Whether this change was applied retroactively to existing products
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'commission_rate_audit_logs'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        seller_email = self.seller.email if self.seller else 'Unknown'
+        return f'{seller_email}: {self.old_rate}% → {self.new_rate}% on {self.created_at.date()}'

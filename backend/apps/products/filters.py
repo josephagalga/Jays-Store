@@ -20,11 +20,18 @@ class ProductFilter(django_filters.FilterSet):
 
     min_rating = django_filters.NumberFilter(field_name='average_rating', lookup_expr='gte')
     in_stock = django_filters.BooleanFilter(method='filter_in_stock')
+    seller_store = django_filters.CharFilter(method='filter_seller_store')
 
     def filter_in_stock(self, queryset, name, value):
         """Filter to only show products that have at least one variant in stock."""
         if value:
             return queryset.filter(variants__stock__gt=0).distinct()
+        return queryset
+
+    def filter_seller_store(self, queryset, name, value):
+        """Filter products by vendor store slug, e.g. ?seller_store=jays-streetwear."""
+        if value:
+            return queryset.filter(seller__store_slug=value)
         return queryset
 
     class Meta:

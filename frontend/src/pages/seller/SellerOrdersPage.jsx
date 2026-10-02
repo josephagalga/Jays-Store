@@ -26,7 +26,7 @@ export default function SellerOrdersPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 lg:px-10 py-10">
-      <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-2">My Orders</h1>
+      <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-2">My Orders</h1>
       <p className="text-sm text-[var(--muted)] mb-10">Track deliveries for your products, including driver info.</p>
 
       {!orders?.length ? (
@@ -48,7 +48,7 @@ export default function SellerOrdersPage() {
                 <div>
                   <p className="text-xs text-[var(--muted)]">Buyer</p>
                   <p className="font-medium">{order.buyer_name || '—'}</p>
-                  <p className="text-xs text-[var(--muted)]">{order.buyer_phone || ''}</p>
+                  <p className="text-xs text-[var(--muted)]">{order.buyer_phone || order.delivery_phone || ''}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[var(--muted)]">Driver</p>
@@ -65,6 +65,13 @@ export default function SellerOrdersPage() {
                   <p className="font-bold">GHS {parseFloat(order.total).toFixed(2)}</p>
                 </div>
               </div>
+              {(order.delivery_address || order.delivery_landmark || order.delivery_note) && (
+                <div className="bg-[var(--off)] rounded-xl px-4 py-3 mb-3 text-xs space-y-1">
+                  {order.delivery_address && <p><span className="text-[var(--muted)]">Drop-off: </span><span className="font-medium">{order.delivery_address}</span></p>}
+                  {order.delivery_landmark && <p><span className="text-[var(--muted)]">Landmark: </span><span className="font-medium">📍 {order.delivery_landmark}</span></p>}
+                  {order.delivery_note && <p className="text-[var(--muted)] italic">Note: {order.delivery_note}</p>}
+                </div>
+              )}
               <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
                 <CheckCircle size={12} />
                 {new Date(order.created_at).toLocaleString('en-GH')}

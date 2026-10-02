@@ -38,10 +38,10 @@ export default function AdminDriversPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-      <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-10">Drivers</h1>
+      <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">Drivers</h1>
 
-      <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-[var(--border)] rounded-2xl overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-[var(--off)] border-b border-[var(--border)]">
             <tr>
               {['Driver', 'Vehicle', 'Deliveries', 'Rating', 'Status', 'Actions'].map(h => (

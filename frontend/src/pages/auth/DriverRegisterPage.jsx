@@ -83,7 +83,7 @@ export default function DriverRegisterPage() {
           JAY'S<span className="text-[#737373] font-light">STORE</span>
         </Link>
         <div>
-          <h1 className="text-4xl font-bold text-white leading-tight mb-4">
+          <h1 className="text-3xl md:text-4xl font-bold text-white leading-tight mb-4">
             Deliver with<br />Jay's Store.
           </h1>
           <p className="text-[#737373] text-sm leading-relaxed">
@@ -101,7 +101,7 @@ export default function DriverRegisterPage() {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="First name" error={errors.first_name?.message} {...register('first_name')} />
               <Input label="Last name" error={errors.last_name?.message} {...register('last_name')} />
             </div>

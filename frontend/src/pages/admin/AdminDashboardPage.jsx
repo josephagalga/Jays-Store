@@ -54,7 +54,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-      <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-10">Admin Dashboard</h1>
+      <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">Admin Dashboard</h1>
 
       {/* Main stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

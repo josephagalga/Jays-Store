@@ -54,7 +54,7 @@ export default function BuyerProfilePage() {
   return (
     <MainLayout>
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
-        <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-10">My Profile</h1>
+        <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">My Profile</h1>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">

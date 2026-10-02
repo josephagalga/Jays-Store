@@ -26,7 +26,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
         user = self.user
-        if user.role == 'driver' and not user.is_verified:
+        if user.role in ('driver', 'seller') and not user.is_verified:
             if user.verification_status == 'pending':
                 raise serializers.ValidationError(
                     'Your account is under review. Please wait for admin approval.'
@@ -73,7 +73,8 @@ class SellerRegistrationSerializer(serializers.ModelSerializer):
         fields = [
             'email', 'first_name', 'last_name',
             'phone_number', 'store_name', 'store_description',
-            'store_logo', 'password', 'confirm_password',
+            'store_logo', 'ghana_card_image', 'selfie_image',
+            'password', 'confirm_password',
         ]
 
     def validate(self, data):
@@ -81,11 +82,19 @@ class SellerRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
         if not data.get('store_name'):
             raise serializers.ValidationError({'store_name': 'Store name is required'})
+        if not data.get('ghana_card_image'):
+            raise serializers.ValidationError({'ghana_card_image': 'Ghana card image is required for verification'})
+        if not data.get('selfie_image'):
+            raise serializers.ValidationError({'selfie_image': 'Selfie image is required for verification'})
         return data
 
     def create(self, validated_data):
         validated_data.pop('confirm_password')
-        return User.objects.create_user(role=User.Role.SELLER, **validated_data)
+        return User.objects.create_user(
+            role=User.Role.SELLER,
+            verification_status='pending',
+            **validated_data
+        )
 
 
 class DriverRegistrationSerializer(serializers.ModelSerializer):
@@ -145,7 +154,6 @@ class BuyerProfileSerializer(serializers.ModelSerializer):
 
 class SellerProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
-
     class Meta:
         model = User
         fields = [
@@ -154,6 +162,8 @@ class SellerProfileSerializer(serializers.ModelSerializer):
             'store_name', 'store_description', 'store_logo',
             'store_banner', 'store_slug', 'store_address',
             'pickup_location',
+            'payout_account_number', 'payout_bank_code', 'payout_account_name',
+            'paystack_subaccount_code', 'subaccount_status', 'subaccount_note',
             'seller_total_sales', 'seller_total_revenue',
             'seller_total_products', 'seller_average_rating',
             'seller_total_ratings',
@@ -161,10 +171,31 @@ class SellerProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'email', 'role', 'store_slug',
+            'paystack_subaccount_code', 'subaccount_status', 'subaccount_note',
             'seller_total_sales', 'seller_total_revenue',
             'seller_total_products', 'seller_average_rating',
             'seller_total_ratings', 'date_joined', 'last_active',
         ]
+
+
+class PayoutAccountSerializer(serializers.ModelSerializer):
+    """Seller connects the account that instant settlements pay into."""
+    class Meta:
+        model = User
+        fields = [
+            'payout_account_number', 'payout_bank_code', 'payout_account_name',
+            'paystack_subaccount_code', 'subaccount_status', 'subaccount_note',
+        ]
+        read_only_fields = ['paystack_subaccount_code', 'subaccount_status', 'subaccount_note']
+
+    def validate(self, data):
+        if not data.get('payout_account_number'):
+            raise serializers.ValidationError({'payout_account_number': 'Account / MoMo number is required'})
+        if not data.get('payout_bank_code'):
+            raise serializers.ValidationError({'payout_bank_code': 'Select your bank / network'})
+        if not data.get('payout_account_name'):
+            raise serializers.ValidationError({'payout_account_name': 'Account name is required'})
+        return data
 
 
 class DriverProfileSerializer(serializers.ModelSerializer):
@@ -281,3 +312,44 @@ class NewsletterSubscriberSerializer(serializers.ModelSerializer):
         model = NewsletterSubscriber
         fields = ['id', 'email', 'is_active', 'created_at']
         read_only_fields = ['id', 'is_active', 'created_at']
+
+
+class VendorListSerializer(serializers.ModelSerializer):
+    """Public vendor directory card — searchable by store name / description."""
+    full_name = serializers.ReadOnlyField()
+    product_count = serializers.SerializerMethodField()
+    logo_url = serializers.SerializerMethodField()
+    banner_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'full_name', 'store_name', 'store_slug', 'store_description',
+            'store_address', 'pickup_location', 'phone_number',
+            'logo_url', 'banner_url',
+            'seller_total_sales', 'seller_average_rating', 'seller_total_ratings',
+            'product_count',
+        ]
+
+    def get_product_count(self, obj):
+        return obj.store_products.filter(is_active=True).count()
+
+    def _abs(self, f):
+        request = self.context.get('request')
+        if f and request:
+            try:
+                return request.build_absolute_uri(f.url)
+            except Exception:
+                return None
+        if f:
+            try:
+                return f.url
+            except Exception:
+                return None
+        return None
+
+    def get_logo_url(self, obj):
+        return self._abs(obj.store_logo)
+
+    def get_banner_url(self, obj):
+        return self._abs(obj.store_banner)

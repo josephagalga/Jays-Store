@@ -58,44 +58,57 @@ def compute_processing_fee(net_total):
 
 
 def compute_order_split(items):
-    """Per-seller shares for an order's items.
-
-    `items`: iterable of (seller, line_total Decimal).
-    Returns (per_seller dict, admin_share Decimal, fee Decimal) where each
-    seller entry is {gross, commission, fee_slice, net}.
-    Fee is allocated pro-rata across sellers + admin by net share.
+    """Per-seller shares for an order's items. NO commission deducted (buyer already paid it).
+    
+    IMPORTANT: items should contain seller net amounts (not buyer-paid amounts).
+    The commission has already been collected from the buyer in the order total.
+    We distribute the seller's net shares to them, platform keeps commission + delivery.
+    
+    `items`: iterable of (seller, seller_net_total Decimal).
+    Returns (per_seller dict, sellers_total_net Decimal) where each
+    seller entry is {seller, gross, commission, fee_slice, net}.
+    
+    Note: In the new buyer-pays model, 'commission' is zero because buyer already paid it.
+    We keep the field for consistency with the split structure.
     """
-    rate = Decimal(str(PLATFORM_COMMISSION_RATE))
     per_seller = {}
-    sellers_gross = Decimal('0.00')
-    for seller, line_total in items:
-        line_total = _q(line_total)
-        entry = per_seller.setdefault(seller.id, {'seller': seller, 'gross': Decimal('0.00')})
-        entry['gross'] += line_total
-        sellers_gross += line_total
-
+    sellers_total_net = Decimal('0.00')
+    
+    for seller, seller_net_total in items:
+        seller_net_total = _q(seller_net_total)
+        entry = per_seller.setdefault(seller.id, {
+            'seller': seller,
+            'gross': Decimal('0.00'),  # Seller's net (what they receive)
+            'commission': Decimal('0.00'),  # No commission deducted anymore
+        })
+        entry['gross'] += seller_net_total
+        sellers_total_net += seller_net_total
+    
     for entry in per_seller.values():
         entry['gross'] = _q(entry['gross'])
-        entry['commission'] = _q(entry['gross'] * rate)
+        # Commission is zero in new model - buyer already paid it separately
+        entry['commission'] = Decimal('0.00')
+    
+    return per_seller, sellers_total_net
 
-    sellers_net_before_fee = _q(sellers_gross * (Decimal('1') - rate))
-    return per_seller, sellers_net_before_fee
 
-
-def allocate_fee(per_seller, admin_net_before_fee, fee):
-    """Buyer-covers-all: sellers get gross - commission untouched.
-
-    The buyer already pays `total + fee` on top, and Paystack deducts its
-    fee once from the admin pot (bearer_type='account'). So sellers carry
-    zero fee slice and admin keeps the full commission + delivery.
-    Returns admin_net_before_fee unchanged for the response payload;
-    true admin bank credit = charged - sellers_net - fee_actual (finance view).
+def allocate_fee(per_seller, admin_gross, processing_fee):
+    """Distribute Paystack gateway fee. Sellers pay nothing (buyer covers all).
+    
+    admin_gross: commission collected + delivery fee + platform items
+    processing_fee: Paystack fee (buyer paid on top)
+    
+    Since buyer covers gateway fee (bearer_type='account'), sellers receive
+    their full net share. Platform keeps admin_gross minus actual Paystack fee.
     """
-    admin_net_before_fee = _q(admin_net_before_fee)
+    admin_gross = _q(admin_gross)
+    
     for e in per_seller.values():
-        e['fee_slice'] = Decimal('0.00')
-        e['net'] = _q(e['gross'] - e['commission'])
-    return _q(admin_net_before_fee)
+        e['fee_slice'] = Decimal('0.00')  # Sellers pay no gateway fee
+        e['net'] = _q(e['gross'])  # Sellers receive full gross amount
+    
+    # Platform net before Paystack fee deduction
+    return _q(admin_gross)
 
 
 def _headers():
@@ -140,12 +153,24 @@ def list_ghana_banks():
     return body.get('data', [])
 
 
-def create_transaction_split(*, name, seller_shares):
-    """Create a per-order flat split. seller_shares: [(subaccount_code, net Decimal)].
-
-    Bearer stays on the platform account: the buyer-paid gross-up already
-    covers the gateway fee, so every subaccount receives its exact net share
-    and the platform keeps the remainder.
+def create_transaction_split(*, name, seller_shares, bearer_share=None, metadata=None):
+    """Create a per-order flat split with validation metadata.
+    
+    Args:
+        name: Split name (e.g., "Jays Store order 123")
+        seller_shares: [(subaccount_code, net_amount_decimal), ...]
+        bearer_share: Expected platform share in GHS (for validation/logging only)
+        metadata: Optional dict with split details for audit trail
+    
+    Returns:
+        Paystack split response data (contains split_code, id, etc.)
+    
+    Note: Platform (bearer/main account) automatically receives the REMAINDER
+    after subaccounts are paid. bearer_share parameter is for validation only;
+    it doesn't affect Paystack's split logic (which always uses remainder).
+    
+    With bearer_type='account', platform receives:
+        charged_total - sum(subaccount_shares) - paystack_processing_fee
     """
     _require_secret()
     subaccounts = [
@@ -155,6 +180,16 @@ def create_transaction_split(*, name, seller_shares):
     ]
     if not subaccounts:
         raise RuntimeError('No seller shares to split')
+    
+    # Log split details for debugging/verification
+    total_to_sellers = sum(s['share'] for s in subaccounts) / 100.0
+    logger.info(
+        f'Creating Paystack split: {name} | '
+        f'Sellers: {len(subaccounts)} subaccounts, {total_to_sellers:.2f} GHS | '
+        f'Expected platform: {float(bearer_share) if bearer_share else "N/A":.2f} GHS | '
+        f'Bearer type: account (platform pays fees, receives remainder)'
+    )
+    
     resp = requests.post(
         'https://api.paystack.co/split',
         json={
@@ -168,7 +203,10 @@ def create_transaction_split(*, name, seller_shares):
     )
     body = resp.json()
     if not body.get('status') or 'data' not in body:
+        logger.error(f'Paystack split creation failed: {body.get("message", "Unknown error")}')
         raise RuntimeError(body.get('message', 'Paystack rejected the split'))
+    
+    logger.info(f'Split created successfully: {body["data"].get("split_code")}')
     return body['data']  # contains split_code, id, ...
 
 

@@ -120,6 +120,8 @@ class Order(models.Model):
     delivery_phone = models.CharField(max_length=20)
     delivery_note = models.TextField(blank=True)
     # ↑ Optional note from buyer e.g. "Call when you arrive"
+    delivery_landmark = models.CharField(max_length=255, blank=True, default='')
+    # ↑ Nearest landmark to help the driver locate the buyer e.g. "Opposite Palace Mall"
 
     # Pricing & Discounts
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
@@ -136,17 +138,26 @@ class Order(models.Model):
 
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     total = models.DecimalField(max_digits=10, decimal_places=2)
-    # ↑ subtotal - discount_amount + delivery_fee
+    # ↑ subtotal - discount_amount + delivery_fee (goods + delivery only)
+
+    processing_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    # ↑ Paystack gateway fee, passed on to buyer + sellers (pro-rata).
+    #   Buyer is charged total + processing_fee in a single Paystack charge.
+    paystack_fee_actual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # ↑ What Paystack REALLY deducted (pesewas→GHS from verify/webhook).
+    #   Usually == processing_fee ±1 pesewa rounding; stored so the admin
+    #   finance view shows the true platform net, not an estimate.
 
     # Payment info
     payment_method = models.CharField(
         max_length=30,
         choices=[
-            ('momo', 'Mobile Money (MTN/Telecel/AT)'),
-            ('card', 'Debit / Credit Card'),
+            ('paystack', 'Paystack (MoMo / Card)'),
             ('cash_on_delivery', 'Cash on Delivery'),
+            ('momo', 'Mobile Money (MTN/Telecel/AT) — legacy'),
+            ('card', 'Debit / Credit Card — legacy'),
         ],
-        default='momo'
+        default='paystack'
     )
     payment_status = models.CharField(
         max_length=20,
@@ -160,15 +171,28 @@ class Order(models.Model):
     )
     payment_reference = models.CharField(max_length=100, blank=True)
     paystack_reference = models.CharField(max_length=100, blank=True)
+    paystack_split_code = models.CharField(max_length=100, blank=True, default='')
+    # ↑ Paystack transaction-split code created per order (SPL_...) so each
+    #   seller's net share settles straight to their subaccount instantly.
     paid_at = models.DateTimeField(null=True, blank=True)
 
     # Code on Delivery PIN
     delivery_pin = models.CharField(max_length=4, blank=True, null=True)
     pin_verified = models.BooleanField(default=False)
 
-    # Driver earnings for this order
+    # Driver earnings — NOT in the system for now. Drivers are paid physically
+    # by the admin out-of-band. Always stored as 0; delivery fee goes to admin.
     driver_earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    # Commission rate applied at time of purchase
+    commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.10)
     # ↑ How much the driver earns from this delivery
+    
+    # Commission collected from buyer (buyer-pays-commission model)
+    commission_collected = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    # ↑ Total commission markup collected from buyer (difference between buyer-paid
+    #   and seller-net prices). Calculated at order creation for accurate reporting
+    #   and payment split calculations. Platform receives this + delivery fee.
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -186,6 +210,11 @@ class Order(models.Model):
         return f'Order #{self.id} — {self.buyer} — {self.status}'
 
     @property
+    def charged_total(self):
+        """What the buyer actually pays on Paystack: goods + delivery + gateway fee."""
+        return (self.total or Decimal('0.00')) + (self.processing_fee or Decimal('0.00'))
+
+    @property
     def is_active(self):
         """Returns True if the order is still in progress."""
         return self.status in [self.Status.PENDING, self.Status.ACCEPTED, self.Status.PICKED_UP]
@@ -196,6 +225,7 @@ class OrderItem(models.Model):
     Each item inside an order.
     An order can have multiple items from multiple sellers.
     """
+    # Commission rate at time of purchase (for audit / claw-back)
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
@@ -229,7 +259,12 @@ class OrderItem(models.Model):
     size = models.CharField(max_length=20)
     color = models.CharField(max_length=50)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    # ↑ What buyer paid per unit (includes commission markup)
+    seller_net_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    # ↑ What seller receives per unit (their listed net price)
     quantity = models.PositiveIntegerField(default=1)
+    commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.10)
+    # ↑ Commission rate at time of purchase (for historical accuracy)
 
     class Meta:
         db_table = 'order_items'
@@ -265,6 +300,7 @@ class Cart(models.Model):
 
     @property
     def total(self):
+        """Total cart value (includes commission markup - buyer-facing amount)."""
         return sum(item.total_price for item in self.cart_items.all())
 
     @property
@@ -305,7 +341,8 @@ class CartItem(models.Model):
 
     @property
     def total_price(self):
-        return self.product.effective_price * self.quantity
+        """Buyer pays display price (includes commission markup)."""
+        return self.product.display_price * self.quantity
 
 
 class DeliveryRating(models.Model):
@@ -388,40 +425,117 @@ class Payout(models.Model):
         return f'Payout #{self.id} — {self.seller.email} — GHS {self.amount} ({self.status})'
 
 
-class DeliveryPinLog(models.Model):
+class DeliveryOTPLog(models.Model):
     """
-    Tracks OTP PIN attempts for Cash-on-Delivery orders.
-    Driver must submit the correct 4-digit PIN before the order
-    can be marked as delivered and earnings released.
+    OTP sent to buyer for delivery confirmation.
+    Driver verifies with buyer before marking delivered.
+    OTP is hashed and expires after 15 minutes.
     """
     order = models.OneToOneField(
         Order,
         on_delete=models.CASCADE,
-        related_name='pin_log'
+        related_name='otp_log'
     )
-    driver = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='pin_logs'
-    )
-    code = models.CharField(max_length=4)
+    otp_hash = models.CharField(max_length=128)
+    otp_created_at = models.DateTimeField(auto_now_add=True)
+    otp_expires_at = models.DateTimeField()
     buyer_notified = models.BooleanField(default=False)
+    buyer_notified_at = models.DateTimeField(null=True, blank=True)
+    buyer_notification_method = models.CharField(max_length=20, blank=True, default='email')
+    email_sent = models.BooleanField(default=False)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    sms_sent = models.BooleanField(default=False)
+    sms_sent_at = models.DateTimeField(null=True, blank=True)
     attempts = models.PositiveIntegerField(default=0)
+    is_locked = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
     verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'delivery_pin_logs'
+        db_table = 'delivery_otp_logs'
         ordering = ['-created_at']
 
     def __str__(self):
-        return f'PIN for Order #{self.order.id} — {"Verified" if self.is_verified else "Pending"}'
+        return f'OTP for Order #{self.order.id} — {"Verified" if self.is_verified else "Pending"}'
+
+
+class EmailLog(models.Model):
+    """Every system email, with its outcome.
+
+    Silent email failures caused real confusion ("no email arrived, did
+    payment work?"). Now each send leaves a row the admin can inspect.
+    """
+    KIND_CHOICES = [
+        ('payment_confirmation', 'Payment confirmation'),
+        ('delivery_otp', 'Delivery OTP'),
+        ('seller_alert', 'Seller sale alert'),
+        ('admin_alert', 'Admin payment alert'),
+        ('delivered', 'Delivered notice'),
+    ]
+
+    to_email = models.EmailField(max_length=254, blank=True, default='')
+    subject = models.CharField(max_length=200, blank=True, default='')
+    kind = models.CharField(max_length=30, blank=True, default='')
+    order = models.ForeignKey(
+        Order, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='email_logs',
+    )
+    ok = models.BooleanField(default=False)
+    error = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'email_logs'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        status = 'OK' if self.ok else f'FAILED: {self.error[:60]}'
+        return f'Email {self.kind} → {self.to_email} ({status})'
 
 
 PLATFORM_COMMISSION_RATE = 0.10
+
+
+class Settlement(models.Model):
+    """
+    Per-seller share of a Paystack split payment.
+    Paystack settles net_share straight to the seller's subaccount at charge
+    time — the platform never holds the seller's money. This table is the
+    local record of what was settled (powers seller earnings history).
+    """
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        SETTLED = 'settled', 'Settled'
+        FAILED = 'failed', 'Failed'
+
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name='settlements'
+    )
+    seller = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='settlements'
+    )
+    subaccount_code = models.CharField(max_length=50, blank=True, default='')
+    gross_share = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    # ↑ Seller's item total in this order, before commission and gateway fee
+    commission = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    # ↑ 10% platform cut taken off the seller's share
+    fee_slice = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    # ↑ Seller's pro-rata slice of the Paystack gateway fee
+    net_share = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    # ↑ What Paystack settles to the seller: gross - commission - fee_slice
+    status = models.CharField(max_length=15, choices=Status.choices, default=Status.PENDING)
+    paystack_reference = models.CharField(max_length=100, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'settlements'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Settlement order #{self.order_id} → {self.seller} GHS {self.net_share} ({self.status})'
 
 
 def calculate_delivery_fee(total_items):

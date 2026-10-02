@@ -12,7 +12,13 @@ urlpatterns = [
     path('profile/seller/', views.SellerProfileView.as_view(), name='seller-profile'),
     path('profile/driver/', views.DriverProfileView.as_view(), name='driver-profile'),
 
-    # Public store
+    # Seller payout account (instant Paystack settlement target)
+    path('seller/payout-account/', views.SellerPayoutAccountView.as_view(), name='seller-payout-account'),
+    path('seller/banks/', views.SellerBankListView.as_view(), name='seller-banks'),
+    path('seller/commission-info/', views.SellerCommissionInfoView.as_view(), name='seller-commission-info'),
+
+    # Public store — list MUST come before slug detail
+    path('stores/', views.VendorListView.as_view(), name='vendor-list'),
     path('stores/<slug:store_slug>/', views.SellerStoreView.as_view(), name='seller-store'),
 
     # Admin
@@ -21,4 +27,12 @@ urlpatterns = [
     path('admin/drivers/<int:pk>/', views.AdminDriverDetailView.as_view(), name='admin-driver-detail'),
     path('admin/drivers/<int:pk>/verify/', views.AdminVerifyDriverView.as_view(), name='admin-verify-driver'),
     path('admin/users/<int:pk>/delete/', views.AdminDeleteUserView.as_view(), name='admin-delete-user'),
+    path('admin/users/<int:pk>/commission-rate/', views.AdminUpdateCommissionRateView.as_view(), name='admin-update-commission'),
+    path('admin/commission-audit-logs/', views.AdminCommissionAuditLogView.as_view(), name='admin-commission-logs'),
+    path('admin/contact-messages/', views.ContactMessageListView.as_view(), name='admin-contact-list'),
+    path('admin/newsletter/', views.NewsletterListView.as_view(), name='admin-newsletter-list'),
+
+    # Public support
+    path('contact/', views.ContactMessageCreateView.as_view(), name='contact-create'),
+    path('newsletter/subscribe/', views.NewsletterSubscribeView.as_view(), name='newsletter-subscribe'),
 ]

@@ -129,7 +129,7 @@ export default function ContactPage() {
 
       {/* Form + FAQ */}
       <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-20">
-        <div className="grid lg:grid-cols-2 gap-12">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
 
           {/* Contact form */}
           <div>

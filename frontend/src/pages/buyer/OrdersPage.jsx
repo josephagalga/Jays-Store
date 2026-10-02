@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Package, Clock, CheckCircle, XCircle, Truck, Star, Eye } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
+import SafeImage from '../../components/common/SafeImage'
 import Spinner from '../../components/ui/Spinner'
 import Badge from '../../components/ui/Badge'
 import api from '../../services/api'
@@ -45,15 +46,9 @@ export default function OrdersPage() {
   const handlePayNow = async (order) => {
     setPayingId(order.id)
     try {
-      await payForOrder({
-        orderId: order.id,
-        email: user?.email,
-        amount: order.total,
-        onVerified: () => qc.invalidateQueries(['buyer-orders']),
-      })
+      await payForOrder({ orderId: order.id })
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Payment failed')
-    } finally {
       setPayingId(null)
     }
   }
@@ -85,13 +80,15 @@ export default function OrdersPage() {
   return (
     <MainLayout>
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
-        <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-10">My Orders</h1>
+        <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">My Orders</h1>
 
         <div className="space-y-5">
           {orders.map(order => {
             const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending
             const isDelivered = order.status === 'delivered'
             const isPending = order.status === 'pending'
+            const isUnpaid = order.payment_status !== 'paid'
+            const showOtp = !!order.delivery_otp && ['pending', 'accepted', 'picked_up'].includes(order.status)
 
             return (
               <div key={order.id}
@@ -125,7 +122,7 @@ export default function OrdersPage() {
                       {/* Product image */}
                       <div className="w-14 h-16 bg-[var(--off)] rounded-xl overflow-hidden flex-shrink-0">
                         {item.product_image ? (
-                          <img
+                          <SafeImage
                             src={item.product_image}
                             alt={item.product_name}
                             className="w-full h-full object-cover"
@@ -169,8 +166,17 @@ export default function OrdersPage() {
                   ))}
                 </div>
 
+                {/* Delivery OTP — next to the ordered products */}
+                {showOtp && (
+                  <div className="mx-6 mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Delivery OTP</span>
+                    <span className="text-xl font-bold tracking-[0.3em] text-amber-900">{order.delivery_otp}</span>
+                    <span className="text-xs text-amber-700">Give this code to your driver on arrival. Also sent to your email.</span>
+                  </div>
+                )}
+
                 {/* Order footer */}
-                <div className="flex items-center justify-between gap-4 px-6 py-4 border-t border-[var(--border)]">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 md:px-6 py-4 border-t border-[var(--border)]">
                   <div className="flex items-center gap-4 text-sm text-[var(--muted)]">
                     {order.delivery_address && (
                       <span className="text-xs line-clamp-1 max-w-xs">
@@ -178,22 +184,26 @@ export default function OrdersPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <span className="font-bold text-[var(--ink)]">
                       GHS {parseFloat(order.total).toFixed(2)}
                     </span>
-                    {order.payment_method === 'paystack' && order.payment_status === 'unpaid' && order.status !== 'cancelled' && (
+                    {order.payment_status === 'paid' && order.status !== 'cancelled' && (
+                      <span className="text-xs text-green-600 font-medium">✓ Paid — receipt emailed</span>
+                    )}
+                    {isUnpaid && order.status !== 'cancelled' && (
                       <button
                         onClick={() => handlePayNow(order)}
                         disabled={payingId === order.id}
-                        className="px-4 py-1.5 bg-[var(--ink)] text-white text-xs font-semibold rounded-full hover:opacity-80 transition-opacity disabled:opacity-40">
-                        {payingId === order.id ? 'Processing…' : 'Pay Now'}
+                        className="px-4 py-1.5 bg-[var(--ink)] text-white text-xs font-semibold rounded-full hover:opacity-80 transition-opacity disabled:opacity-50">
+                        {payingId === order.id ? 'Opening…' : 'Pay Now'}
                       </button>
                     )}
                     {isPending && (
                       <button
                         onClick={() => cancelMutation.mutate(order.id)}
                         disabled={cancelMutation.isPending}
+                        title={isUnpaid ? 'Cancel this unpaid order' : 'Paid orders cannot be cancelled'}
                         className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors">
                         Cancel Order
                       </button>
@@ -201,15 +211,15 @@ export default function OrdersPage() {
                     <button
                       onClick={() => navigate(`/orders/${order.id}/track`)}
                       className="flex items-center gap-1 text-xs font-medium text-[var(--ink)] hover:text-[var(--muted)] transition-colors">
-                      <Eye size={12} /> Track Order
+                      <Eye size={12} /> {order.payment_status === 'paid' ? 'Receipt / Track' : 'Track Order'}
                     </button>
                   </div>
                 </div>
 
                 {/* Track Timeline */}
                 {isPending && (
-                  <div className="px-6 py-3 bg-[var(--off)] border-t border-[var(--border)]">
-                    <div className="flex items-center gap-2">
+                  <div className="px-4 md:px-6 py-3 bg-[var(--off)] border-t border-[var(--border)] overflow-x-auto">
+                    <div className="flex items-center gap-2 min-w-max">
                       {['Placed', 'Confirmed', 'Out for Delivery', 'Delivered'].map((label, i) => {
                         const currentIdx = ['pending', 'accepted', 'picked_up', 'delivered'].indexOf(order.status)
                         const isCompleted = i <= currentIdx

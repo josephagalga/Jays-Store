@@ -1,64 +1,41 @@
 import api from '../services/api'
 import toast from 'react-hot-toast'
 
-const PAYSTACK_INLINE_URL = 'https://js.paystack.co/v1/inline.js'
+/**
+ * Start a Paystack payment for an existing unpaid order.
+ * Redirects the browser to Paystack's hosted checkout (MoMo + Card).
+ * After paying, Paystack sends the user back to /orders/:id/track?reference=...
+ * where we verify the payment server-side.
+ *
+ * We use the hosted checkout URL instead of PaystackPop.setup() because:
+ *  - inline.js + openIframe() is blocked by some browsers / CSP
+ *  - passing `ref` into PaystackPop after a server-side initialize can
+ *    collide with Paystack's own generated reference
+ */
+export async function payForOrder({ orderId }) {
+  const initRes = await api.post('/payments/paystack/initialize/', { order_id: orderId })
+  const { authorization_url, paid } = initRes.data || {}
 
-function loadPaystackInline() {
-  return new Promise((resolve, reject) => {
-    if (window.PaystackPop) return resolve(window.PaystackPop)
-    const script = document.createElement('script')
-    script.src = PAYSTACK_INLINE_URL
-    script.async = true
-    script.onload = () =>
-      (window.PaystackPop ? resolve(window.PaystackPop) : reject(new Error('Paystack failed to load')))
-    script.onerror = () => reject(new Error('Could not load Paystack. Check your connection.'))
-    document.body.appendChild(script)
-  })
+  if (paid) {
+    toast.success('Order already paid')
+    return true
+  }
+
+  if (!authorization_url) {
+    toast.error('Could not start Paystack payment. Try again.')
+    throw new Error('Paystack authorization_url missing')
+  }
+
+  window.location.assign(authorization_url)
+  return true
 }
 
 /**
- * Collect a Paystack payment for an existing (unpaid) order.
- * Opens the Paystack popup (MoMo + Card), verifies server-side,
- * then calls onVerified(). Throws / toasts on failure.
+ * Verify a Paystack reference after the user returns from checkout.
+ * Returns { paid: true } on success.
  */
-export async function payForOrder({ orderId, email, amount, onVerified }) {
-  const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || ''
-  if (!publicKey) {
-    toast.error('Paystack is not configured (missing public key). Contact support.')
-    throw new Error('Paystack public key missing')
-  }
-
-  const initRes = await api.post('/payments/paystack/initialize/', { order_id: orderId })
-  const { reference } = initRes.data
-
-  const PaystackPop = await loadPaystackInline()
-
-  return new Promise((resolve) => {
-    const handler = PaystackPop.setup({
-      key: publicKey,
-      email,
-      amount: Math.round(parseFloat(amount) * 100), // pesewas
-      currency: 'GHS',
-      ref: reference,
-      metadata: { order_id: orderId },
-      callback: async (response) => {
-        try {
-          await api.post('/payments/paystack/verify/', { reference: response.reference })
-          toast.success('Payment confirmed!')
-          onVerified?.()
-          resolve(true)
-        } catch {
-          toast.error('Payment received — verification pending. Check My Orders.')
-          onVerified?.()
-          resolve(false)
-        }
-      },
-      onClose: () => {
-        toast('Payment window closed. Complete payment from My Orders when ready.', { icon: 'ℹ️' })
-        onVerified?.()
-        resolve(false)
-      },
-    })
-    handler.openIframe()
-  })
+export async function verifyPaystackReference(reference) {
+  if (!reference) return { paid: false }
+  const res = await api.post('/payments/paystack/verify/', { reference })
+  return res.data
 }

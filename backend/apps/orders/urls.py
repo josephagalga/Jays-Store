@@ -14,12 +14,21 @@ urlpatterns = [
     path('orders/<int:pk>/', views.BuyerOrderDetailView.as_view(), name='buyer-order-detail'),
     path('orders/<int:pk>/cancel/', views.CancelOrderView.as_view(), name='cancel-order'),
     path('orders/<int:pk>/rate/', views.DeliveryRatingView.as_view(), name='rate-delivery'),
-
-    # Payment verification (Cash on Delivery PIN)
-    path('orders/<int:pk>/verify-pin/', views.VerifyDeliveryPinView.as_view(), name='verify-pin'),
-
-    # Coupons & Promo Codes
+    path('orders/<int:pk>/receipt/', views.BuyerOrderReceiptView.as_view(), name='order-receipt'),
+    path('orders/<int:pk>/receipt/resend/', views.ResendConfirmationView.as_view(), name='order-receipt-resend'),
     path('coupons/validate/', views.ValidateCouponView.as_view(), name='validate-coupon'),
+
+    # Paystack — hosted checkout paths expected by the frontend (/payments/...)
+    path('payments/paystack/initialize/', views.PaystackInitializeView.as_view(), name='paystack-initialize'),
+    path('payments/paystack/verify/', views.PaystackVerifyView.as_view(), name='paystack-verify'),
+    path('payments/webhook/paystack/', views.PaystackWebhookView.as_view(), name='paystack-webhook'),
+    # Legacy aliases (kept in case older clients use them)
+    path('paystack/initialize/', views.PaystackInitializeView.as_view(), name='paystack-initialize-legacy'),
+    path('paystack/verify/', views.PaystackVerifyView.as_view(), name='paystack-verify-legacy'),
+    path('paystack/webhook/', views.PaystackWebhookView.as_view(), name='paystack-webhook-legacy'),
+
+    # OTP delivery confirmation (replaces PIN)
+    path('orders/<int:pk>/verify-otp/', views.VerifyDeliveryOTPView.as_view(), name='verify-otp'),
 
     # Driver
     path('driver/orders/', views.DriverAvailableOrdersView.as_view(), name='driver-available-orders'),
@@ -34,16 +43,16 @@ urlpatterns = [
     path('admin/orders/', views.AdminOrderListView.as_view(), name='admin-orders'),
     path('admin/orders/<int:pk>/', views.AdminOrderDetailView.as_view(), name='admin-order-detail'),
 
-    # Seller wallet & payouts
+    # Vendor storefront
+    path('store/<str:store_slug>/', views.StorePageView.as_view(), name='store-page'),
+
+    # Seller settlements (instant Paystack payouts — history only)
+    path('seller/settlements/', views.SellerSettlementListView.as_view(), name='seller-settlements'),
+    path('admin/settlements/', views.AdminSettlementListView.as_view(), name='admin-settlements'),
+    path('admin/finance/', views.AdminFinanceView.as_view(), name='admin-finance'),
+    path('admin/email-logs/', views.AdminEmailLogListView.as_view(), name='admin-email-logs'),
     path('seller/wallet/', views.SellerWalletView.as_view(), name='seller-wallet'),
     path('seller/payouts/', views.SellerPayoutListCreateView.as_view(), name='seller-payouts'),
     path('admin/payouts/', views.SellerPayoutListCreateView.as_view(), name='admin-payout-list'),
     path('admin/payouts/<int:pk>/', views.AdminPayoutActionView.as_view(), name='admin-payout-action'),
-
-    # Payments (Paystack)
-    path('payments/paystack/initialize/', views.PaystackInitializeView.as_view(), name='paystack-initialize'),
-    path('payments/paystack/verify/', views.PaystackVerifyView.as_view(), name='paystack-verify'),
-
-    # Payment webhooks
-    path('webhooks/paystack/', views.PaystackWebhookView.as_view(), name='paystack-webhook'),
 ]

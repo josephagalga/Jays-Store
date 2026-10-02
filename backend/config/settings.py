@@ -106,6 +106,17 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.ScopedRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour',
+        'login': '10/minute',
+        'register': '5/hour',
+        'otp': '10/hour',
+        'contact': '5/hour',
+    },
 }
 
 SIMPLE_JWT = {
@@ -175,8 +186,40 @@ PAYSTACK_WEBHOOK_SECRET = os.getenv('PAYSTACK_WEBHOOK_SECRET', '')
 PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY', '')
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '')
 
+# Paystack Ghana gateway fee (passed on to buyer + sellers, pro-rata).
+# fee = rate * gross, capped at PAYSTACK_GH_FEE_CAP. Adjust to match
+# Paystack's current Ghana pricing if it changes.
+PAYSTACK_GH_FEE_RATE = os.getenv('PAYSTACK_GH_FEE_RATE', '0.0195')
+PAYSTACK_GH_FEE_CAP = os.getenv('PAYSTACK_GH_FEE_CAP', '10.00')
+
 # Public frontend URL (used for Paystack callback_url + docs)
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+# Email — payment confirmations, OTP + receipts to buyers, sales alerts to sellers.
+# Defaults to console backend for local dev so emails never crash checkout.
+# Set EMAIL_BACKEND=smtp + host/user/password in production (.env) to send real mail.
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.smtp.EmailBackend'
+    if os.getenv('EMAIL_HOST_USER') else
+    'django.core.mail.backends.console.EmailBackend',
+)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Jay\'s Store <no-reply@jaysstore.com>')
+
+# Store owner — receives a payment notification (commission + delivery fee)
+# on every confirmed order. No admin email existed before; the platform
+# was never notified of its own money.
+ADMIN_NOTIFICATION_EMAIL = os.getenv('ADMIN_NOTIFICATION_EMAIL', 'myjaysstore@gmail.com')
+
+# Default commission rate for new sellers (percentage)
+# Buyer-pays model: Commission is added on top of seller's listed price
+from decimal import Decimal
+DEFAULT_COMMISSION_RATE = Decimal(os.getenv('DEFAULT_COMMISSION_RATE', '10.00'))
 
 # Security hardening for production
 if not DEBUG:

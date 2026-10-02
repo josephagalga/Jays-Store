@@ -76,7 +76,7 @@ export default function CatalogPage() {
         {/* Header */}
         <div className="flex items-end justify-between mb-8">
           <div>
-            <h1 className="serif text-4xl font-medium text-[var(--ink)]">
+            <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">
               {filters.search ? `Results for "${filters.search}"` : 'All Products'}
             </h1>
             {!isLoading && (

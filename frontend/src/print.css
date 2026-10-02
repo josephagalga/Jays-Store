@@ -1,0 +1,50 @@
+/* Shop receipt styling + print rules.
+   Screen: receipt renders as a narrow card. Print: ONLY the receipt prints. */
+
+.receipt {
+  width: 300px;
+  max-width: 100%;
+  margin: 0 auto;
+  background: #fff;
+  color: #111;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.receipt-center { text-align: center; }
+.receipt-store { font-size: 16px; font-weight: 800; letter-spacing: 2px; }
+.receipt-divider {
+  border-top: 1px dashed #999;
+  margin: 10px 0;
+}
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.receipt-item { margin-bottom: 6px; }
+.receipt-dim { color: #555; font-size: 11px; }
+.receipt-total { font-weight: 800; font-size: 13px; margin-top: 4px; }
+.receipt-otp { font-size: 26px; font-weight: 800; letter-spacing: 8px; }
+.receipt-ref { word-break: break-all; text-align: right; max-width: 170px; }
+
+@media print {
+  body * { visibility: hidden; }
+  #print-receipt, #print-receipt * { visibility: visible; }
+  #print-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    max-width: 80mm;
+    margin: 0;
+    padding: 0 4px;
+    border: none;
+    border-radius: 0;
+  }
+  @page { margin: 5mm; }
+}

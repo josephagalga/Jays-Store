@@ -88,8 +88,20 @@ class Product(models.Model):
 
     # Pricing
     price = models.DecimalField(max_digits=10, decimal_places=2)
+    # ↑ Seller's net price (what they want to receive per sale)
     discount_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    # ↑ If set, this is the sale price shown to buyers
+    # ↑ If set, this is the discounted net price (commission still added on top for buyers)
+    
+    # Commission rate snapshot — captured at product creation/update time
+    commission_rate_snapshot = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Commission rate locked at listing time. Null = use seller's current rate."
+    )
+    # ↑ If null, product follows seller's current commission rate (allows retroactive updates)
+    # ↑ If set, this specific rate is locked for this product
 
     # Status
     is_active = models.BooleanField(default=True)
@@ -142,8 +154,93 @@ class Product(models.Model):
 
     @property
     def effective_price(self):
-        """Returns discount price if set, otherwise regular price."""
+        """Returns seller's net price (discount if set, otherwise regular price).
+        
+        This is the amount the seller receives per sale.
+        For buyer-facing prices, use display_price instead.
+        """
         return self.discount_price if self.discount_price else self.price
+    
+    @property
+    def commission_rate_effective(self):
+        """Get effective commission rate with automatic tiered pricing.
+        
+        Tiered commission structure (based on seller's net price):
+        - Products >= 100.00 GHS: 5% commission (encourages high-value listings)
+        - Products < 100.00 GHS: Seller's admin-configured rate (default 10%, range 0-30%)
+        
+        Priority order:
+        1. Snapshot rate if explicitly set (overrides tiered system - admin locked)
+        2. Tiered rate based on effective_price (seller's net after discount)
+        3. 0% for platform-owned products (no commission)
+        
+        Note: Only admins can modify commission rates. Tiered rates apply automatically.
+        Implemented: October 1, 2026
+        """
+        from decimal import Decimal
+        
+        # Priority 1: Use snapshot if explicitly set (admin has locked this product's rate)
+        if self.commission_rate_snapshot is not None:
+            return self.commission_rate_snapshot
+        
+        # Get seller to check if this is a seller product
+        seller = self.seller or self.created_by
+        
+        if seller and seller.role == 'seller':
+            # Priority 2: Apply automatic tiered rates based on product's net price
+            base_price = self.effective_price  # Seller's net price (includes discount if applicable)
+            
+            # Tiered commission logic
+            if base_price >= Decimal('100.00'):
+                # High-value products: lower commission to encourage premium listings
+                return Decimal('5.00')  # 5% for products >= 100 GHS
+            else:
+                # Low-value products: use seller's admin-configured commission rate
+                # Admin sets this per-seller (default 10%, range 0-30%)
+                return getattr(seller, 'commission_rate', Decimal('10.00'))
+        
+        # Priority 3: Platform-listed products have no commission
+        return Decimal('0.00')
+    
+    @property
+    def display_price(self):
+        """Price shown to buyers (includes commission markup).
+        
+        Calculation: seller's net price × (1 + commission_rate/100)
+        This is what buyers see and pay.
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+        
+        base_price = self.discount_price if self.discount_price else self.price
+        rate = self.commission_rate_effective
+        
+        if rate > 0:
+            multiplier = Decimal('1.00') + (rate / Decimal('100.00'))
+            return (base_price * multiplier).quantize(Decimal('0.01'), ROUND_HALF_UP)
+        
+        return base_price
+    
+    @property
+    def display_discount_price(self):
+        """Discounted price shown to buyers (if discount active, includes commission)."""
+        from decimal import Decimal, ROUND_HALF_UP
+        
+        if not self.discount_price:
+            return None
+        
+        rate = self.commission_rate_effective
+        
+        if rate > 0:
+            multiplier = Decimal('1.00') + (rate / Decimal('100.00'))
+            return (self.discount_price * multiplier).quantize(Decimal('0.01'), ROUND_HALF_UP)
+        
+        return self.discount_price
+    
+    @property
+    def commission_amount(self):
+        """Commission per unit (what buyer pays on top of seller's price)."""
+        base_price = self.discount_price if self.discount_price else self.price
+        return self.display_price - base_price
 
     @property
     def discount_percentage(self):
@@ -176,6 +273,9 @@ class ProductVariant(models.Model):
     color = models.CharField(max_length=50)
     color_hex = models.CharField(max_length=7, blank=True)
     # ↑ e.g. "#FFFFFF" — used to render a color swatch on the frontend
+    image = models.ImageField(upload_to='variants/', blank=True, null=True)
+    # ↑ Optional per-variant image (e.g. photo of the Red colourway).
+    #   Falls back to the product's primary image when empty.
     stock = models.PositiveIntegerField(default=0)
     # ↑ How many of this exact variant are in stock
 
@@ -186,6 +286,15 @@ class ProductVariant(models.Model):
 
     def __str__(self):
         return f'{self.product.name} | {self.size} | {self.color}'
+
+    @property
+    def image_url(self):
+        if self.image:
+            try:
+                return self.image.url
+            except Exception:
+                return None
+        return None
 
     @property
     def is_in_stock(self):
@@ -219,3 +328,46 @@ class ProductImage(models.Model):
         if self.image:
             return self.image.url
         return None
+
+
+class Wishlist(models.Model):
+    buyer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='wishlist_items'
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='wishlisted_by'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'wishlists'
+        unique_together = ['buyer', 'product']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.buyer.email} -> {self.product.name}'
+
+
+# Signal to capture commission rate snapshot on product creation
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
+
+@receiver(pre_save, sender=Product)
+def capture_commission_rate_snapshot(sender, instance, **kwargs):
+    """Snapshot seller's commission rate when product is created.
+    
+    On product creation (pk is None): snapshot = seller's current rate
+    On product update: only update snapshot if explicitly being changed
+    
+    This allows two behaviors:
+    1. Keep snapshot = locked rate (commission changes don't affect this product)
+    2. Set snapshot = None (product follows seller's current rate)
+    """
+    if instance.pk is None:  # New product only
+        seller = instance.seller or instance.created_by
+        if seller and seller.role == 'seller' and hasattr(seller, 'commission_rate'):
+            instance.commission_rate_snapshot = seller.commission_rate

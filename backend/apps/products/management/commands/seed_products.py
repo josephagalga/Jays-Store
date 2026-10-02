@@ -152,7 +152,7 @@ class Command(BaseCommand):
                 'price': 165.00, 'gender': 'unisex', 'brand': 'Cozy',
                 'category_key': 'men', 'tags': 'hoodie, casual, oversized, cosy, fleece',
                 'is_featured': False,
-                'image_url': 'https://images.unsplash.com/photo-1556821840-3a63f15732ce?w=600&auto=format&fit=crop&q=80',
+                'image_url': 'https://images.unsplash.com/photo-1618354691373-d851c5c3a990?w=600&auto=format&fit=crop&q=80',
                 'variants': [('S', 'Grey'), ('M', 'Grey'), ('L', 'Black'), ('XL', 'Black')],
             },
             {
@@ -254,7 +254,7 @@ class Command(BaseCommand):
                 'price': 395.00, 'gender': 'women', 'brand': 'Noir',
                 'category_key': 'women', 'tags': 'blazer, formal, office, structured, professional',
                 'is_featured': False,
-                'image_url': 'https://images.unsplash.com/photo-1594938298603-c8148c4b0c4b?w=600&auto=format&fit=crop&q=80',
+                'image_url': 'https://images.unsplash.com/photo-1592878904946-b3cd8ae243d0?w=600&auto=format&fit=crop&q=80',
                 'variants': [('XS', 'Black'), ('S', 'Black'), ('M', 'Cream'), ('L', 'Cream')],
             },
             {
@@ -498,7 +498,7 @@ class Command(BaseCommand):
                 'price': 135.00, 'gender': 'unisex', 'brand': 'Vision',
                 'category_key': 'accessories', 'tags': 'sunglasses, aviator, UV, classic',
                 'is_featured': False,
-                'image_url': 'https://images.unsplash.com/photo-1473496169904-658ba7574b0d?w=600&auto=format&fit=crop&q=80',
+                'image_url': 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=600&auto=format&fit=crop&q=80',
                 'variants': [('One Size', 'Gold/Brown'), ('One Size', 'Silver/Grey')],
             },
             {
@@ -528,7 +528,7 @@ class Command(BaseCommand):
                 'price': 55.00, 'gender': 'unisex', 'brand': 'Kente Co.',
                 'category_key': 'accessories', 'tags': 'bracelet, beaded, handcraft, african',
                 'is_featured': True,
-                'image_url': 'https://images.unsplash.com/photo-1573408301185-9519f94815f8?w=600&auto=format&fit=crop&q=80',
+                'image_url': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=600&auto=format&fit=crop&q=80',
                 'variants': [('One Size', 'Multi'), ('One Size', 'Earth Tones')],
             },
             {

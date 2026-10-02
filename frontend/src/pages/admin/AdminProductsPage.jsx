@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom'
 import { Package, Eye, EyeOff, Star } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
+import SafeImage from '../../components/common/SafeImage'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 
@@ -39,12 +40,12 @@ export default function AdminProductsPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
       <div className="flex items-center justify-between mb-10">
-        <h1 className="serif text-4xl font-medium text-[var(--ink)]">All Products</h1>
+        <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">All Products</h1>
         <span className="text-sm text-[var(--muted)]">{products?.length || 0} total</span>
       </div>
 
-      <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-[var(--border)] rounded-2xl overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-[var(--off)] border-b border-[var(--border)]">
             <tr>
               {['Product', 'Seller', 'Price', 'Sold', 'Rating', 'Featured', 'Status'].map(h => (
@@ -60,8 +61,8 @@ export default function AdminProductsPage() {
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-12 bg-[var(--off)] rounded-lg overflow-hidden flex-shrink-0">
-                      {product.images?.[0]?.image ? (
-                        <img src={product.images[0].image} alt="" className="w-full h-full object-cover" />
+                      {product.images?.[0]?.url || product.images?.[0]?.image ? (
+                        <SafeImage src={product.images[0].url || product.images[0].image} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Package size={14} className="text-[var(--border)]" />

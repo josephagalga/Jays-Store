@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, Sparkles, ShoppingBag, Truck, Shield } from 'lucide-react'
 import { useRef, useEffect, useState } from 'react'
 import MainLayout from '../../layouts/MainLayout'
-import ProductCard from '../../components/common/ProductCard'
+import ProductCard from
+  '../../components/common/ProductCard'
+import SafeImage from '../../components/common/SafeImage'
 import Spinner from '../../components/ui/Spinner'
 import api from '../../services/api'
 
@@ -97,6 +99,8 @@ function Hero() {
       <img
         src="https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=1600&auto=format&fit=crop&q=80"
         alt="Fashion hero"
+        loading="eager"
+        referrerPolicy="no-referrer"
         className="absolute inset-0 w-full h-full object-cover"
       />
       <div className="absolute inset-0 bg-black/40" />
@@ -191,7 +195,7 @@ function Categories({ categories }) {
   return (
     <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-20 reveal ${visible ? 'visible' : ''}`}>
       <div className="flex items-end justify-between mb-10">
-        <h2 className="serif text-4xl font-medium text-[var(--ink)]">Shop by Category</h2>
+        <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">Shop by Category</h2>
         <Link to="/catalog"
           className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group">
           All Products
@@ -211,7 +215,7 @@ function Categories({ categories }) {
 
               {imageUrl && (
                 <>
-                  <img
+                  <SafeImage
                     src={imageUrl}
                     alt={cat.name}
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 z-0"
@@ -246,7 +250,7 @@ function Featured({ products, isLoading }) {
   return (
     <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-10 reveal ${visible ? 'visible' : ''}`}>
       <div className="flex items-end justify-between mb-10">
-        <h2 className="serif text-4xl font-medium text-[var(--ink)]">New Arrivals</h2>
+        <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">New Arrivals</h2>
         <Link to="/catalog"
           className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group">
           View All
@@ -293,7 +297,7 @@ function SliderBanner({ products }) {
             className="flex-shrink-0 w-52 group">
             <div className="rounded-xl overflow-hidden aspect-[3/4] bg-white mb-3 shadow-sm">
               {p.primary_image ? (
-                <img
+                <SafeImage
                   src={p.primary_image}
                   alt={p.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -329,7 +333,7 @@ function AIBanner() {
             <Sparkles size={12} />
             Powered by Gemini AI
           </div>
-          <h2 className="serif text-4xl lg:text-5xl font-medium text-white leading-tight mb-4">
+          <h2 className="serif text-3xl md:text-4xl lg:text-5xl font-medium text-white leading-tight mb-4">
             Not sure what<br />
             <em className="italic font-normal text-white/50">to wear?</em>
           </h2>

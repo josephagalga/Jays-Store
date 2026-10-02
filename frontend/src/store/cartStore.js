@@ -59,7 +59,7 @@ const useCartStore = create(
         }
       },
 
-      clearCart: () => set({ cart: null }),
+      clearCart: () => set({ cart: { cart_items: [], total: 0, item_count: 0 } }),
     }),
     {
       name: 'cart-storage',

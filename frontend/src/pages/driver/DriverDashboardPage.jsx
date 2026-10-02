@@ -1,5 +1,6 @@
 ﻿import { useQuery } from '@tanstack/react-query'
-import { Truck, Star, TrendingUp, Package, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Truck, Star, Clock, Package, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Spinner from '../../components/ui/Spinner'
 import api from '../../services/api'
@@ -16,6 +17,17 @@ export default function DriverDashboardPage() {
     },
   })
 
+  const { data: activeOrders } = useQuery({
+    queryKey: ['driver-active'],
+    queryFn: async () => {
+      const res = await api.get('/driver/history/')
+      const all = Array.isArray(res.data) ? res.data : res.data.results || []
+      return all.filter(o => ['accepted', 'picked_up'].includes(o.status))
+    },
+    enabled: !!profile && profile.verification_status === 'approved',
+    refetchInterval: 30000,
+  })
+
   const toggleMutation = useMutation({
     mutationFn: (is_available) => api.patch('/accounts/profile/driver/', { is_available }),
     onSuccess: () => {
@@ -29,7 +41,7 @@ export default function DriverDashboardPage() {
   const stats = [
     { icon: <Truck size={20} />, label: 'Total Deliveries', value: profile?.total_deliveries || 0 },
     { icon: <Package size={20} />, label: 'Successful', value: profile?.successful_deliveries || 0 },
-    { icon: <TrendingUp size={20} />, label: 'Total Earnings', value: `GHS ${parseFloat(profile?.total_earnings || 0).toFixed(2)}` },
+    { icon: <Clock size={20} />, label: 'Failed', value: profile?.failed_deliveries || 0 },
     { icon: <Star size={20} />, label: 'Avg Rating', value: `${parseFloat(profile?.average_rating || 0).toFixed(1)} ★` },
   ]
 
@@ -60,7 +72,7 @@ export default function DriverDashboardPage() {
       <div className="flex items-center justify-between mb-10">
         <div>
           <p className="text-sm text-[var(--muted)] mb-1">Driver Dashboard</p>
-          <h1 className="serif text-4xl font-medium text-[var(--ink)]">{profile?.full_name}</h1>
+          <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">{profile?.full_name}</h1>
         </div>
         <button
           onClick={() => toggleMutation.mutate(!profile?.is_available)}
@@ -84,7 +96,7 @@ export default function DriverDashboardPage() {
         ))}
       </div>
 
-      <div className="bg-[var(--off)] rounded-2xl p-6">
+      <div className="bg-[var(--off)] rounded-2xl p-6 mb-6">
         <p className="text-sm text-[var(--muted)] mb-1">Success Rate</p>
         <div className="flex items-center gap-4">
           <div className="flex-1 bg-white rounded-full h-3 overflow-hidden">
@@ -93,6 +105,35 @@ export default function DriverDashboardPage() {
           </div>
           <span className="text-sm font-bold text-[var(--ink)]">{profile?.delivery_success_rate || 0}%</span>
         </div>
+      </div>
+
+      {/* Active deliveries shortcut */}
+      <div className="bg-white border border-[var(--border)] rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="serif text-xl font-medium text-[var(--ink)]">Active Deliveries</h2>
+          <Link to="/driver/history" className="text-sm text-[var(--muted)] hover:text-[var(--ink)] transition-colors">
+            Open My Deliveries
+          </Link>
+        </div>
+        {!activeOrders?.length ? (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-[var(--muted)]">No active drop-offs. Grab one from Available Orders.</p>
+            <Link to="/driver/orders"
+              className="flex-shrink-0 px-4 py-2 bg-[var(--ink)] text-white text-xs font-semibold rounded-xl hover:opacity-80 transition-opacity">
+              Find Orders
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {activeOrders.map(o => (
+              <Link key={o.id} to="/driver/history"
+                className="flex items-center justify-between bg-[var(--off)] rounded-xl px-4 py-3 hover:bg-[var(--stone)] transition-colors">
+                <span className="text-sm font-semibold">Order #{o.id} · {o.status.replace('_', ' ')}</span>
+                <span className="text-xs text-[var(--muted)]">{o.delivery_address?.slice(0, 40) || `${o.item_count ?? ''} items`}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

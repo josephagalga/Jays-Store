@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
 from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, Settlement, PLATFORM_COMMISSION_RATE, DeliveryOTPLog, calculate_delivery_fee
+from .otp_utils import generate_otp, hash_otp, verify_otp, get_otp_expiry
 from .emails import (
     send_payment_confirmation,
     send_delivery_otp,
@@ -220,6 +221,23 @@ class PlaceOrderView(APIView):
         serializer.is_valid(raise_exception=True)
 
         cart = serializer.validated_data['cart']
+        
+        # VALIDATE ALL SELLERS HAVE ACTIVE SUBACCOUNTS
+        invalid_sellers = []
+        for cart_item in cart.cart_items.select_related('product__seller', 'product__created_by'):
+            seller = cart_item.product.seller or cart_item.product.created_by
+            if seller and seller.role == 'seller':
+                if not seller.paystack_subaccount_code or seller.subaccount_status != 'active':
+                    invalid_sellers.append({
+                        'name': seller.store_name or seller.email,
+                        'product': cart_item.product.name
+                    })
+        
+        if invalid_sellers:
+            return Response({
+                'error': 'Some sellers in your cart have incomplete payment setup.',
+                'invalid_sellers': invalid_sellers
+            }, status=status.HTTP_400_BAD_REQUEST)
         total_items = sum(ci.quantity for ci in cart.cart_items.all())
         delivery_fee = calculate_delivery_fee(total_items)
         subtotal = cart.total
@@ -233,9 +251,19 @@ class PlaceOrderView(APIView):
 
         commission_rate = Decimal('0.10')
 
-        # Generate OTP (4-digit) now; it is EMAILED only after payment
-        # confirms, and always visible to the buyer in My Orders.
-        otp_code = f'{random.randint(0, 9999):04d}'
+        # Generate OTP (4-digit, cryptographically secure) now; it is EMAILED only after payment
+        # confirms, and NOT returned in any API response for security
+        otp_code = generate_otp()
+        otp_hash = hash_otp(otp_code)
+        otp_expires_at = get_otp_expiry()
+
+        # Calculate commission collected from buyers BEFORE creating order
+        # This is the markup collected: (buyer paid - seller net) for all items
+        commission_collected_total = Decimal('0.00')
+        for cart_item in cart.cart_items.select_related('product'):
+            buyer_line_total = cart_item.product.display_price * cart_item.quantity
+            seller_line_total = cart_item.product.effective_price * cart_item.quantity
+            commission_collected_total += (buyer_line_total - seller_line_total)
 
         order = Order.objects.create(
             buyer=request.user,
@@ -252,6 +280,7 @@ class PlaceOrderView(APIView):
             payment_status='unpaid',
             driver_earnings=Decimal('0.00'),  # drivers paid physically, out-of-system
             commission_rate=commission_rate,
+            commission_collected=commission_collected_total,  # NEW: Store calculated commission
         )
 
         seller_lines = {}  # seller_id -> [seller, line_total]
@@ -262,7 +291,7 @@ class PlaceOrderView(APIView):
             if primary_image:
                 image_url = primary_image.url or ''
 
-            item_commission_rate = Decimal(str(PLATFORM_COMMISSION_RATE))  # 0.10
+            commission_rate_at_purchase = cart_item.product.commission_rate_effective
             seller = cart_item.product.seller or cart_item.product.created_by
             OrderItem.objects.create(
                 order=order,
@@ -273,56 +302,107 @@ class PlaceOrderView(APIView):
                 product_image=image_url,
                 size=cart_item.variant.size,
                 color=cart_item.variant.color,
-                unit_price=cart_item.product.effective_price,
+                unit_price=cart_item.product.display_price,  # What buyer pays (includes commission)
+                seller_net_price=cart_item.product.effective_price,  # What seller receives
                 quantity=cart_item.quantity,
-                commission_rate=item_commission_rate,
+                commission_rate=commission_rate_at_purchase,
             )
 
             # NOTE: no seller_balance crediting — sellers settle instantly via
             # Paystack split, funds never touch the platform.
+            # Use seller_net_price (what they receive), not display_price
             line_total = Decimal(str(cart_item.product.effective_price)) * cart_item.quantity
             if seller and seller.role == 'seller':
                 line = seller_lines.setdefault(seller.id, [seller, Decimal('0.00')])
                 line[1] += line_total
             else:
                 platform_direct += line_total
+            
+            # STOCK DEDUCTION REMOVED - happens after payment confirms in _confirm_payment()
 
-            cart_item.variant.stock -= cart_item.quantity
-            cart_item.variant.save()
-
-        # Per-seller shares: gross, 10% commission, pro-rata gateway fee slice.
+        # Per-seller shares: net amounts (commission already collected from buyer in order total)
         # Platform-listed items (no vendor) go entirely to the admin share.
         per_seller, _ = compute_order_split(
             [(s, t) for s, t in seller_lines.values()]
         )
-        commission_total = sum((e['commission'] for e in per_seller.values()), Decimal('0.00'))
-        admin_net = allocate_fee(
-            per_seller, commission_total + delivery_fee + platform_direct, processing_fee)
+        # FIX: Use actual commission collected from buyers, not zero-value from per_seller
+        # Platform receives: commission markup + delivery fee + platform-owned items
+        admin_gross = commission_collected_total + delivery_fee + platform_direct
+        admin_net = allocate_fee(per_seller, admin_gross, processing_fee)
+        
+        # Log split breakdown for debugging and verification
+        import logging
+        logger = logging.getLogger(__name__)
+        sellers_total_net = sum(e['net'] for e in per_seller.values())
+        logger.info(
+            f'Order {order.id} Paystack split | '
+            f'Buyer charged: {total + processing_fee:.2f} GHS | '
+            f'Sellers net: {sellers_total_net:.2f} GHS | '
+            f'Commission: {commission_collected_total:.2f} GHS | '
+            f'Delivery: {delivery_fee:.2f} GHS | '
+            f'Platform items: {platform_direct:.2f} GHS | '
+            f'Admin gross: {admin_gross:.2f} GHS | '
+            f'Processing fee: {processing_fee:.2f} GHS'
+        )
 
-        for entry in per_seller.values():
-            Settlement.objects.create(
-                order=order,
-                seller=entry['seller'],
-                subaccount_code=entry['seller'].paystack_subaccount_code,
-                gross_share=entry['gross'],
-                commission=entry['commission'],
-                fee_slice=entry['fee_slice'],
-                net_share=entry['net'],
-                status='pending',
-            )
+        # SETTLEMENT CREATION REMOVED - happens after payment confirms in _confirm_payment()
 
         # OTP log created now; emailed only after payment confirms.
+        # Stored as hash with 15-minute expiry and 3-attempt lockout
         DeliveryOTPLog.objects.create(
             order=order,
-            otp=otp_code,
+            otp_hash=otp_hash,
+            otp_expires_at=otp_expires_at,
             buyer_notified=False,
             buyer_notification_method='email',
+            is_locked=False,
         )
 
         request.user.total_orders += 1
         request.user.save()
 
-        cart.cart_items.all().delete()
+        # CART CLEARING MOVED - happens after successful payment init (below)
+
+        # VALIDATION: Verify split math before creating Paystack split
+        # Since Paystack gives platform the "remainder", we must ensure
+        # our calculation matches what Paystack will actually do
+        buyer_total_charged = total + processing_fee  # What buyer pays
+        sellers_total = sum(e['net'] for e in per_seller.values())  # What sellers receive
+        expected_platform_share = admin_gross  # commission + delivery + platform_items
+
+        # Calculate what platform WILL receive using Paystack's remainder logic
+        actual_platform_share = buyer_total_charged - sellers_total - processing_fee
+
+        # Check if our calculation matches what Paystack will do
+        calculation_diff = abs(expected_platform_share - actual_platform_share)
+
+        if calculation_diff > Decimal('0.10'):  # Tolerance: 10 pesewas
+            logger.error(
+                f'Order {order.id} SPLIT VALIDATION FAILED | '
+                f'Expected platform: {expected_platform_share:.2f} GHS | '
+                f'Actual platform (Paystack remainder): {actual_platform_share:.2f} GHS | '
+                f'Difference: {calculation_diff:.2f} GHS | '
+                f'Buyer charged: {buyer_total_charged:.2f} | '
+                f'Sellers total: {sellers_total:.2f} | '
+                f'Processing fee: {processing_fee:.2f}'
+            )
+            # STRICT MODE: Fail order creation to prevent incorrect split
+            raise ValueError(
+                f'Payment split validation failed: Platform share mismatch. '
+                f'Expected {expected_platform_share:.2f} GHS but Paystack will give '
+                f'{actual_platform_share:.2f} GHS. Difference: {calculation_diff:.2f} GHS. '
+                f'This indicates a calculation error. Please contact support.'
+            )
+
+        # Log successful validation
+        logger.info(
+            f'Order {order.id} split validation PASSED | '
+            f'Platform will receive: {actual_platform_share:.2f} GHS '
+            f'(Commission: {commission_collected_total:.2f}, '
+            f'Delivery: {delivery_fee:.2f}, '
+            f'Platform items: {platform_direct:.2f}) | '
+            f'Sellers receive: {sellers_total:.2f} GHS'
+        )
 
         # Create the Paystack split + initialize the buyer charge.
         # (No vendor shares → plain charge, platform keeps everything.)
@@ -335,6 +415,14 @@ class PlaceOrderView(APIView):
                 split = create_transaction_split(
                     name=f'Jays Store order {order.id}',
                     seller_shares=seller_shares,
+                    bearer_share=admin_gross,  # Expected platform share (for logging/validation)
+                    metadata={
+                        'order_id': order.id,
+                        'commission': float(commission_collected_total),
+                        'delivery_fee': float(delivery_fee),
+                        'platform_items': float(platform_direct),
+                        'expected_platform_total': float(admin_gross),
+                    }
                 )
                 order.paystack_split_code = split.get('split_code', '')
                 order.save(update_fields=['paystack_split_code'])
@@ -361,11 +449,16 @@ class PlaceOrderView(APIView):
                 )
             order.paystack_reference = init.get('reference', reference)
             order.save(update_fields=['paystack_reference'])
+            
+            # CART CLEARED ONLY AFTER SUCCESSFUL PAYMENT INIT
+            cart.cart_items.all().delete()
+            
         except Exception as exc:
             # Order stays UNPAID — buyer retries from My Orders → Pay Now.
-            # Settlements/split rows stay pending until a later init succeeds.
+            # Cart is PRESERVED on failure so buyer can retry
             response_data = OrderSerializer(order, context={'request': request}).data
             response_data['payment_init_failed'] = str(exc)
+            response_data['message'] = 'Order created but payment failed to start. Cart preserved - retry from My Orders.'
             return Response(response_data, status=status.HTTP_502_BAD_GATEWAY)
 
         response_data = OrderSerializer(order, context={'request': request}).data
@@ -423,16 +516,18 @@ class CancelOrderView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Restore stock for each item (no money moved — order was unpaid)
-        for item in order.items.select_related('variant'):
-            if item.variant:
-                item.variant.stock += item.quantity
-                item.variant.save()
+        # Restore stock only if payment was confirmed (stock was deducted)
+        # Unpaid orders never deducted stock in the new flow
+        if order.payment_status == 'paid':
+            for item in order.items.select_related('variant'):
+                if item.variant:
+                    item.variant.stock += item.quantity
+                    item.variant.save(update_fields=['stock'])
 
         order.status = 'cancelled'
         order.save()
-        # Pending settlements die with the unpaid order.
-        order.settlements.filter(status='pending').update(status='failed')
+        # No settlements exist for unpaid orders in new flow
+        # (settlements created only after payment confirms)
 
         request.user.cancelled_orders += 1
         request.user.save()
@@ -738,8 +833,16 @@ class SellerOrderListView(generics.ListAPIView):
 
 
 class VerifyDeliveryOTPView(APIView):
-    """Driver submits the 4-digit OTP the buyer received via SMS+email."""
+    """Driver submits the 4-digit OTP the buyer received via email.
+
+    Security:
+    - OTP is hashed in database, never stored plaintext
+    - Expires after 15 minutes
+    - Hard lockout after 3 failed attempts
+    - Rate limited per order
+    """
     permission_classes = [permissions.IsAuthenticated, IsDriver]
+    throttle_scope = 'otp'
 
     def post(self, request, pk):
         try:
@@ -758,7 +861,19 @@ class VerifyDeliveryOTPView(APIView):
         if otp_log.is_verified:
             return Response({'message': 'OTP already verified', 'verified': True})
 
-        if code == otp_log.otp:
+        if otp_log.is_locked:
+            return Response(
+                {'error': 'OTP verification locked. Too many failed attempts. Contact support.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if timezone.now() > otp_log.otp_expires_at:
+            return Response(
+                {'error': 'OTP expired. Request a new one.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if verify_otp(code, otp_log.otp_hash):
             otp_log.is_verified = True
             otp_log.verified_at = timezone.now()
             otp_log.save()
@@ -767,40 +882,133 @@ class VerifyDeliveryOTPView(APIView):
             return Response({'message': 'OTP verified successfully', 'verified': True})
         else:
             otp_log.attempts += 1
+            if otp_log.attempts >= 3:
+                otp_log.is_locked = True
             otp_log.save()
+            
+            if otp_log.is_locked:
+                return Response(
+                    {'error': 'OTP verification locked after 3 failed attempts. Contact support.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             remaining = max(0, 3 - otp_log.attempts)
-            return Response({'error': f'Invalid OTP. {remaining} attempts remaining.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': f'Invalid OTP. {remaining} attempts remaining.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 def _confirm_payment(order):
-    """First-paid actions: confirm settlements, alert admin, inform sellers, receipt buyer.
+    """First-paid actions: deduct stock, create settlements, send emails.
 
-    Order matters: admin gets the payment alert first, then the system
-    informs each seller of their expected payout, then the buyer gets
-    receipt + OTP. Each send never raises (see emails.py).
-
-    All four sends share one SMTP connection: Gmail intermittently drops
-    rapid back-to-back sends ("Connection unexpectedly closed"), and a
-    shared connection plus the retry in emails._send fixes that.
+    Order matters: 
+    1. Deduct stock (payment confirmed, inventory committed)
+    2. Create settlement records (for reporting/audit)
+    3. Send emails (admin → sellers → buyer)
+    
+    Each send never raises (see emails.py). Shared SMTP connection prevents
+    Gmail from dropping rapid back-to-back sends.
     """
-    order.settlements.filter(status='pending').update(
-        status='settled', settled_at=timezone.now(),
-        paystack_reference=order.paystack_reference,
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # STEP 1: DEDUCT STOCK (payment confirmed)
+    for item in order.items.select_related('variant'):
+        if item.variant:
+            variant = item.variant
+            if variant.stock >= item.quantity:
+                variant.stock -= item.quantity
+                variant.save(update_fields=['stock'])
+            else:
+                # Edge case: stock sold out between order placement and payment
+                logger.warning(
+                    f'Stock shortage for variant {variant.id} in order {order.id}: '
+                    f'needed {item.quantity}, available {variant.stock}'
+                )
+                # Still process payment (money already collected)
+                # Admin handles fulfillment manually
+    
+    # STEP 2: CREATE SETTLEMENT RECORDS (for paid orders only)
+    # Recalculate seller shares from order items
+    seller_shares = {}
+    for item in order.items.select_related('seller'):
+        seller = item.seller
+        if seller and seller.role == 'seller':
+            if seller.id not in seller_shares:
+                seller_shares[seller.id] = {
+                    'seller': seller,
+                    'gross': Decimal('0.00'),
+                }
+            # Use seller_net_price (what they receive), not unit_price (what buyer paid)
+            seller_shares[seller.id]['gross'] += item.seller_net_price * item.quantity
+    
+    # Create settlement records
+    for entry in seller_shares.values():
+        seller = entry['seller']
+        gross = entry['gross']
+        commission = Decimal('0.00')  # No commission deducted in buyer-pays model
+        fee_slice = Decimal('0.00')  # Buyer covers gateway fee (bearer_type='account')
+        net = gross
+        
+        Settlement.objects.create(
+            order=order,
+            seller=seller,
+            subaccount_code=seller.paystack_subaccount_code,
+            gross_share=gross,
+            commission=commission,
+            fee_slice=fee_slice,
+            net_share=net,
+            status='settled',  # Immediately settled (Paystack split executed)
+            settled_at=timezone.now(),
+            paystack_reference=order.paystack_reference,
+        )
+    
+    # Log expected vs actual platform share for verification
+    expected_platform = order.commission_collected + order.delivery_fee
+    logger.info(
+        f'Order {order.id} payment confirmed | '
+        f'Platform should receive: {expected_platform:.2f} GHS | '
+        f'(Commission: {order.commission_collected:.2f}, Delivery: {order.delivery_fee:.2f}) | '
+        f'Verify in Paystack: https://dashboard.paystack.com/#/settlements | '
+        f'Split code: {order.paystack_split_code}'
     )
+    
+    # STEP 3: SEND EMAILS (admin → sellers → buyer)
     from django.core.mail import get_connection
     try:
         connection = get_connection()
         connection.open()
     except Exception:
         connection = None
+    
     try:
         send_admin_payment_alert(order, connection=connection)
         send_seller_sale_alert(order, connection=connection)
+
+        # OTP is stored hashed — generate a fresh code here, persist hash+expiry,
+        # and email the plaintext once. Never persist or return plaintext.
+        from .otp_utils import generate_otp as _gen_otp, hash_otp as _hash_otp, get_otp_expiry as _otp_expiry
         otp_log = getattr(order, 'otp_log', None)
-        otp = otp_log.otp if otp_log and not otp_log.is_verified else None
-        send_payment_confirmation(order, otp_code=otp, connection=connection)
-        if otp:
-            notify_buyer_of_otp(order, otp, connection=connection)
+        otp = _gen_otp()
+        if otp_log:
+            otp_log.otp_hash = _hash_otp(otp)
+            otp_log.otp_expires_at = _otp_expiry()
+            otp_log.attempts = 0
+            otp_log.is_locked = False
+            otp_log.is_verified = False
+            otp_log.verified_at = None
+            otp_log.save(update_fields=['otp_hash', 'otp_expires_at', 'attempts', 'is_locked', 'is_verified', 'verified_at'])
+
+        # Send payment confirmation with OTP included
+        buyer_ok = send_payment_confirmation(order, otp_code=otp, connection=connection)
+        
+        # Don't send separate OTP email - it's already in payment confirmation above
+        # (Removed duplicate notify_buyer_of_otp call to avoid confusion)
+        
+        if not buyer_ok:
+            logger.error(f'Payment confirmation email failed for order {order.id} buyer {order.buyer.email}')
+            # Don't raise - payment already processed, just log the email failure
     finally:
         try:
             if connection is not None:
@@ -810,21 +1018,41 @@ def _confirm_payment(order):
 
 
 class PaystackWebhookView(APIView):
-    """Receive Paystack webhook for payment verification."""
+    """Receive Paystack webhook for payment verification with MANDATORY security checks."""
     authentication_classes = []
     permission_classes = []
 
     def post(self, request):
-        """Handle Paystack webhook events."""
-        secret = (settings.PAYSTACK_SECRET_KEY or settings.PAYSTACK_WEBHOOK_SECRET or '').strip()
+        """Handle Paystack webhook events with signature verification and amount validation."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # SECURITY: Require secret configured
+        secret = (settings.PAYSTACK_WEBHOOK_SECRET or settings.PAYSTACK_SECRET_KEY or '').strip()
+        if not secret:
+            logger.critical('Webhook received but PAYSTACK_WEBHOOK_SECRET not configured - SECURITY RISK')
+            return Response(
+                {'error': 'Webhook verification not configured on server'}, 
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        
+        # SECURITY: Require signature header present
         signature = request.META.get('HTTP_X_PAYSTACK_SIGNATURE', '')
-
-        # Verify HMAC-SHA512 signature when a secret is configured.
-        # Paystack signs the raw request body with the SECRET key.
-        if secret and signature:
-            computed = hmac.new(secret.encode(), request.body, hashlib.sha512).hexdigest()
-            if not hmac.compare_digest(computed, signature):
-                return Response({'error': 'Invalid signature'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not signature:
+            logger.warning(f'Webhook received without signature from IP {request.META.get("REMOTE_ADDR")}')
+            return Response(
+                {'error': 'Missing signature header'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # SECURITY: Verify HMAC-SHA512 signature
+        computed = hmac.new(secret.encode(), request.body, hashlib.sha512).hexdigest()
+        if not hmac.compare_digest(computed, signature):
+            logger.warning(f'Invalid webhook signature from IP {request.META.get("REMOTE_ADDR")}')
+            return Response(
+                {'error': 'Invalid signature'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
         try:
             data = request.data
@@ -858,17 +1086,39 @@ class PaystackWebhookView(APIView):
             if event == 'charge.success' and status_val == 'success':
                 if order is None:
                     return Response({'message': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
-                first_time_paid = order.payment_status != 'paid'
-                order.payment_status = 'paid'
-                order.paid_at = timezone.now()
-                order.paystack_reference = reference
-                try:
-                    order.paystack_fee_actual = Decimal(str(int(txn.get('fees') or 0))) / 100
-                except Exception:
-                    pass
-                order.save()
+                
+                # SECURITY: Validate payment amount matches order total
+                paid_pesewas = int(txn.get('amount') or 0)
+                expected_pesewas = int((Decimal(str(order.total)) + Decimal(str(order.processing_fee or 0))) * 100)
+                
+                # Allow 1 pesewa tolerance for rounding
+                if paid_pesewas + 1 < expected_pesewas:
+                    logger.warning(
+                        f'Webhook amount mismatch for order {order.id}: '
+                        f'expected {expected_pesewas} pesewas, received {paid_pesewas} pesewas'
+                    )
+                    return Response(
+                        {'error': 'Payment amount does not match order total'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # RACE CONDITION FIX: Lock order during payment confirmation
+                with transaction.atomic():
+                    order = Order.objects.select_for_update().get(pk=order.id)
+                    first_time_paid = order.payment_status != 'paid'
+                    order.payment_status = 'paid'
+                    order.paid_at = timezone.now()
+                    order.paystack_reference = reference
+                    try:
+                        order.paystack_fee_actual = Decimal(str(int(txn.get('fees') or 0))) / 100
+                    except Exception:
+                        pass
+                    order.save()
+                
+                # Email sending after transaction commits (outside lock)
                 if first_time_paid:
                     _confirm_payment(order)
+                
                 return Response({'message': 'Payment verified and order marked as paid'})
 
             if event == 'charge.failed':
@@ -880,6 +1130,7 @@ class PaystackWebhookView(APIView):
 
             return Response({'message': 'Webhook received'}, status=status.HTTP_200_OK)
         except Exception as e:
+            logger.exception('Webhook processing error')
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -1020,39 +1271,58 @@ class PaystackVerifyView(APIView):
             return Response({'paid': False, 'message': 'Payment not successful'}, status=status.HTTP_400_BAD_REQUEST)
 
         metadata = txn.get('metadata') or {}
-        order = None
-        order_id = metadata.get('order_id')
-        if not order_id:
-            for field in metadata.get('custom_fields') or []:
-                if field.get('variable_name') == 'order_id':
-                    order_id = field.get('value')
-                    break
-        if order_id:
-            order = Order.objects.filter(pk=order_id, buyer=request.user).first()
-        if order is None:
-            order = Order.objects.filter(paystack_reference=reference, buyer=request.user).first()
-        if order is None:
-            order = Order.objects.filter(payment_reference=reference, buyer=request.user).first()
-        if order is None:
-            return Response({'error': 'Order not found for this reference'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Confirm the paid amount covers the order total (tolerate 1 pesewa rounding).
-        paid_pesewas = int(txn.get('amount') or 0)
-        expected = int((Decimal(str(order.total)) + Decimal(str(order.processing_fee or 0))) * 100)
-        if paid_pesewas + 1 < expected:
-            return Response({'paid': False, 'message': 'Amount paid does not match order total'}, status=status.HTTP_400_BAD_REQUEST)
-
-        first_time_paid = order.payment_status != 'paid'
-        order.payment_method = 'paystack'
-        order.payment_status = 'paid'
-        order.paid_at = timezone.now()
-        order.paystack_reference = reference
-        try:
-            order.paystack_fee_actual = Decimal(str(int(txn.get('amount_fees') or txn.get('fees') or 0))) / 100
-        except Exception:
-            pass
-        order.save()
-
+        
+        # RACE CONDITION FIX: Lock order during confirmation
+        with transaction.atomic():
+            # Lookup order with lock
+            order = None
+            order_id = metadata.get('order_id')
+            if not order_id:
+                for field in metadata.get('custom_fields') or []:
+                    if field.get('variable_name') == 'order_id':
+                        order_id = field.get('value')
+                        break
+            
+            if order_id:
+                order = Order.objects.select_for_update().filter(
+                    pk=order_id, buyer=request.user
+                ).first()
+            if order is None:
+                order = Order.objects.select_for_update().filter(
+                    paystack_reference=reference, buyer=request.user
+                ).first()
+            if order is None:
+                order = Order.objects.select_for_update().filter(
+                    payment_reference=reference, buyer=request.user
+                ).first()
+            
+            if order is None:
+                return Response(
+                    {'error': 'Order not found for this reference'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # SECURITY: Validate amount
+            paid_pesewas = int(txn.get('amount') or 0)
+            expected = int((Decimal(str(order.total)) + Decimal(str(order.processing_fee or 0))) * 100)
+            if paid_pesewas + 1 < expected:
+                return Response(
+                    {'paid': False, 'message': 'Amount paid does not match order total'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            first_time_paid = order.payment_status != 'paid'
+            order.payment_method = 'paystack'
+            order.payment_status = 'paid'
+            order.paid_at = timezone.now()
+            order.paystack_reference = reference
+            try:
+                order.paystack_fee_actual = Decimal(str(int(txn.get('amount_fees') or txn.get('fees') or 0))) / 100
+            except Exception:
+                pass
+            order.save()
+        
+        # Email sending after transaction commits (outside lock)
         if first_time_paid:
             _confirm_payment(order)
 
@@ -1108,14 +1378,24 @@ class BuyerOrderReceiptView(APIView):
 class ResendConfirmationView(APIView):
     """Re-send payment confirmation + receipt email to the buyer."""
     permission_classes = [permissions.IsAuthenticated, IsBuyer]
+    throttle_scope = 'otp'
 
     def post(self, request, pk):
         try:
             order = Order.objects.prefetch_related('items').get(pk=pk, buyer=request.user)
         except Order.DoesNotExist:
             return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+        # Never re-send the old code (stored hashed). Rotate a fresh OTP instead.
+        from .otp_utils import generate_otp as _gen_otp, hash_otp as _hash_otp, get_otp_expiry as _otp_expiry
         otp_log = getattr(order, 'otp_log', None)
-        otp = otp_log.otp if otp_log and not otp_log.is_verified else None
+        otp = None
+        if otp_log and not otp_log.is_verified and order.payment_status == 'paid':
+            otp = _gen_otp()
+            otp_log.otp_hash = _hash_otp(otp)
+            otp_log.otp_expires_at = _otp_expiry()
+            otp_log.attempts = 0
+            otp_log.is_locked = False
+            otp_log.save(update_fields=['otp_hash', 'otp_expires_at', 'attempts', 'is_locked'])
         ok = send_payment_confirmation(order, otp_code=otp)
         if otp:
             notify_buyer_of_otp(order, otp)

@@ -170,10 +170,11 @@ def send_seller_sale_alert(order, connection=None):
         items = entry['items']
         s = nets.get(seller.id)
         if s is not None:
+            # Use settlement record (most accurate)
             net = float(s.net_share)
         else:
-            gross = sum(float(i.unit_price) * i.quantity for i in items)
-            net = round(gross * 0.90, 2)
+            # Fallback: calculate from seller_net_price (correct for buyer-pays model)
+            net = sum(float(i.seller_net_price) * i.quantity for i in items)
         subject = f"Jay's Store — New sale! Order #{order.id}"
         lines = '\n'.join(
             f'- {i.product_name} ({i.size} / {i.color}) x{i.quantity}'
@@ -197,37 +198,95 @@ def send_seller_sale_alert(order, connection=None):
 
 def send_admin_payment_alert(order, connection=None):
     """Notify the store owner of THEIR money: commission + delivery fee.
-
-    Nobody emailed the platform before — the admin never knew they'd been
-    paid. Sent on every confirmed payment (verify endpoint + webhook).
+    
+    Shows complete breakdown of the payment split so admin knows exactly
+    what they received from Paystack.
     """
+    from decimal import Decimal
+    
     admin_email = (getattr(settings, 'ADMIN_NOTIFICATION_EMAIL', '') or '').strip()
     if not admin_email:
         return False
+    
+    # Calculate actual commission from order (use stored value or calculate from items)
+    if hasattr(order, 'commission_collected') and order.commission_collected > 0:
+        commission_collected = order.commission_collected
+    else:
+        # Fallback: calculate from order items
+        commission_collected = sum(
+            (item.unit_price - item.seller_net_price) * item.quantity 
+            for item in order.items.all()
+        )
+    
     settlements = list(order.settlements.select_related('seller').all())
     lines = []
-    sellers_total = 0.0
+    sellers_total = Decimal('0.00')
+    
     for s in settlements:
         name = (s.seller.store_name if s.seller and s.seller.store_name
                 else (s.seller.email if s.seller else 'platform item'))
-        lines.append(f'- {name}: net GHS {float(s.net_share):.2f} '
-                     f'(gross {float(s.gross_share):.2f}, commission {float(s.commission):.2f}, '
-                     f'fee slice {float(s.fee_slice):.2f}) [{s.status}]')
-        sellers_total += float(s.net_share)
+        lines.append(
+            f'  - {name}: GHS {float(s.net_share):.2f} '
+            f'(subaccount: {s.subaccount_code[:20]}...) [{s.status}]'
+        )
+        sellers_total += s.net_share
+    
     fee = float(getattr(order, 'processing_fee', 0) or 0)
     charged = float(order.total) + fee
-    # Platform keeps: everything Paystack didn't send to sellers or take as fees.
-    # (Paystack fee ≈ the buyer-paid processing fee, so this ≈ commission + delivery.)
-    subject = f"Jay's Store — You were paid! Order #{order.id}"
+    
+    # Calculate what platform receives (commission + delivery fee)
+    # In bearer_type='account', platform keeps full commission + delivery
+    platform_receives = float(commission_collected) + float(order.delivery_fee)
+    
+    subject = f"💰 Jay's Store — Payment Received! Order #{order.id}"
     body = (
-        f"Payment confirmed for Order #{order.id}.\n\n"
-        f"Buyer charged: GHS {charged:.2f} (incl. GHS {fee:.2f} processing fee)\n"
-        f"To sellers: GHS {sellers_total:.2f}\n\n"
-        f"Seller breakdown:\n" + ('\n'.join(lines) if lines else '(no vendor items)') + '\n\n'
-        f"Buyer: {order.buyer.full_name if order.buyer else ''} — {order.delivery_phone}\n"
-        f"Deliver to: {order.delivery_address}\n"
-        f"Paystack ref: {order.paystack_reference}\n"
-        f"Split: {order.paystack_split_code}\n"
+        f"Payment confirmed for Order #{order.id}\n\n"
+        f"{'='*60}\n"
+        f"MONEY BREAKDOWN\n"
+        f"{'='*60}\n\n"
+        
+        f"Buyer charged total: GHS {charged:.2f}\n"
+        f"  • Items + delivery: GHS {float(order.total):.2f}\n"
+        f"  • Processing fee: GHS {fee:.2f}\n\n"
+        
+        f"Payment split:\n"
+        f"  • To sellers: GHS {float(sellers_total):.2f}\n"
+        f"  • Commission (yours): GHS {float(commission_collected):.2f}\n"
+        f"  • Delivery fee (yours): GHS {float(order.delivery_fee):.2f}\n"
+        f"  • Processing fee (Paystack): GHS {fee:.2f}\n\n"
+        
+        f"{'='*60}\n"
+        f"💵 YOU RECEIVE: GHS {platform_receives:.2f}\n"
+        f"{'='*60}\n"
+        f"   (Commission + Delivery fee)\n\n"
+        
+        f"Paystack will deposit this to your main account within 24 hours.\n"
+        f"Check settlements: https://dashboard.paystack.com/#/settlements\n\n"
+        
+        f"{'-'*60}\n"
+        f"Verification Instructions\n"
+        f"{'-'*60}\n"
+        f"Within 24 hours, check your Paystack settlements at the link above.\n"
+        f"Expected deposit to main account: GHS {platform_receives:.2f}\n"
+        f"If amount differs, contact support with split code below.\n\n"
+        f"Note: Paystack automatically sends the platform share (commission + delivery)\n"
+        f"to your main account as the 'remainder' after paying seller subaccounts.\n\n"
+        
+        f"{'-'*60}\n"
+        f"Seller Settlement Details\n"
+        f"{'-'*60}\n"
+        + ('\n'.join(lines) if lines else '  (No vendor items - all platform products)\n') + '\n\n'
+        
+        f"{'-'*60}\n"
+        f"Order Details\n"
+        f"{'-'*60}\n"
+        f"Buyer: {order.buyer.full_name if order.buyer else 'N/A'}\n"
+        f"Phone: {order.delivery_phone}\n"
+        f"Address: {order.delivery_address}\n"
+        + (f"Landmark: {order.delivery_landmark}\n" if getattr(order, 'delivery_landmark', '') else '')
+        + (f"Note: {order.delivery_note}\n" if order.delivery_note else '')
+        + f"\nPaystack reference: {order.paystack_reference}\n"
+        f"Split code: {order.paystack_split_code or 'N/A (all platform items)'}\n"
     )
     return _send(admin_email, subject, body, kind='admin_alert', order=order,
                 connection=connection)

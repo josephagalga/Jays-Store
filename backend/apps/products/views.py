@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils.text import slugify
-from .models import Category, SubCategory, Product, ProductVariant, ProductImage
+from .models import Category, SubCategory, Product, ProductVariant, ProductImage, Wishlist
 from .serializers import (
     CategorySerializer,
     SubCategorySerializer,
@@ -13,9 +13,10 @@ from .serializers import (
     ProductCreateUpdateSerializer,
     ProductVariantCreateSerializer,
     ProductImageUploadSerializer,
+    WishlistSerializer,
 )
 from .filters import ProductFilter
-from apps.core.permissions import IsAdmin, IsAdminOrSeller, IsProductOwner
+from apps.core.permissions import IsAdmin, IsAdminOrSeller, IsProductOwner, IsBuyer
 
 
 # ============================================================
@@ -129,11 +130,14 @@ class AdminProductCreateView(generics.CreateAPIView):
             counter += 1
 
         if user.role == 'seller':
-            serializer.save(
+            product = serializer.save(
                 created_by=user,
                 seller=user,
                 slug=slug
             )
+            # Keep the vendor's product counter in sync for the directory + dashboard
+            user.seller_total_products = Product.objects.filter(seller=user, is_active=True).count()
+            user.save(update_fields=['seller_total_products'])
         else:
             serializer.save(
                 created_by=user,
@@ -198,3 +202,42 @@ class AdminInventoryView(APIView):
             'low_stock_variants': low_stock,
             'top_selling_products': list(top_selling),
         })
+
+
+# ============================================================
+# WISHLIST VIEWS
+# ============================================================
+
+class WishlistListView(generics.ListAPIView):
+    """Returns the buyer's wishlisted items."""
+    serializer_class = WishlistSerializer
+    permission_classes = [permissions.IsAuthenticated, IsBuyer]
+
+    def get_queryset(self):
+        return Wishlist.objects.filter(
+            buyer=self.request.user
+        ).select_related('product', 'product__category', 'product__subcategory').prefetch_related('product__images', 'product__variants')
+
+
+class WishlistToggleView(APIView):
+    """Toggles a product in/out of the buyer's wishlist."""
+    permission_classes = [permissions.IsAuthenticated, IsBuyer]
+
+    def post(self, request, product_id):
+        product = generics.get_object_or_404(Product, pk=product_id, is_active=True)
+        item = Wishlist.objects.filter(buyer=request.user, product=product).first()
+        if item:
+            item.delete()
+            return Response({'wishlisted': False, 'product_id': product.id, 'message': 'Removed from wishlist'})
+        else:
+            Wishlist.objects.create(buyer=request.user, product=product)
+            return Response({'wishlisted': True, 'product_id': product.id, 'message': 'Added to wishlist'})
+
+
+class WishlistIdsView(APIView):
+    """Returns an array of product IDs currently in buyer's wishlist."""
+    permission_classes = [permissions.IsAuthenticated, IsBuyer]
+
+    def get(self, request):
+        ids = list(Wishlist.objects.filter(buyer=request.user).values_list('product_id', flat=True))
+        return Response({'ids': ids})

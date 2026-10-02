@@ -57,7 +57,7 @@ export default function AboutPage() {
       {/* Full-width banner */}
       <section className="bg-[var(--ink)] py-20 mb-20">
         <div className="max-w-7xl mx-auto px-6 lg:px-10">
-          <div className="grid md:grid-cols-3 gap-12 text-center">
+          <div className="grid md:grid-cols-3 gap-8 lg:gap-12 text-center">
             {[
               ['200+', 'Products Listed'],
               ['50+', 'Local Sellers'],
@@ -78,7 +78,7 @@ export default function AboutPage() {
           <p className="text-xs font-medium text-[var(--accent)] uppercase tracking-widest mb-3">
             What We Stand For
           </p>
-          <h2 className="serif text-4xl font-medium text-[var(--ink)]">Our Values</h2>
+          <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">Our Values</h2>
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {values.map(({ icon, title, desc }) => (
@@ -100,12 +100,12 @@ export default function AboutPage() {
 
       {/* Mission */}
       <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-20">
-        <div className="bg-[var(--off)] rounded-3xl p-10 lg:p-16 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="bg-[var(--off)] rounded-3xl p-10 lg:p-16 grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
           <div>
             <p className="text-xs font-medium text-[var(--accent)] uppercase tracking-widest mb-4">
               Our Mission
             </p>
-            <h2 className="serif text-4xl font-medium text-[var(--ink)] leading-tight mb-5">
+            <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] leading-tight mb-5">
               Building Ghana's<br />
               <em className="italic font-normal text-[var(--muted)]">fashion future.</em>
             </h2>
@@ -145,7 +145,7 @@ export default function AboutPage() {
           <p className="text-xs font-medium text-[var(--accent)] uppercase tracking-widest mb-3">
             The People
           </p>
-          <h2 className="serif text-4xl font-medium text-[var(--ink)]">Our Team</h2>
+          <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">Our Team</h2>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
           {team.map(({ name, role, initial }) => (
@@ -164,7 +164,7 @@ export default function AboutPage() {
       {/* CTA */}
       <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-20">
         <div className="bg-[var(--ink)] rounded-3xl p-10 lg:p-16 text-center">
-          <h2 className="serif text-4xl font-medium text-white mb-4">
+          <h2 className="serif text-3xl md:text-4xl font-medium text-white mb-4">
             Ready to join us?
           </h2>
           <p className="text-sm text-white/40 font-light mb-8 max-w-md mx-auto">

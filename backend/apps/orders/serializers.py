@@ -1,7 +1,19 @@
 from rest_framework import serializers
 from decimal import Decimal
-from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, PLATFORM_COMMISSION_RATE
+from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, Settlement, EmailLog, PLATFORM_COMMISSION_RATE
 from apps.products.serializers import ProductListSerializer
+
+
+ACTIVE_OTP_STATUSES = {'pending', 'accepted', 'picked_up'}
+
+
+def get_buyer_otp(order, request):
+    """The buyer's delivery OTP — NEVER returned to client for security.
+    
+    OTP is sent only via email. This function returns None to ensure
+    OTP is not exposed through API responses.
+    """
+    return None
 
 
 # ============================================================
@@ -136,67 +148,95 @@ class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     is_active = serializers.ReadOnlyField()
     buyer_name = serializers.CharField(source='buyer.full_name', read_only=True)
+    buyer_email = serializers.CharField(source='buyer.email', read_only=True)
     driver_name = serializers.CharField(source='driver.full_name', read_only=True)
     driver_phone = serializers.CharField(source='driver.phone_number', read_only=True)
     coupon_code = serializers.CharField(source='coupon.code', read_only=True)
+    paystack_reference = serializers.CharField(read_only=True)
+    delivery_otp = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
-            'id', 'status', 'buyer_name', 'driver_name', 'driver_phone',
-            'delivery_address', 'delivery_phone', 'delivery_note',
-            'subtotal', 'discount_amount', 'delivery_fee', 'total', 'driver_earnings',
-            'coupon_code', 'payment_method', 'payment_status', 'payment_reference', 'paid_at',
-            'delivery_pin', 'pin_verified',
+            'id', 'status', 'buyer_name', 'buyer_email', 'driver_name', 'driver_phone',
+            'delivery_address', 'delivery_phone', 'delivery_note', 'delivery_landmark',
+            'subtotal', 'discount_amount', 'delivery_fee', 'processing_fee', 'total', 'driver_earnings',
+            'coupon_code', 'payment_method', 'payment_status', 'payment_reference',
+            'paystack_reference', 'paid_at',
+            'delivery_pin', 'pin_verified', 'delivery_otp',
             'items', 'is_active',
             'created_at', 'accepted_at', 'delivered_at',
         ]
 
+    def get_delivery_otp(self, obj):
+        return get_buyer_otp(obj, self.context.get('request'))
+
 
 class OrderListSerializer(serializers.ModelSerializer):
     """
-    Lightweight order serializer for lists — no items included.
+    Order list for buyers — includes items so the UI can show line items
+    and a Pay Now button for unpaid Paystack orders.
     """
     buyer_name = serializers.CharField(source='buyer.full_name', read_only=True)
     driver_name = serializers.CharField(source='driver.full_name', read_only=True)
     item_count = serializers.SerializerMethodField()
+    items = OrderItemSerializer(many=True, read_only=True)
+    delivery_otp = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'status', 'buyer_name', 'driver_name',
-            'total', 'payment_status', 'payment_method', 'item_count', 'created_at',
+            'total', 'processing_fee', 'payment_status', 'payment_method', 'paystack_reference',
+            'delivery_otp', 'item_count', 'created_at', 'items',
         ]
 
     def get_item_count(self, obj):
         return obj.items.count()
 
+    def get_delivery_otp(self, obj):
+        return get_buyer_otp(obj, self.context.get('request'))
+
 
 class PlaceOrderSerializer(serializers.Serializer):
     """
-    Called when buyer checks out.
-    Takes delivery details and converts their cart into an order.
+    Called when buyer checks out. Paystack only: creates the order UNPAID,
+    then the view creates the Paystack split + transaction for the single
+    buyer charge. Sellers settle instantly via their subaccounts.
     """
     delivery_address = serializers.CharField()
     delivery_phone = serializers.CharField()
     delivery_note = serializers.CharField(required=False, allow_blank=True)
-    delivery_fee = serializers.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    delivery_landmark = serializers.CharField(required=False, allow_blank=True, max_length=255)
     payment_method = serializers.ChoiceField(
-        choices=['momo', 'card', 'paystack', 'cash_on_delivery'],
+        choices=['paystack'],
         default='paystack'
     )
-    payment_reference = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate(self, data):
         buyer = self.context['request'].user
-        # Make sure the buyer has a cart with items
         try:
             cart = Cart.objects.get(buyer=buyer)
             if not cart.cart_items.exists():
                 raise serializers.ValidationError('Your cart is empty')
         except Cart.DoesNotExist:
             raise serializers.ValidationError('Your cart is empty')
+        # No coupon processing — removed from checkout
+        # Every VENDOR item in the cart must have an active Paystack subaccount,
+        # otherwise their share cannot settle instantly. Items with no seller
+        # (platform-listed) settle to the platform and need no subaccount.
+        missing = set()
+        for ci in cart.cart_items.select_related('product', 'product__seller').all():
+            seller = ci.product.seller or ci.product.created_by
+            if seller and seller.role == 'seller' and (
+                    not seller.paystack_subaccount_code or seller.subaccount_status != 'active'):
+                missing.add(seller.store_name or 'A vendor')
+        if missing:
+            names = ', '.join(sorted(missing))
+            raise serializers.ValidationError(
+                f'Checkout unavailable: {names} has not connected a payout account yet. '
+                'Remove their items or try again later.'
+            )
         data['cart'] = cart
         return data
 
@@ -217,6 +257,7 @@ class SellerOrderListSerializer(serializers.ModelSerializer):
             'id', 'status', 'buyer_name', 'buyer_phone',
             'driver_name', 'total', 'payment_status',
             'payment_method', 'item_count', 'created_at',
+            'delivery_address', 'delivery_phone', 'delivery_note', 'delivery_landmark',
             'delivery_fee', 'delivery_pin', 'pin_verified',
         ]
         read_only_fields = ['id', 'created_at']
@@ -279,9 +320,33 @@ class DriverAcceptOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'id', 'status', 'items',
-            'delivery_address', 'buyer_phone', 'delivery_note',
+            'delivery_address', 'buyer_phone', 'delivery_note', 'delivery_landmark',
             'total', 'driver_earnings', 'accepted_at',
         ]
+
+
+class DriverHistorySerializer(serializers.ModelSerializer):
+    """Driver's own deliveries — full drop-off details + OTP state."""
+    items = OrderItemSerializer(many=True, read_only=True)
+    item_count = serializers.SerializerMethodField()
+    buyer_phone = serializers.CharField(source='delivery_phone', read_only=True)
+    otp_verified = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'status', 'items', 'item_count',
+            'delivery_address', 'buyer_phone', 'delivery_note', 'delivery_landmark',
+            'total', 'driver_earnings', 'payment_method', 'payment_status',
+            'otp_verified', 'created_at', 'accepted_at', 'delivered_at',
+        ]
+
+    def get_item_count(self, obj):
+        return obj.items.count()
+
+    def get_otp_verified(self, obj):
+        otp_log = getattr(obj, 'otp_log', None)
+        return bool(otp_log and otp_log.is_verified)
 
 
 class UpdateOrderStatusSerializer(serializers.ModelSerializer):
@@ -381,3 +446,26 @@ class SellerWalletSerializer(serializers.Serializer):
     paid_out = serializers.DecimalField(max_digits=12, decimal_places=2)
     pending_payouts = serializers.DecimalField(max_digits=12, decimal_places=2)
     available_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class SettlementSerializer(serializers.ModelSerializer):
+    """Local record of an instant Paystack settlement to a seller."""
+    seller_name = serializers.CharField(source='seller.store_name', read_only=True)
+    seller_email = serializers.CharField(source='seller.email', read_only=True)
+
+    class Meta:
+        model = Settlement
+        fields = [
+            'id', 'order', 'seller', 'seller_name', 'seller_email',
+            'subaccount_code', 'gross_share', 'commission', 'fee_slice',
+            'net_share', 'status', 'paystack_reference',
+            'created_at', 'settled_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'settled_at']
+
+
+class EmailLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailLog
+        fields = ['id', 'to_email', 'subject', 'kind', 'order', 'ok', 'error', 'created_at']
+        read_only_fields = ['id', 'created_at']

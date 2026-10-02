@@ -1,13 +1,16 @@
 import { Link } from 'react-router-dom'
 import { ShoppingBag, Heart } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
+import SafeImage from './SafeImage'
 import useCartStore from '../../store/cartStore'
 import useAuthStore from '../../store/authStore'
+import useWishlistStore from '../../store/wishlistStore'
 
 export default function ProductCard({ product, index = 0 }) {
   const { addToCart, isLoading } = useCartStore()
   const { user } = useAuthStore()
-  const [wished, setWished] = useState(false)
+  const { toggleWishlist, isWishlisted } = useWishlistStore()
+  const wished = isWishlisted(product.id)
   const [visible, setVisible] = useState(false)
   const ref = useRef()
 
@@ -37,7 +40,7 @@ export default function ProductCard({ product, index = 0 }) {
         {/* Image */}
         <div className="relative zoom-wrap bg-[var(--off)] rounded-xl overflow-hidden aspect-[3/4]">
           {product.primary_image ? (
-            <img src={product.primary_image} alt={product.name}
+            <SafeImage src={product.primary_image} alt={product.name}
               className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -53,7 +56,7 @@ export default function ProductCard({ product, index = 0 }) {
           )}
 
           {/* Wishlist */}
-          <button onClick={e => { e.preventDefault(); setWished(!wished) }}
+          <button onClick={e => { e.preventDefault(); e.stopPropagation(); toggleWishlist(product) }}
             className="absolute top-3 right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-110">
             <Heart size={13} className={wished ? 'fill-rose-500 text-rose-500' : 'text-[var(--muted)]'} />
           </button>

@@ -24,13 +24,12 @@ const schema = z.object({
 export default function SellerAddProductPage() {
   const navigate = useNavigate()
   const [images, setImages] = useState([])
-  const [variants, setVariants] = useState([{ size: '', color: '', stock: '' }])
+  const [variants, setVariants] = useState([{ size: '', color: '', color_hex: '', stock: '', image: null }])
 
   const { data: categories } = useQuery({
   queryKey: ['categories-list'],  // different key to avoid cache conflict
   queryFn: async () => {
     const res = await api.get('/products/categories/')
-    console.log('categories raw:', res.data)  // temporary debug
     return Array.isArray(res.data) ? res.data : res.data.results || []
   },
 })
@@ -39,7 +38,7 @@ export default function SellerAddProductPage() {
     resolver: zodResolver(schema)
   })
 
-  const addVariant = () => setVariants([...variants, { size: '', color: '', stock: '' }])
+  const addVariant = () => setVariants([...variants, { size: '', color: '', color_hex: '', stock: '', image: null }])
   const removeVariant = (i) => setVariants(variants.filter((_, idx) => idx !== i))
   const updateVariant = (i, key, value) => {
     const next = [...variants]
@@ -68,9 +67,22 @@ export default function SellerAddProductPage() {
 
       for (const v of variants) {
         if (v.size && v.color) {
-          await api.post(`/products/manage/${productId}/variants/`, {
-            size: v.size, color: v.color, stock: parseInt(v.stock) || 0,
-          })
+          if (v.image) {
+            // Optional variant image — send as multipart so the colourway photo is stored
+            const fd = new FormData()
+            fd.append('size', v.size)
+            fd.append('color', v.color)
+            if (v.color_hex) fd.append('color_hex', v.color_hex)
+            fd.append('stock', parseInt(v.stock) || 0)
+            fd.append('image', v.image)
+            await api.post(`/products/manage/${productId}/variants/`, fd, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            })
+          } else {
+            await api.post(`/products/manage/${productId}/variants/`, {
+              size: v.size, color: v.color, color_hex: v.color_hex || '', stock: parseInt(v.stock) || 0,
+            })
+          }
         }
       }
 
@@ -87,7 +99,6 @@ export default function SellerAddProductPage() {
       toast.success('Product added successfully!')
       navigate('/seller/products')
     }  catch (err) {
-        console.log('Full error:', err.response?.data)
         const errData = err.response?.data
         const first = errData && Object.values(errData)[0]
         const msg = Array.isArray(first) ? first[0] : (err.response?.data?.detail || 'Failed to add product')
@@ -97,7 +108,7 @@ export default function SellerAddProductPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
-      <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-10">Add New Product</h1>
+      <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">Add New Product</h1>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         {/* Basic info */}
@@ -185,8 +196,11 @@ export default function SellerAddProductPage() {
             </button>
           </div>
           <div className="space-y-3">
+            <p className="text-xs text-[var(--muted)]">
+              One product, many colours & sizes — add a row per combination. Variant image is <strong>optional</strong> (e.g. a photo of the Red colourway).
+            </p>
             {variants.map((v, i) => (
-              <div key={i} className="grid grid-cols-3 gap-3 items-end">
+              <div key={i} className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end bg-[var(--off)] rounded-xl p-3">
                 <div className="flex flex-col gap-1.5">
                   {i === 0 && <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">Size</label>}
                   <input value={v.size} onChange={e => updateVariant(i, 'size', e.target.value)}
@@ -199,13 +213,37 @@ export default function SellerAddProductPage() {
                     placeholder="e.g. Black"
                     className="w-full px-4 py-3 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors" />
                 </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    {i === 0 && <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">Stock</label>}
-                    <input type="number" value={v.stock} onChange={e => updateVariant(i, 'stock', e.target.value)}
-                      placeholder="0"
-                      className="w-full px-4 py-3 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors" />
+                <div className="flex flex-col gap-1.5">
+                  {i === 0 && <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">Swatch</label>}
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={v.color_hex || '#000000'}
+                      onChange={e => updateVariant(i, 'color_hex', e.target.value)}
+                      className="w-11 h-11 rounded-lg border border-[var(--border)] bg-white cursor-pointer flex-shrink-0" title="Pick colour swatch" />
+                    <input value={v.color_hex || ''} onChange={e => updateVariant(i, 'color_hex', e.target.value)}
+                      placeholder="#000"
+                      className="w-full px-3 py-3 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors" />
                   </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {i === 0 && <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">Stock</label>}
+                  <input type="number" value={v.stock} onChange={e => updateVariant(i, 'stock', e.target.value)}
+                    placeholder="0"
+                    className="w-full px-4 py-3 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {i === 0 && <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">Image <span className="font-normal normal-case">(optional)</span></label>}
+                  <label className="flex items-center justify-center gap-1.5 px-3 py-3 text-xs font-medium rounded-xl border border-dashed border-[var(--border)] bg-white cursor-pointer hover:border-[var(--ink)] transition-colors text-[var(--muted)]">
+                    <Upload size={13} />
+                    {v.image ? v.image.name.slice(0, 12) + '…' : 'Upload'}
+                    <input type="file" accept="image/*" className="hidden"
+                      onChange={e => updateVariant(i, 'image', e.target.files?.[0] || null)} />
+                  </label>
+                  {v.image && (
+                    <button type="button" onClick={() => updateVariant(i, 'image', null)}
+                      className="text-[10px] text-rose-500 hover:underline">remove</button>
+                  )}
+                </div>
+                <div className="flex items-end justify-end">
                   {variants.length > 1 && (
                     <button type="button" onClick={() => removeVariant(i)}
                       className="mb-0.5 p-2.5 text-[var(--muted)] hover:text-rose-500 transition-colors">

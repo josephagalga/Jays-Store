@@ -69,11 +69,24 @@ api.interceptors.response.use(
 export default api
 
 // ── Order / payment helpers ─────────────────────────────────
+// Backend OTP route is /orders/<id>/verify-otp/ (keep legacy verify-pin alias).
+export const verifyDeliveryOtp = (orderId, code) =>
+  api.post(`/orders/${orderId}/verify-otp/`, { code })
+
 export const verifyDeliveryPin = (orderId, code) =>
-  api.post(`/orders/${orderId}/verify-pin/`, { code })
+  api.post(`/orders/${orderId}/verify-otp/`, { code })
 
 export const placeOrder = (payload) =>
   api.post('/orders/place/', payload)
 
+export const fetchOrderReceipt = (orderId) =>
+  api.get(`/orders/${orderId}/receipt/`)
+
+export const fetchVendors = (search = '') =>
+  api.get('/accounts/stores/', { params: search ? { search } : {} })
+
 api.placeOrder = placeOrder
 api.verifyDeliveryPin = verifyDeliveryPin
+api.verifyDeliveryOtp = verifyDeliveryOtp
+api.fetchOrderReceipt = fetchOrderReceipt
+api.fetchVendors = fetchVendors

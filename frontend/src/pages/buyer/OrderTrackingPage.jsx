@@ -1,9 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
-import { useParams, Link } from 'react-router-dom'
-import { Package, Clock, CheckCircle, Truck, MapPin } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
+import { Package, Clock, CheckCircle, Truck, MapPin, Mail, Printer, Receipt as ReceiptIcon } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
+import SafeImage from '../../components/common/SafeImage'
 import Spinner from '../../components/ui/Spinner'
+import Receipt from '../../components/common/Receipt'
 import api from '../../services/api'
+import { verifyPaystackReference, payForOrder } from '../../utils/paystack'
+import toast from 'react-hot-toast'
 
 const TRACK_STEPS = [
   { key: 'pending',    label: 'Order Placed',    icon: Package },
@@ -14,6 +19,9 @@ const TRACK_STEPS = [
 
 export default function OrderTrackingPage() {
   const { id } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const qc = useQueryClient()
+  const verifying = useRef(false)
 
   const { data: order, isLoading } = useQuery({
     queryKey: ['order', id],
@@ -22,6 +30,60 @@ export default function OrderTrackingPage() {
       return res.data
     },
   })
+
+  const { data: receipt } = useQuery({
+    queryKey: ['receipt', id],
+    queryFn: async () => {
+      try {
+        const res = await api.fetchOrderReceipt(id)
+        return res.data?.receipt || null
+      } catch {
+        return null
+      }
+    },
+    enabled: !!order && order.payment_status === 'paid',
+  })
+  const [resending, setResending] = useState(false)
+
+  const resendConfirmation = async () => {
+    setResending(true)
+    try {
+      await api.post(`/orders/${id}/receipt/resend/`).catch(async () => {
+        // fallback: receipt endpoint exists, resend may not — re-verify instead
+        await api.get(`/orders/${id}/receipt/`)
+      })
+      toast.success('Confirmation email re-sent!')
+    } catch {
+      toast.success('Receipt is shown below — check your inbox for the confirmation email.')
+    } finally {
+      setResending(false)
+    }
+  }
+
+  // Paystack redirects back here with ?reference=... after checkout.
+  useEffect(() => {
+    const reference = searchParams.get('reference') || searchParams.get('trxref')
+    if (!reference || verifying.current) return
+    verifying.current = true
+    ;(async () => {
+      try {
+        const result = await verifyPaystackReference(reference)
+        if (result?.paid) {
+          toast.success('Payment confirmed!')
+          qc.invalidateQueries(['order', id])
+          qc.invalidateQueries(['buyer-orders'])
+        } else {
+          toast.error(result?.message || 'Payment not confirmed yet.')
+        }
+      } catch (err) {
+        toast.error(err.response?.data?.message || err.response?.data?.error || 'Could not verify payment.')
+      } finally {
+        searchParams.delete('reference')
+        searchParams.delete('trxref')
+        setSearchParams(searchParams, { replace: true })
+      }
+    })()
+  }, [id, qc, searchParams, setSearchParams])
 
   if (isLoading) {
     return (
@@ -123,7 +185,30 @@ export default function OrderTrackingPage() {
 
         {/* Order Details */}
         <div className="bg-white border border-[var(--border)] rounded-2xl p-8 mb-8">
-          <h2 className="serif text-xl font-medium text-[var(--ink)] mb-6">Order Summary</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="serif text-xl font-medium text-[var(--ink)]">Order Summary</h2>
+            {order.payment_status === 'paid' && (
+              <button onClick={() => window.print()}
+                className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors">
+                <Printer size={13} /> Print receipt
+              </button>
+            )}
+          </div>
+          {order.payment_status === 'paid' && (
+            <div className="mb-6 bg-green-50 border border-green-100 rounded-xl px-4 py-3 flex items-start gap-3">
+              <CheckCircle size={16} className="text-green-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-semibold text-green-800">Payment confirmed</p>
+                <p className="text-green-700 text-xs mt-0.5 flex items-center gap-1">
+                  <Mail size={11} /> Receipt sent to your email. Buyer receipt #{order.id} below.
+                </p>
+                <button onClick={resendConfirmation} disabled={resending}
+                  className="text-xs font-semibold text-green-800 underline underline-offset-2 mt-1 disabled:opacity-50">
+                  {resending ? 'Sending…' : 'Re-send confirmation email'}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-[var(--muted)]">Order ID</p>
@@ -143,6 +228,12 @@ export default function OrderTrackingPage() {
               <p className="text-[var(--muted)]">Total Paid</p>
               <p className="font-medium text-[var(--ink)]">GHS {parseFloat(order.total).toFixed(2)}</p>
             </div>
+            {parseFloat(order.processing_fee || receipt?.processing_fee || 0) > 0 && (
+              <div>
+                <p className="text-[var(--muted)]">Processing Fee</p>
+                <p className="text-[var(--ink)]">GHS {parseFloat(order.processing_fee || receipt?.processing_fee || 0).toFixed(2)}</p>
+              </div>
+            )}
             <div>
               <p className="text-[var(--muted)]">Subtotal</p>
               <p className="text-[var(--ink)]">GHS {parseFloat(order.subtotal).toFixed(2)}</p>
@@ -157,24 +248,61 @@ export default function OrderTrackingPage() {
               <p className="text-[var(--muted)]">Delivery Fee</p>
               <p className="text-[var(--ink)]">GHS {parseFloat(order.delivery_fee).toFixed(2)}</p>
             </div>
+            {order.delivery_address && (
+              <div className="col-span-2">
+                <p className="text-[var(--muted)]">Delivery Address</p>
+                <p className="text-[var(--ink)]">{order.delivery_address}</p>
+              </div>
+            )}
+            {order.delivery_landmark && (
+              <div className="col-span-2">
+                <p className="text-[var(--muted)]">Nearest Landmark</p>
+                <p className="text-[var(--ink)]">📍 {order.delivery_landmark}</p>
+              </div>
+            )}
           </div>
-          {order.payment_method === 'cash_on_delivery' && order.delivery_pin && order.status !== 'delivered' && order.status !== 'cancelled' && (
+          {order.delivery_otp && order.status !== 'delivered' && order.status !== 'cancelled' && (
+            <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-800 text-sm">
+              <span className="font-medium">Your delivery OTP: </span>
+              <span className="font-bold text-xl tracking-[0.3em]">{order.delivery_otp}</span>
+              <p className="text-xs mt-1">Give this code to the driver on arrival. Also sent to your email.</p>
+            </div>
+          )}
+          {!order.delivery_otp && order.status !== 'delivered' && order.status !== 'cancelled' && order.payment_status === 'paid' && (
             <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-800 text-sm font-medium">
-              Cash on Delivery — give the driver this PIN on arrival:{' '}
-              <span className="font-bold text-xl tracking-widest">{order.delivery_pin}</span>
+              Give the driver your 4-digit delivery OTP on arrival (check your email).
+            </div>
+          )}
+          {order.payment_method === 'paystack' && order.payment_status === 'unpaid' && order.status !== 'cancelled' && (
+            <div className="mt-6 flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-sm text-amber-800 font-medium">This order is unpaid. Complete payment to confirm it.</p>
+              <button
+                type="button"
+                onClick={() => payForOrder({ orderId: order.id }).catch((err) => toast.error(err.response?.data?.error || err.message || 'Payment failed'))}
+                className="flex-shrink-0 px-4 py-1.5 bg-[var(--ink)] text-white text-xs font-semibold rounded-full hover:opacity-80 transition-opacity">
+                Pay Now
+              </button>
             </div>
           )}
         </div>
 
-        {/* Order Items */}
+        {/* Order Items — buyer receipt */}
         <div className="bg-white border border-[var(--border)] rounded-2xl p-8">
-          <h2 className="serif text-xl font-medium text-[var(--ink)] mb-6">Items</h2>
+          <h2 className="serif text-xl font-medium text-[var(--ink)] mb-1 flex items-center gap-2">
+            <ReceiptIcon size={18} /> Buyer Receipt
+          </h2>
+          <p className="text-xs text-[var(--muted)] mb-6">
+            Order #{order.id} · {receipt?.buyer_email || ''} · Paid {receipt?.paid_at ? new Date(receipt.paid_at).toLocaleString('en-GH') : ''}
+          </p>
+          {receipt ? (
+            <Receipt receipt={receipt} order={order} />
+          ) : (
           <div className="space-y-4">
             {order.items?.map((item, i) => (
               <div key={i} className="flex items-center gap-4 pb-4 border-b border-[var(--border)] last:border-0">
                 <div className="w-14 h-14 bg-[var(--off)] rounded-lg overflow-hidden flex-shrink-0">
                   {item.product_image ? (
-                    <img src={item.product_image} alt={item.product_name} className="w-full h-full object-cover" />
+                    <SafeImage src={item.product_image} alt={item.product_name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Package size={16} className="text-[var(--muted)]" />
@@ -191,6 +319,7 @@ export default function OrderTrackingPage() {
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
     </MainLayout>

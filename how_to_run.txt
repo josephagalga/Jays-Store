@@ -1,69 +1,91 @@
 PROJECT SETUP GUIDE (WINDOWS)
 
 This project requires two servers to be running at the same time: 
-one for the Backend (Django) and one for the Frontend (React).
+one for the Backend (Django) and one for the Frontend (React + Vite).
 
 ===========================================================================
 PART 1: BACKEND SETUP (DJANGO)
 ===========================================================================
 
-1. PREPARE THE FOLDERS:
-   - Create a folder on your computer named 'project'.
-   - Inside 'project', create a folder named 'backend'.
-
-2. COPY FILES:
-   - Copy all files from the original 'backend' folder into your new 'backend' folder.
-   - IMPORTANT: Do NOT copy the 'venv' folder. We will create a fresh one.
-
-3. CREATE & ACTIVATE VIRTUAL ENVIRONMENT:
+1. OPEN TERMINAL:
    - Open Command Prompt or PowerShell.
-   - Navigate to your 'backend' folder:
-     cd path\to\your\project\backend
-   - Create the environment:
+   - Navigate to the 'backend' folder:
+     cd C:\Users\user\Desktop\store\Jays-Store\backend
+
+2. CREATE & ACTIVATE VIRTUAL ENVIRONMENT:
+   - Create the environment (if not already created):
      python -m venv venv
    - Activate the environment:
      venv\Scripts\activate
 
-4. INSTALL REQUIREMENTS:
+3. INSTALL REQUIREMENTS:
    - With the environment active (you should see (venv) in the prompt), run:
      pip install -r requirements.txt
 
-5. DATABASE SETUP:
-   - Run the following two commands:
-     python seed.py
+4. CONFIGURE ENVIRONMENT:
+   - Ensure the `.env` file exists in the `backend` directory with appropriate keys (see `.env.example`).
+
+5. DATABASE MIGRATIONS & SEED DATA:
+   - Apply migrations first:
      python manage.py makemigrations
      python manage.py migrate
+   - Seed sample products:
+     python manage.py seed_products
+   - Create test users (admin, buyer, seller, driver):
+     python manage.py create_test_users
 
-6. START SERVER:
+6. START DJANGO SERVER:
    - Run:
      python manage.py runserver
-   - KEEP THIS TERMINAL WINDOW OPEN.
+   - KEEP THIS TERMINAL WINDOW OPEN. Default runs on http://127.0.0.1:8000
 
 ===========================================================================
-PART 2: FRONTEND SETUP (REACT)
+PART 2: FRONTEND SETUP (REACT + VITE)
 ===========================================================================
 
 1. INSTALL NODE.JS:
-   - If you don't have it, download and install Node.js from https://nodejs.org/
+   - Make sure Node.js is installed (https://nodejs.org/).
 
-2. COPY FRONTEND FOLDER:
-   - Copy the 'frontend' folder from the original project and paste it into your 
-     'project' root folder.
-
-3. INSTALL LIBRARIES:
+2. OPEN SECOND TERMINAL:
    - Open a NEW, SECOND terminal window.
    - Navigate to the 'frontend' folder:
-     cd path\to\your\project\frontend
+     cd C:\Users\user\Desktop\store\Jays-Store\frontend
+
+3. INSTALL DEPENDENCIES:
    - Run:
      npm install
-   - Wait for this to finish (it may take a few minutes).
 
-4. START FRONTEND:
+4. START FRONTEND DEV SERVER:
    - Run:
-     npm start
+     npm run dev
 
 5. VIEW SITE:
-   - Your browser should open automatically. If not, go to: http://localhost:3000
+   - Open your browser to: http://localhost:5173
+
+===========================================================================
+TEST LOGIN CREDENTIALS
+===========================================================================
+All test accounts use the password: Password123!
+
+1. Admin Account:
+   - Email: admin@jaysstore.com
+   - Password: Password123!
+   - Access: Full Admin Dashboard (/admin/dashboard)
+
+2. Buyer Account:
+   - Email: buyer@jaysstore.com
+   - Password: Password123!
+   - Access: Shopping, Cart, Checkout, Orders, AI Stylist
+
+3. Seller Account:
+   - Email: seller@jaysstore.com
+   - Password: Password123!
+   - Access: Seller Dashboard, Manage/Add Products, Store Page
+
+4. Driver Account:
+   - Email: driver@jaysstore.com
+   - Password: Password123!
+   - Access: Driver Dashboard, Available Orders, Deliveries
 
 ===========================================================================
 IMPORTANT NOTES:

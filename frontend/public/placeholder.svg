@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">
+  <rect width="600" height="800" fill="#f1efe9"/>
+  <g fill="none" stroke="#c9c4b8" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M200 300 h200 l-14 220 H214 Z"/>
+    <path d="M245 300 v-25 a55 55 0 0 1 110 0 v25"/>
+  </g>
+  <text x="300" y="580" text-anchor="middle" font-family="Georgia, serif" font-size="30" fill="#a8a294">Jay's Store</text>
+</svg>

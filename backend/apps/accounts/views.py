@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
+from .models import ContactMessage, NewsletterSubscriber
 from .serializers import (
     BuyerRegistrationSerializer,
     DriverRegistrationSerializer,
@@ -18,6 +19,9 @@ from .serializers import (
     AdminVerifyDriverSerializer,
     AdminDashboardSerializer,
     CustomTokenObtainPairSerializer,
+    ContactMessageSerializer,
+    NewsletterSubscriberSerializer,
+    PayoutAccountSerializer,
 )
 from apps.core.permissions import IsAdmin, IsDriver, IsBuyer, IsSeller
 
@@ -30,6 +34,7 @@ User = get_user_model()
 
 class CustomLoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_scope = 'login'
 
 
 # ============================================================
@@ -51,6 +56,7 @@ def get_tokens_for_user(user):
 class BuyerRegistrationView(generics.CreateAPIView):
     serializer_class = BuyerRegistrationSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'register'
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -67,22 +73,23 @@ class BuyerRegistrationView(generics.CreateAPIView):
 class SellerRegistrationView(generics.CreateAPIView):
     serializer_class = SellerRegistrationSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'register'
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        tokens = get_tokens_for_user(user)
+        # KYC gate: do NOT issue tokens until admin approves (matches driver flow).
         return Response({
-            'message': 'Store created successfully',
-            'user': SellerProfileSerializer(user).data,
-            'tokens': tokens,
+            'message': 'Store submitted. Your account is under review.',
+            'verification_status': user.verification_status,
         }, status=status.HTTP_201_CREATED)
 
 
 class DriverRegistrationView(generics.CreateAPIView):
     serializer_class = DriverRegistrationSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'register'
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -222,6 +229,86 @@ class AdminVerifyDriverView(generics.UpdateAPIView):
             'driver': AdminDriverDetailSerializer(driver, context={'request': request}).data,
         })
 
+class AdminUpdateCommissionRateView(APIView):
+    """Admin updates a seller's commission rate with audit logging."""
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    
+    def patch(self, request, pk):
+        from decimal import Decimal, InvalidOperation
+        from .admin import update_seller_commission_rate
+        
+        try:
+            seller = User.objects.get(pk=pk, role='seller')
+        except User.DoesNotExist:
+            return Response({'error': 'Seller not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get new rate
+        try:
+            new_rate = Decimal(str(request.data.get('commission_rate', '')))
+            if new_rate < 0 or new_rate > 30:
+                return Response(
+                    {'error': 'Commission rate must be between 0.00 and 30.00'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (InvalidOperation, ValueError):
+            return Response(
+                {'error': 'Invalid commission rate format'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        apply_to_existing = request.data.get('apply_to_existing', False)
+        reason = request.data.get('reason', '').strip()
+        
+        # Update with audit trail
+        affected_count = update_seller_commission_rate(
+            seller=seller,
+            new_rate=new_rate,
+            changed_by=request.user,
+            apply_to_existing=apply_to_existing,
+            reason=reason
+        )
+        
+        return Response({
+            'message': 'Commission rate updated successfully',
+            'seller': {
+                'id': seller.id,
+                'email': seller.email,
+                'store_name': seller.store_name,
+                'commission_rate': str(seller.commission_rate),
+            },
+            'affected_products': affected_count
+        })
+
+
+class AdminCommissionAuditLogView(generics.ListAPIView):
+    """Admin views commission rate change history."""
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    
+    def get(self, request):
+        from .models import CommissionRateAuditLog
+        
+        logs = CommissionRateAuditLog.objects.select_related(
+            'seller', 'changed_by'
+        ).order_by('-created_at')[:100]
+        
+        data = []
+        for log in logs:
+            data.append({
+                'id': log.id,
+                'seller_name': log.seller.store_name if log.seller else 'Unknown',
+                'seller_email': log.seller.email if log.seller else 'Unknown',
+                'old_rate': str(log.old_rate),
+                'new_rate': str(log.new_rate),
+                'changed_by': log.changed_by.email if log.changed_by else 'System',
+                'reason': log.reason,
+                'apply_to_existing': log.apply_to_existing,
+                'affected_products_count': log.affected_products_count,
+                'created_at': log.created_at,
+            })
+        
+        return Response(data)
+
+
 class AdminDeleteUserView(generics.DestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsAdmin]
 
@@ -246,3 +333,161 @@ class SellerStoreView(generics.RetrieveAPIView):
     permission_classes = [permissions.AllowAny]
     lookup_field = 'store_slug'
     queryset = User.objects.filter(role='seller', is_active=True)
+
+
+class VendorListView(generics.ListAPIView):
+    """Public browsable + searchable vendor directory."""
+    permission_classes = [permissions.AllowAny]
+
+    def get_serializer_class(self):
+        from .serializers import VendorListSerializer
+        return VendorListSerializer
+
+    def get_queryset(self):
+        qs = User.objects.filter(role='seller', is_active=True).prefetch_related('store_products')
+        q = (self.request.query_params.get('search') or '').strip()
+        if q:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(store_name__icontains=q) | Q(store_description__icontains=q)
+                | Q(first_name__icontains=q) | Q(last_name__icontains=q)
+            )
+        return qs.order_by('store_name')
+
+
+# ============================================================
+# SELLER PAYOUT ACCOUNT (instant Paystack settlement)
+# ============================================================
+
+class SellerBankListView(APIView):
+    """Ghana settlement banks from Paystack (bank + mobile-money codes)."""
+    permission_classes = [permissions.IsAuthenticated, IsSeller]
+
+    def get(self, request):
+        from apps.orders.payments import list_ghana_banks
+        try:
+            banks = list_ghana_banks()
+        except Exception as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response([
+            {'name': b.get('name'), 'code': b.get('code'), 'slug': b.get('slug')}
+            for b in banks
+        ])
+
+
+class SellerPayoutAccountView(APIView):
+    """Seller views + connects the account instant settlements pay into.
+
+    PATCH saves the details, then creates the Paystack subaccount.
+    Until status is `active`, checkout of this seller's items is blocked.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSeller]
+
+    def get(self, request):
+        return Response(PayoutAccountSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = PayoutAccountSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        seller = serializer.save()
+        seller.subaccount_status = 'pending'
+        seller.subaccount_note = ''
+        seller.save(update_fields=[
+            'payout_account_number', 'payout_bank_code', 'payout_account_name',
+            'subaccount_status', 'subaccount_note',
+        ])
+
+        from apps.orders.payments import create_subaccount
+        try:
+            sub = create_subaccount(
+                business_name=seller.store_name or seller.full_name,
+                account_number=seller.payout_account_number,
+                bank_code=seller.payout_bank_code,
+            )
+            seller.paystack_subaccount_code = sub.get('subaccount_code', '')
+            seller.subaccount_status = 'active' if seller.paystack_subaccount_code else 'failed'
+            if seller.subaccount_status == 'failed':
+                seller.subaccount_note = 'Paystack returned no subaccount code.'
+        except Exception as exc:
+            seller.subaccount_status = 'failed'
+            seller.subaccount_note = str(exc)
+        seller.save(update_fields=[
+            'paystack_subaccount_code', 'subaccount_status', 'subaccount_note'])
+        return Response(PayoutAccountSerializer(seller).data)
+
+
+# ============================================================
+# CONTACT & NEWSLETTER
+# ============================================================
+
+class ContactMessageCreateView(generics.CreateAPIView):
+    serializer_class = ContactMessageSerializer
+    permission_classes = [permissions.AllowAny]
+    queryset = ContactMessage.objects.all()
+    throttle_scope = 'contact'
+
+
+class ContactMessageListView(generics.ListAPIView):
+    serializer_class = ContactMessageSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    queryset = ContactMessage.objects.all().order_by('-created_at')
+
+
+class NewsletterSubscribeView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'contact'
+
+    def post(self, request):
+        email = (request.data.get('email') or '').strip().lower()
+        if not email or '@' not in email:
+            return Response({'error': 'Enter a valid email address'}, status=status.HTTP_400_BAD_REQUEST)
+        obj, created = NewsletterSubscriber.objects.get_or_create(email=email)
+        if not created and not obj.is_active:
+            obj.is_active = True
+            obj.save()
+        return Response({
+            'message': 'Subscribed! Welcome to the Jay\u2019s Store newsletter.' if created else 'You are already subscribed. Welcome back!',
+            'email': obj.email,
+        })
+
+
+class NewsletterListView(generics.ListAPIView):
+    serializer_class = NewsletterSubscriberSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    queryset = NewsletterSubscriber.objects.all().order_by('-created_at')
+
+
+# ============================================================
+# SELLER COMMISSION INFO
+# ============================================================
+
+class SellerCommissionInfoView(APIView):
+    """Seller views their commission rate and pricing calculator."""
+    permission_classes = [permissions.IsAuthenticated, IsSeller]
+    
+    def get(self, request):
+        from decimal import Decimal, ROUND_HALF_UP
+        
+        seller = request.user
+        rate = seller.commission_rate
+        
+        # Example calculation for seller's understanding
+        example = Decimal('50.00')
+        multiplier = Decimal('1.00') + (rate / Decimal('100.00'))
+        buyer_price = (example * multiplier).quantize(Decimal('0.01'), ROUND_HALF_UP)
+        commission = buyer_price - example
+        
+        return Response({
+            'commission_rate': str(rate),
+            'last_updated': seller.commission_rate_updated_at,
+            'explanation': (
+                f'When you list a product at GHS {example}, buyers will pay GHS {buyer_price}. '
+                f'You receive GHS {example}, platform keeps GHS {commission} commission.'
+            ),
+            'example': {
+                'your_price': str(example),
+                'buyer_pays': str(buyer_price),
+                'commission': str(commission)
+            },
+            'note': 'The commission is added on top of your price and paid by the buyer. You always receive exactly what you list.'
+        })

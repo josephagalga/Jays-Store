@@ -31,7 +31,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-      <h1 className="serif text-4xl font-medium text-[var(--ink)] mb-10">Users</h1>
+      <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">Users</h1>
 
       {/* Role tabs */}
       <div className="flex gap-2 mb-6">
@@ -55,8 +55,8 @@ export default function AdminUsersPage() {
           <p className="text-sm text-[var(--muted)]">No {role}s found</p>
         </div>
       ) : (
-        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-[var(--off)] border-b border-[var(--border)]">
               <tr>
                 {['Name', 'Email', 'Phone', 'Joined', 'Last Active', 'Status', 'Action'].map(h => (

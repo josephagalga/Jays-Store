@@ -19,6 +19,11 @@ urlpatterns = [
     path('admin/categories/create/', views.AdminCategoryCreateView.as_view(), name='admin-category-create'),
     path('admin/categories/<int:pk>/', views.AdminCategoryUpdateView.as_view(), name='admin-category-update'),
 
+    # ── Wishlist ──────────────────────────────────────────────
+    path('wishlist/', views.WishlistListView.as_view(), name='wishlist-list'),
+    path('wishlist/ids/', views.WishlistIdsView.as_view(), name='wishlist-ids'),
+    path('wishlist/toggle/<int:product_id>/', views.WishlistToggleView.as_view(), name='wishlist-toggle'),
+
     # ── Slug route LAST ──────────────────────────────────────
     path('<slug:slug>/', views.ProductDetailView.as_view(), name='product-detail'),
 ]

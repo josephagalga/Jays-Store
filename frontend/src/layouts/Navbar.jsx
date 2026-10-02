@@ -64,6 +64,7 @@ export default function Navbar() {
     ['Men', '/catalog?gender=men'],
     ['Women', '/catalog?gender=women'],
     ['Kids', '/catalog?gender=kids'],
+    ['Vendors', '/vendors'],
     ['Sale', '/catalog?sale=true'],
   ]
 

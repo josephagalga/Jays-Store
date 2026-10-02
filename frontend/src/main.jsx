@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import App from './App.jsx'
 import './index.css'
+import './print.css'
 import ScrollToTop from './components/common/ScrollToTop'
 
 const queryClient = new QueryClient({

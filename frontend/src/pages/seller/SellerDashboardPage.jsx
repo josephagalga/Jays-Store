@@ -50,6 +50,14 @@ export default function SellerDashboardPage() {
     retry: false,
   })
 
+  const { data: commissionInfo } = useQuery({
+    queryKey: ['seller-commission-info'],
+    queryFn: async () => {
+      const res = await api.get('/accounts/seller/commission-info/')
+      return res.data
+    },
+  })
+
   const payoutMutation = useMutation({
     mutationFn: (payload) => api.patch('/accounts/seller/payout-account/', payload),
     onSuccess: (res) => {
@@ -98,7 +106,7 @@ export default function SellerDashboardPage() {
       <div className="flex items-center justify-between mb-10">
         <div>
           <p className="text-sm text-[var(--muted)] mb-1">Welcome back,</p>
-          <h1 className="serif text-4xl font-medium text-[var(--ink)]">{profile?.store_name || user?.full_name}</h1>
+          <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">{profile?.store_name || user?.full_name}</h1>
         </div>
         <Link to="/seller/products/add"
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--ink)] text-white text-sm font-medium rounded-xl hover:opacity-80 transition-opacity">
@@ -116,6 +124,44 @@ export default function SellerDashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Commission Info Widget */}
+      {commissionInfo && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 mb-6">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <TrendingUp size={20} className="text-blue-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-blue-900 mb-1">
+                Your Commission Rate: {commissionInfo.commission_rate}%
+              </h3>
+              <p className="text-sm text-blue-800 mb-3">
+                {commissionInfo.explanation}
+              </p>
+              <div className="bg-white rounded-lg px-4 py-3 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-blue-700">You list at:</span>
+                  <span className="font-semibold text-blue-900">GHS {commissionInfo.example.your_price}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-700">Buyers pay:</span>
+                  <span className="font-semibold text-blue-900">GHS {commissionInfo.example.buyer_pays}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-700">You receive:</span>
+                  <span className="font-bold text-green-600">GHS {commissionInfo.example.your_price}</span>
+                </div>
+              </div>
+              {commissionInfo.last_updated && (
+                <p className="text-xs text-blue-600 mt-2">
+                  Last updated: {new Date(commissionInfo.last_updated).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Payout account — instant settlement target */}
       {!subaccountActive && !isLoading && (
@@ -221,8 +267,8 @@ export default function SellerDashboardPage() {
         ) : (
           <div className="divide-y divide-[var(--border)]">
             {products.slice(0, 5).map(product => (
-              <div key={product.id} className="flex items-center justify-between px-6 py-4">
-                <div className="flex items-center gap-4">
+              <div key={product.id} className="flex items-center justify-between gap-3 px-4 md:px-6 py-4">
+                <div className="flex items-center gap-3 md:gap-4 min-w-0">
                   <div className="w-12 h-14 bg-[var(--off)] rounded-lg overflow-hidden flex-shrink-0">
                     {product.images?.[0]?.url || product.images?.[0]?.image ? (
                       <SafeImage src={product.images[0].url || product.images[0].image} alt={product.name} className="w-full h-full object-cover" />
@@ -232,16 +278,16 @@ export default function SellerDashboardPage() {
                       </div>
                     )}
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--ink)]">{product.name}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[var(--ink)] line-clamp-1">{product.name}</p>
                     <p className="text-xs text-[var(--muted)]">GHS {parseFloat(product.price).toFixed(2)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
                   <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${product.is_active ? 'bg-green-50 text-green-600' : 'bg-[var(--stone)] text-[var(--muted)]'}`}>
                     {product.is_active ? 'Active' : 'Inactive'}
                   </span>
-                  <span className="text-xs text-[var(--muted)]">{product.total_sold} sold</span>
+                  <span className="hidden sm:inline text-xs text-[var(--muted)]">{product.total_sold} sold</span>
                 </div>
               </div>
             ))}

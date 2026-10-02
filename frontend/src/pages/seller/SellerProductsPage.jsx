@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom'
 import { Plus, Package, Edit, Eye, EyeOff } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
+import SafeImage from '../../components/common/SafeImage'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 
@@ -29,10 +30,10 @@ export default function SellerProductsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-      <div className="flex items-center justify-between mb-10">
-        <h1 className="serif text-4xl font-medium text-[var(--ink)]">My Products</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8 md:mb-10">
+        <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">My Products</h1>
         <Link to="/seller/products/add"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--ink)] text-white text-sm font-medium rounded-xl hover:opacity-80 transition-opacity">
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[var(--ink)] text-white text-sm font-medium rounded-xl hover:opacity-80 transition-opacity">
           <Plus size={16} /> Add Product
         </Link>
       </div>
@@ -48,8 +49,8 @@ export default function SellerProductsPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-[var(--off)] border-b border-[var(--border)]">
               <tr>
                 {['Product', 'Price', 'Stock', 'Sold', 'Status', 'Actions'].map(h => (
@@ -65,8 +66,8 @@ export default function SellerProductsPage() {
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-12 bg-[var(--off)] rounded-lg overflow-hidden flex-shrink-0">
-                        {product.images?.[0]?.image ? (
-                          <img src={product.images[0].image} alt={product.name} className="w-full h-full object-cover" />
+                        {product.images?.[0]?.url || product.images?.[0]?.image ? (
+                          <SafeImage src={product.images[0].url || product.images[0].image} alt={product.name} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <Package size={14} className="text-[var(--border)]" />

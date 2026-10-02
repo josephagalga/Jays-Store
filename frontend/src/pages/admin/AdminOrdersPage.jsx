@@ -29,7 +29,7 @@ export default function AdminOrdersPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="serif text-4xl font-medium text-[var(--ink)]">All Orders</h1>
+        <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">All Orders</h1>
         <span className="text-sm text-[var(--muted)]">{orders?.length || 0} orders</span>
       </div>
 
@@ -47,14 +47,14 @@ export default function AdminOrdersPage() {
         ))}
       </div>
 
-      <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
+      <div className="bg-white border border-[var(--border)] rounded-2xl overflow-x-auto">
         {!orders?.length ? (
           <div className="text-center py-16">
             <Package size={32} className="mx-auto text-[var(--border)] mb-3" />
             <p className="text-sm text-[var(--muted)]">No orders found</p>
           </div>
         ) : (
-          <table className="w-full">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-[var(--off)] border-b border-[var(--border)]">
               <tr>
                 {['Order', 'Buyer', 'Driver', 'Items', 'Total', 'Status', 'Date'].map(h => (
