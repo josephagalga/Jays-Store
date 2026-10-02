@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Home, LayoutGrid, Heart, ShoppingBag, User } from 'lucide-react'
 import useAuthStore from '../../store/authStore'
 import useCartStore from '../../store/cartStore'
+import useGuestCartStore from '../../store/guestCartStore'
 import useWishlistStore from '../../store/wishlistStore'
 
 /**
@@ -12,9 +13,10 @@ export default function BottomTabBar() {
   const location = useLocation()
   const { user, isAuthenticated } = useAuthStore()
   const { cart } = useCartStore()
+  const guestCount = useGuestCartStore(s => s.guestCount())
   const { wishlistIds } = useWishlistStore()
 
-  const bagCount = cart?.item_count || 0
+  const bagCount = (!isAuthenticated ? guestCount : 0) + (cart?.item_count || 0)
   const wishCount = wishlistIds?.length || 0
 
   const accountTo =

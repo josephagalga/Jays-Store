@@ -44,21 +44,28 @@ export default function SellerStorePage() {
     <MainLayout>
       {/* Store banner */}
       <div className="bg-[var(--off)] border-b border-[var(--border)]">
-        {seller.store_banner && (
+        {seller.banner_url && (
           <div className="h-52 overflow-hidden">
-            <img src={seller.store_banner} alt="" className="w-full h-full object-cover" />
+            <img src={seller.banner_url} alt="" className="w-full h-full object-cover" />
           </div>
         )}
         <div className="max-w-7xl mx-auto px-6 lg:px-10 py-8 flex items-end gap-5">
           <div className="w-16 h-16 bg-[var(--stone)] rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0">
-            {seller.store_logo ? (
-              <img src={seller.store_logo} alt="" className="w-full h-full object-cover" />
+            {seller.logo_url ? (
+              <img src={seller.logo_url} alt="" className="w-full h-full object-cover" />
             ) : (
               <Store size={24} className="text-[var(--muted)]" />
             )}
           </div>
-          <div>
-            <h1 className="serif text-3xl font-medium text-[var(--ink)]">{seller.store_name}</h1>
+          <div className="min-w-0">
+            <h1 className="serif text-3xl font-medium text-[var(--ink)]">
+              {seller.store_name}
+              {seller.is_verified && (
+                <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-700 bg-green-50 px-2 py-1 rounded-full align-middle">
+                  ✓ Verified seller
+                </span>
+              )}
+            </h1>
             {seller.store_description && (
               <p className="text-sm text-[var(--muted)] mt-1 max-w-lg">{seller.store_description}</p>
             )}

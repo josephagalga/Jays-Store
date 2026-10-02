@@ -212,6 +212,12 @@ class PlaceOrderSerializer(serializers.Serializer):
         choices=['paystack'],
         default='paystack'
     )
+    # Paystack charge channels (MoMo-first sheet). Limits what the hosted
+    # page offers; omit for all available channels.
+    channels = serializers.ListField(
+        child=serializers.ChoiceField(choices=['card', 'mobile_money', 'bank_transfer', 'ussd', 'bank']),
+        required=False, allow_empty=True,
+    )
 
     def validate(self, data):
         buyer = self.context['request'].user
@@ -239,6 +245,95 @@ class PlaceOrderSerializer(serializers.Serializer):
             )
         data['cart'] = cart
         return data
+
+
+class GuestOrderItemSerializer(serializers.Serializer):
+    """One line of a guest checkout: server re-prices everything from the DB."""
+    product_id = serializers.IntegerField(min_value=1)
+    variant_id = serializers.IntegerField(min_value=1)
+    quantity = serializers.IntegerField(min_value=1, max_value=20)
+
+
+class GuestPlaceOrderSerializer(serializers.Serializer):
+    """
+    Guest checkout (no account). Totals are NEVER trusted from the client:
+    the view re-fetches every product/variant and recomputes from display prices.
+    """
+    guest_name = serializers.CharField(max_length=100)
+    guest_email = serializers.EmailField()
+    guest_phone = serializers.CharField(min_length=10, max_length=20)
+    delivery_address = serializers.CharField(min_length=5)
+    delivery_note = serializers.CharField(required=False, allow_blank=True)
+    delivery_landmark = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    items = serializers.ListSerializer(
+        child=GuestOrderItemSerializer(), min_length=1, max_length=30,
+    )
+    channels = serializers.ListField(
+        child=serializers.ChoiceField(choices=['card', 'mobile_money', 'bank_transfer', 'ussd', 'bank']),
+        required=False, allow_empty=True,
+    )
+
+
+class GuestOrderResponseSerializer(serializers.ModelSerializer):
+    """Public-shape order payload for guests — no buyer traversal, no PII beyond contact."""
+    charged_total = serializers.ReadOnlyField()
+    is_guest_order = serializers.ReadOnlyField()
+    track_path = serializers.SerializerMethodField()
+    items = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'status', 'payment_status', 'payment_method',
+            'subtotal', 'delivery_fee', 'processing_fee', 'total', 'charged_total',
+            'guest_name', 'guest_email', 'is_guest_order', 'track_path', 'items',
+            'created_at',
+        ]
+
+    def get_track_path(self, obj):
+        if obj.paystack_reference:
+            return f'/track/{obj.paystack_reference}'
+        return f'/track/order/{obj.id}'
+
+    def get_items(self, obj):
+        return [
+            {
+                'product_name': i.product_name,
+                'size': i.size,
+                'color': i.color,
+                'quantity': i.quantity,
+                'unit_price': str(i.unit_price),
+                'total': str(i.total_price),
+            }
+            for i in obj.items.all()
+        ]
+
+
+class GuestOrderTrackSerializer(serializers.ModelSerializer):
+    """Minimal public tracking payload — status + items + totals, no contact PII."""
+    charged_total = serializers.ReadOnlyField()
+    items = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'status', 'payment_status', 'payment_method',
+            'subtotal', 'delivery_fee', 'processing_fee', 'total', 'charged_total',
+            'items', 'created_at', 'paid_at', 'delivered_at',
+        ]
+
+    def get_items(self, obj):
+        return [
+            {
+                'product_name': i.product_name,
+                'size': i.size,
+                'color': i.color,
+                'quantity': i.quantity,
+                'unit_price': str(i.unit_price),
+                'total': str(i.total_price),
+            }
+            for i in obj.items.all()
+        ]
 
 
 class SellerOrderListSerializer(serializers.ModelSerializer):

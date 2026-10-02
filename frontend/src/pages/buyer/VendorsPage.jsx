@@ -88,7 +88,14 @@ export default function VendorsPage() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-[var(--ink)] line-clamp-1">{v.store_name}</p>
+                    <p className="font-semibold text-[var(--ink)] line-clamp-1">
+                      {v.store_name}
+                      {v.is_verified && (
+                        <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wide text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full align-middle">
+                          ✓ Verified
+                        </span>
+                      )}
+                    </p>
                     {v.store_description && (
                       <p className="text-xs text-[var(--muted)] line-clamp-2 mt-1 leading-relaxed">{v.store_description}</p>
                     )}

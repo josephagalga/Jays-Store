@@ -86,16 +86,27 @@ def order_lines(order):
     return '\n'.join(lines)
 
 
+def _buyer_email(order):
+    return (getattr(order, 'buyer_email', '') or '').strip()
+
+
 def send_payment_confirmation(order, otp_code=None, connection=None):
     """Buyer receipt + payment confirmation. Called on every successful payment."""
-    buyer = order.buyer
-    if not buyer or not buyer.email:
+    buyer_email = _buyer_email(order)
+    if not buyer_email:
         return False
     subject = f"Jay's Store — Payment confirmed for Order #{order.id}"
     fee = float(getattr(order, 'processing_fee', 0) or 0)
     charged = float(order.total) + fee
+    # Guests track via public reference link (no account needed).
+    track_path = (
+        f"/track/{order.paystack_reference}"
+        if order.is_guest_order and order.paystack_reference
+        else f"/orders/{order.id}/track"
+    )
+    track_url = f"{getattr(settings, 'FRONTEND_URL', '').rstrip('/')}{track_path}"
     body = (
-        f"Hi {buyer.first_name or 'there'},\n\n"
+        f"Hi {order.buyer_first_name},\n\n"
         f"Your payment of GHS {charged:.2f} for Order #{order.id} was confirmed.\n\n"
         f"{order_lines(order)}\n\n"
         f"Subtotal: GHS {float(order.subtotal):.2f}\n"
@@ -107,37 +118,37 @@ def send_payment_confirmation(order, otp_code=None, connection=None):
         + (f"Nearest landmark: {order.delivery_landmark}\n" if getattr(order, 'delivery_landmark', '') else '')
         + (f"Note: {order.delivery_note}\n" if order.delivery_note else '')
         + (f"\nYour delivery OTP is {otp_code}. Give it to the driver on arrival.\n" if otp_code else '')
-        + f"\nTrack your order: {getattr(settings, 'FRONTEND_URL', '').rstrip('/')}/orders/{order.id}/track\n\n"
+        + f"\nTrack your order: {track_url}\n\n"
         f"Thank you for shopping with Jay's Store!"
     )
     html = (
         f"<h2>Payment confirmed — Order #{order.id}</h2>"
-        f"<p>Hi {buyer.first_name or 'there'}, your payment of "
+        f"<p>Hi {order.buyer_first_name}, your payment of "
         f"<strong>GHS {charged:.2f}</strong> was confirmed.</p>"
         + (f"<p style='font-size:20px'>Delivery OTP: <strong>{otp_code}</strong></p>"
            f"<p>Give this 4-digit code to your driver on arrival.</p>" if otp_code else '')
-        + f"<p><a href='{getattr(settings, 'FRONTEND_URL', '').rstrip('/')}/orders/{order.id}/track'>"
+        + f"<p><a href='{track_url}'>"
         f"View receipt & track order</a></p>"
     )
-    return _send(buyer.email, subject, body, html, kind='payment_confirmation', order=order,
+    return _send(buyer_email, subject, body, html, kind='payment_confirmation', order=order,
                 connection=connection)
 
 
 def send_delivery_otp(order, otp_code, connection=None):
     """OTP email to the buyer (SMS is simulated — email is the real channel)."""
-    buyer = order.buyer
-    if not buyer or not buyer.email:
+    buyer_email = _buyer_email(order)
+    if not buyer_email:
         return False
     subject = f"Jay's Store — Your delivery OTP for Order #{order.id}"
     body = (
-        f"Hi {buyer.first_name or 'there'},\n\n"
+        f"Hi {order.buyer_first_name},\n\n"
         f"Your delivery OTP for Order #{order.id} is: {otp_code}\n\n"
         f"Give this 4-digit code to the driver when they arrive. "
         f"They cannot mark your order as delivered without it.\n\n"
         f"Deliver to: {order.delivery_address}\n"
         f"Track: {getattr(settings, 'FRONTEND_URL', '').rstrip('/')}/orders/{order.id}/track"
     )
-    return _send(buyer.email, subject, body, kind='delivery_otp', order=order,
+    return _send(buyer_email, subject, body, kind='delivery_otp', order=order,
                 connection=connection)
 
 
@@ -280,7 +291,7 @@ def send_admin_payment_alert(order, connection=None):
         f"{'-'*60}\n"
         f"Order Details\n"
         f"{'-'*60}\n"
-        f"Buyer: {order.buyer.full_name if order.buyer else 'N/A'}\n"
+        f"Buyer: {order.buyer_display_name} ({order.buyer_email or 'no email'})\n"
         f"Phone: {order.delivery_phone}\n"
         f"Address: {order.delivery_address}\n"
         + (f"Landmark: {order.delivery_landmark}\n" if getattr(order, 'delivery_landmark', '') else '')
@@ -293,16 +304,16 @@ def send_admin_payment_alert(order, connection=None):
 
 
 def send_delivered_email(order, connection=None):
-    buyer = order.buyer
-    if not buyer or not buyer.email:
+    buyer_email = _buyer_email(order)
+    if not buyer_email:
         return False
     subject = f"Jay's Store — Order #{order.id} delivered"
     body = (
-        f"Hi {buyer.first_name or 'there'},\n\n"
+        f"Hi {order.buyer_first_name},\n\n"
         f"Your Order #{order.id} was delivered at "
         f"{timezone.now().strftime('%d %b %Y, %H:%M')}.\n\n"
         f"Enjoy! Please leave a review for your items in My Orders.\n\n"
         f"Jay's Store"
     )
-    return _send(buyer.email, subject, body, kind='delivered', order=order,
+    return _send(buyer_email, subject, body, kind='delivered', order=order,
                 connection=connection)

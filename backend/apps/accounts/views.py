@@ -62,11 +62,16 @@ class BuyerRegistrationView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        # Link any guest orders placed with this email before registering.
+        from apps.orders.models import Order
+        linked = Order.objects.filter(
+            buyer__isnull=True, guest_email__iexact=user.email).update(buyer=user)
         tokens = get_tokens_for_user(user)
         return Response({
-            'message': 'Account created successfully',
+            'message': 'Account created successfully' + (f' — {linked} guest order(s) linked.' if linked else ''),
             'user': BuyerProfileSerializer(user).data,
             'tokens': tokens,
+            'orders_linked': linked,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -98,6 +103,39 @@ class DriverRegistrationView(generics.CreateAPIView):
         return Response({
             'message': 'Registration submitted. Your account is under review.',
             'verification_status': user.verification_status,
+        }, status=status.HTTP_201_CREATED)
+
+
+class GuestClaimView(APIView):
+    """Turn guest orders into account orders: guest supplies the email they
+    checked out with plus a new password, we create their buyer account and
+    attach every unclaimed guest order with that email.
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'register'
+
+    def post(self, request):
+        from apps.orders.models import Order
+        serializer = BuyerRegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email'].strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            return Response(
+                {'error': 'An account with this email already exists. Sign in instead — your guest orders with this email were linked automatically.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        unclaimed = Order.objects.filter(buyer__isnull=True, guest_email__iexact=email)
+        if not unclaimed.exists():
+            return Response(
+                {'error': 'No guest orders found for this email.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        user = serializer.save()
+        count = unclaimed.update(buyer=user)
+        tokens = get_tokens_for_user(user)
+        return Response({
+            'message': f'Account created — {count} order(s) linked.',
+            'user': BuyerProfileSerializer(user).data,
+            'tokens': tokens,
+            'orders_linked': count,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -329,10 +367,13 @@ class AdminDeleteUserView(generics.DestroyAPIView):
 # ============================================================
 
 class SellerStoreView(generics.RetrieveAPIView):
-    serializer_class = SellerProfileSerializer
     permission_classes = [permissions.AllowAny]
     lookup_field = 'store_slug'
-    queryset = User.objects.filter(role='seller', is_active=True)
+    queryset = User.objects.filter(role='seller', is_active=True, is_verified=True)
+
+    def get_serializer_class(self):
+        from .serializers import SellerPublicSerializer
+        return SellerPublicSerializer
 
 
 class VendorListView(generics.ListAPIView):
@@ -344,7 +385,9 @@ class VendorListView(generics.ListAPIView):
         return VendorListSerializer
 
     def get_queryset(self):
-        qs = User.objects.filter(role='seller', is_active=True).prefetch_related('store_products')
+        qs = User.objects.filter(
+            role='seller', is_active=True, is_verified=True,
+        ).prefetch_related('store_products')
         q = (self.request.query_params.get('search') or '').strip()
         if q:
             from django.db.models import Q

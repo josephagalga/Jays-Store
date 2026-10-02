@@ -6,6 +6,7 @@ urlpatterns = [
     path('register/buyer/', views.BuyerRegistrationView.as_view(), name='buyer-register'),
     path('register/seller/', views.SellerRegistrationView.as_view(), name='seller-register'),
     path('register/driver/', views.DriverRegistrationView.as_view(), name='driver-register'),
+    path('guest-claim/', views.GuestClaimView.as_view(), name='guest-claim'),
 
     # Profiles
     path('profile/buyer/', views.BuyerProfileView.as_view(), name='buyer-profile'),

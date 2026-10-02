@@ -3,6 +3,7 @@ import { ShoppingBag, Heart } from 'lucide-react'
 import { useRef, useEffect, useState } from 'react'
 import SafeImage from './SafeImage'
 import useCartStore from '../../store/cartStore'
+import useGuestCartStore from '../../store/guestCartStore'
 import useAuthStore from '../../store/authStore'
 import useWishlistStore from '../../store/wishlistStore'
 
@@ -23,11 +24,19 @@ export default function ProductCard({ product, index = 0 }) {
     return () => observer.disconnect()
   }, [])
 
+  const addGuestItem = useGuestCartStore(s => s.addGuestItem)
+  const isBuyer = user?.role === 'buyer'
+
   const handleQuickAdd = async (e) => {
     e.preventDefault()
     const v = product.variants?.[0]
     if (!v) return
-    await addToCart(product.id, v.id, 1)
+    if (isBuyer) {
+      await addToCart(product.id, v.id, 1)
+    } else if (!user) {
+      const variant = { ...v, size: v.size || 'One size', color: v.color || '' }
+      addGuestItem({ product, variant, quantity: 1 })
+    }
   }
 
   return (
@@ -62,8 +71,8 @@ export default function ProductCard({ product, index = 0 }) {
             <Heart size={15} className={wished ? 'fill-rose-500 text-rose-500' : 'text-[var(--muted)]'} />
           </button>
 
-          {/* Quick add */}
-          {user?.role === 'buyer' && (
+          {/* Quick add — buyers use the server bag, guests use the local bag */}
+          {(isBuyer || !user) && (
             <div className="absolute bottom-3 left-3 right-3 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
               <button onClick={handleQuickAdd} disabled={isLoading}
                 className="w-full bg-white/95 backdrop-blur-sm text-[var(--ink)] text-xs font-semibold py-2.5 rounded-lg hover:bg-white transition-colors shadow-sm">

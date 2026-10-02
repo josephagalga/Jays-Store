@@ -9,6 +9,7 @@ import { ProductDetailSkeleton } from '../../components/common/Skeletons'
 import Button from '../../components/ui/Button'
 import api from '../../services/api'
 import useCartStore from '../../store/cartStore'
+import useGuestCartStore from '../../store/guestCartStore'
 import useAuthStore from '../../store/authStore'
 import useWishlistStore from '../../store/wishlistStore'
 import toast from 'react-hot-toast'
@@ -17,11 +18,59 @@ import toast from 'react-hot-toast'
 
 
 
+const FIT_OPTIONS = [
+  { value: '', label: 'Skip' },
+  { value: 'runs_small', label: 'Runs small' },
+  { value: 'true_to_size', label: 'True to size' },
+  { value: 'runs_large', label: 'Runs large' },
+]
+
+const FIT_LABEL = { runs_small: 'Runs small', true_to_size: 'True to size', runs_large: 'Runs large' }
+
+function FitMeter({ summary }) {
+  const small = Number(summary?.fit_runs_small || 0)
+  const trueSize = Number(summary?.fit_true_to_size || 0)
+  const large = Number(summary?.fit_runs_large || 0)
+  const total = small + trueSize + large
+  if (!total) return null
+  const rows = [
+    ['runs_small', small],
+    ['true_to_size', trueSize],
+    ['runs_large', large],
+  ]
+  const top = rows.reduce((a, b) => (b[1] > a[1] ? b : a))
+  return (
+    <div className="bg-[var(--off)] rounded-2xl p-5 mb-6">
+      <p className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider mb-1">
+        Fit feedback
+      </p>
+      <p className="text-sm text-[var(--muted)] mb-4">
+        Most buyers say: <strong className="text-[var(--ink)]">{FIT_LABEL[top[0]]}</strong> ({total} vote{total === 1 ? '' : 's'})
+      </p>
+      <div className="space-y-2">
+        {rows.map(([key, count]) => (
+          <div key={key} className="flex items-center gap-3">
+            <span className="text-xs text-[var(--muted)] w-20 flex-shrink-0">{FIT_LABEL[key]}</span>
+            <div className="flex-1 h-2 bg-white rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--ink)] rounded-full transition-all"
+                style={{ width: `${Math.round((count / total) * 100)}%` }}
+              />
+            </div>
+            <span className="text-xs text-[var(--muted)] w-8 text-right flex-shrink-0">{count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function WriteReview({ productId, slug, autoOpen = false, requirePurchase = false, hasPurchased = null }) {
   const [rating, setRating] = useState(0)
   const [hover, setHover] = useState(0)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [fit, setFit] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [open, setOpen] = useState(autoOpen)
@@ -46,10 +95,12 @@ function WriteReview({ productId, slug, autoOpen = false, requirePurchase = fals
         rating,
         title,
         body,
+        fit,
       })
       toast.success('Review submitted!')
       setSubmitted(true)
       qc.invalidateQueries(['reviews', slug])
+      qc.invalidateQueries(['review-summary', slug])
       qc.invalidateQueries(['product', slug])
     } catch (err) {
       const data = err.response?.data
@@ -133,9 +184,31 @@ function WriteReview({ productId, slug, autoOpen = false, requirePurchase = fals
           <input
             value={title}
             onChange={e => setTitle(e.target.value)}
+            maxLength={100}
             placeholder="Summarise your experience"
-            className="w-full px-4 py-3 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors"
+            className="w-full px-4 py-3 text-base md:text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors placeholder:text-[var(--muted)] placeholder:opacity-70"
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">
+            How did it fit?{' '}
+            <span className="font-normal text-[var(--muted)] normal-case">(optional, apparel)</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {FIT_OPTIONS.map(o => (
+              <button key={o.value || 'skip'} type="button"
+                onClick={() => setFit(o.value)}
+                aria-pressed={fit === o.value}
+                className={`px-4 py-2 min-h-[44px] text-sm font-medium rounded-full border transition-all ${
+                  fit === o.value
+                    ? 'bg-[var(--ink)] text-white border-[var(--ink)]'
+                    : 'bg-white text-[var(--muted)] border-[var(--border)] hover:border-[var(--ink)]'
+                }`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -147,8 +220,9 @@ function WriteReview({ productId, slug, autoOpen = false, requirePurchase = fals
             value={body}
             onChange={e => setBody(e.target.value)}
             rows={3}
+            maxLength={2000}
             placeholder="Share your thoughts about this product..."
-            className="w-full px-4 py-3 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors resize-none"
+            className="w-full px-4 py-3 text-base md:text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors resize-none placeholder:text-[var(--muted)] placeholder:opacity-70"
           />
         </div>
 
@@ -166,8 +240,10 @@ export default function ProductDetailPage() {
   const { slug } = useParams()
   const location = useLocation()
   const { addToCart, isLoading } = useCartStore()
+  const addGuestItem = useGuestCartStore(s => s.addGuestItem)
   const { user } = useAuthStore()
   const { toggleWishlist, isWishlisted } = useWishlistStore()
+  const isBuyer = user?.role === 'buyer'
   const [selectedSize, setSelectedSize] = useState(null)
   const [selectedColor, setSelectedColor] = useState(null)
   const [imgIndex, setImgIndex] = useState(0)
@@ -188,6 +264,15 @@ export default function ProductDetailPage() {
     queryFn: async () => {
       const res = await api.get(`/reviews/products/${slug}/`)
       return Array.isArray(res.data) ? res.data : res.data.results || []
+    },
+    enabled: !!product,
+  })
+
+  const { data: fitSummary } = useQuery({
+    queryKey: ['review-summary', slug],
+    queryFn: async () => {
+      const res = await api.get(`/reviews/products/${slug}/summary/`)
+      return res.data
     },
     enabled: !!product,
   })
@@ -264,12 +349,16 @@ export default function ProductDetailPage() {
     const variant = getVariant()
     if (!variant) return toast.error('Please select size and colour')
     if (!variant.is_in_stock) return toast.error('This variant is out of stock')
-    await addToCart(product.id, variant.id, qty)
+    if (isBuyer) {
+      await addToCart(product.id, variant.id, qty)
+    } else {
+      addGuestItem({ product, variant, quantity: qty })
+    }
   }
 
   return (
     <MainLayout>
-      <div className={`max-w-7xl mx-auto px-6 lg:px-10 py-10 ${user?.role === 'buyer' ? 'pb-28 md:pb-10' : ''}`}>
+      <div className={`max-w-7xl mx-auto px-6 lg:px-10 py-10 ${(isBuyer || !user) ? 'pb-28 md:pb-10' : ''}`}>
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-[var(--muted)] mb-8">
@@ -502,8 +591,8 @@ export default function ProductDetailPage() {
               </div>
             )}
 
-            {/* Add to cart */}
-            {user?.role === 'buyer' ? (
+            {/* Add to bag — guests shop with a local bag, no account needed */}
+            {isBuyer || !user ? (
               <div className="flex gap-3">
                 <Button
                   size="full"
@@ -511,21 +600,36 @@ export default function ProductDetailPage() {
                   onClick={handleAddToCart}
                   className="rounded-xl flex-1">
                   <ShoppingBag size={16} />
-                  Add to Cart
+                  Add to Bag
                 </Button>
                 <button
                   type="button"
                   onClick={() => toggleWishlist(product)}
-                  className="w-12 h-12 border border-[var(--border)] rounded-xl flex items-center justify-center hover:border-[var(--ink)] transition-colors">
+                  aria-label="Toggle wishlist"
+                  className="w-12 h-12 min-w-[48px] min-h-[48px] border border-[var(--border)] rounded-xl flex items-center justify-center hover:border-[var(--ink)] transition-colors">
                   <Heart size={16} className={isWishlisted(product.id) ? 'fill-rose-500 text-rose-500' : 'text-[var(--muted)]'} />
                 </button>
               </div>
-            ) : !user ? (
-              <Link to="/login"
-                className="inline-flex items-center justify-center gap-2 w-full py-3 bg-[var(--ink)] text-white text-sm font-semibold rounded-xl hover:opacity-80 transition-opacity">
-                Sign in to purchase
-              </Link>
             ) : null}
+            {!user && (
+              <p className="text-xs text-[var(--muted)]">
+                No account needed — <Link to="/login" className="underline text-[var(--ink)]">sign in</Link> anytime to sync your bag across devices.
+              </p>
+            )}
+
+            {/* Pre-purchase reassurance */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              {[
+                ['Secure Paystack checkout', 'MoMo & cards accepted'],
+                ['OTP-secured handoff', 'Driver needs your code'],
+                ['7-day easy returns', 'Defective? Full refund'],
+              ].map(([title, sub]) => (
+                <div key={title} className="bg-[var(--off)] rounded-xl px-3 py-3 text-center">
+                  <p className="text-[11px] font-semibold text-[var(--ink)] leading-tight">{title}</p>
+                  <p className="text-[10px] text-[var(--muted)] leading-tight mt-1">{sub}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -553,6 +657,8 @@ export default function ProductDetailPage() {
             />
           )}
 
+          <FitMeter summary={fitSummary} />
+
           {reviews?.length > 0 ? (
             <div className="grid md:grid-cols-2 gap-5">
               {reviews.map(review => (
@@ -572,6 +678,13 @@ export default function ProductDetailPage() {
                   </div>
                   {review.title && (
                     <p className="text-sm font-medium mb-1">{review.title}</p>
+                  )}
+                  {review.fit && (
+                    <p className="mb-2">
+                      <span className="inline-block text-[11px] font-medium text-[var(--ink)] bg-white border border-[var(--border)] px-2.5 py-1 rounded-full">
+                        Fit: {review.fit === 'runs_small' ? 'Runs small' : review.fit === 'runs_large' ? 'Runs large' : 'True to size'}
+                      </span>
+                    </p>
                   )}
                   <p className="text-sm text-[var(--muted)] font-light leading-relaxed">
                     {review.body}
@@ -608,7 +721,7 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Sticky mobile buy bar — price + Add to Bag always in thumb reach */}
-      {user?.role === 'buyer' && (
+      {(isBuyer || !user) && (
         <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-[var(--border)] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-3">
             <div className="min-w-0">

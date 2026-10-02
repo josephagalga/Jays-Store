@@ -210,15 +210,20 @@ def create_transaction_split(*, name, seller_shares, bearer_share=None, metadata
     return body['data']  # contains split_code, id, ...
 
 
-def initialize_plain_transaction(*, email, gross_total, reference, order_id, callback_url=None):
+# Paystack charge channels the storefront may offer (Ghana-first).
+PAYSTACK_CHANNELS = ('card', 'mobile_money', 'bank_transfer', 'ussd', 'bank')
+
+
+def initialize_plain_transaction(*, email, gross_total, reference, order_id, callback_url=None, channels=None):
     """Initialize a buyer charge with NO split (all-platform order)."""
     return initialize_split_transaction(
         email=email, gross_total=gross_total, reference=reference,
         split_code=None, order_id=order_id, callback_url=callback_url,
+        channels=channels,
     )
 
 
-def initialize_split_transaction(*, email, gross_total, reference, split_code, order_id, callback_url=None):
+def initialize_split_transaction(*, email, gross_total, reference, split_code, order_id, callback_url=None, channels=None):
     """Initialize the single buyer charge carrying the split."""
     _require_secret()
     payload = {
@@ -237,6 +242,10 @@ def initialize_split_transaction(*, email, gross_total, reference, split_code, o
         payload['split_code'] = split_code
     if callback_url:
         payload['callback_url'] = callback_url
+    if channels:
+        valid = [c for c in channels if c in PAYSTACK_CHANNELS]
+        if valid:
+            payload['channels'] = valid
     resp = requests.post(
         'https://api.paystack.co/transaction/initialize',
         json=payload, headers=_headers(), timeout=20,

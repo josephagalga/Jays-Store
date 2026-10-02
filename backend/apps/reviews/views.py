@@ -51,6 +51,9 @@ class ProductRatingSummaryView(APIView):
             'three_star': reviews.filter(rating=3).count(),
             'two_star': reviews.filter(rating=2).count(),
             'one_star': reviews.filter(rating=1).count(),
+            'fit_runs_small': reviews.filter(fit='runs_small').count(),
+            'fit_true_to_size': reviews.filter(fit='true_to_size').count(),
+            'fit_runs_large': reviews.filter(fit='runs_large').count(),
         }
 
         serializer = ProductRatingSummarySerializer(summary)

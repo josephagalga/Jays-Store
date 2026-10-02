@@ -11,6 +11,9 @@ urlpatterns = [
     # Buyer orders
     path('orders/', views.BuyerOrderListView.as_view(), name='buyer-orders'),
     path('orders/place/', views.PlaceOrderView.as_view(), name='place-order'),
+    # Guest checkout (no account) + public tracking by reference
+    path('orders/guest/', views.GuestPlaceOrderView.as_view(), name='guest-place-order'),
+    path('orders/track/<str:reference>/', views.GuestOrderTrackView.as_view(), name='guest-order-track'),
     path('orders/<int:pk>/', views.BuyerOrderDetailView.as_view(), name='buyer-order-detail'),
     path('orders/<int:pk>/cancel/', views.CancelOrderView.as_view(), name='cancel-order'),
     path('orders/<int:pk>/rate/', views.DeliveryRatingView.as_view(), name='rate-delivery'),

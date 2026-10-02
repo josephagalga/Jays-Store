@@ -7,17 +7,74 @@ import SafeImage from '../../components/common/SafeImage'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 import useCartStore from '../../store/cartStore'
-import { deliveryFeeForCount, cartItemCount, cartSubtotal } from '../../utils/pricing'
+import useGuestCartStore from '../../store/guestCartStore'
+import useAuthStore from '../../store/authStore'
+import { deliveryFeeForCount } from '../../utils/pricing'
+
+function QtyStepper({ quantity, onChange }) {
+  return (
+    <div className="flex items-center border border-[var(--border)] rounded-lg overflow-hidden">
+      <button onClick={() => onChange(Math.max(1, quantity - 1))}
+        aria-label="Decrease quantity"
+        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--muted)] hover:bg-[var(--off)] transition-colors">
+        −
+      </button>
+      <span className="w-10 text-center text-sm font-semibold">{quantity}</span>
+      <button onClick={() => onChange(quantity + 1)}
+        aria-label="Increase quantity"
+        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--muted)] hover:bg-[var(--off)] transition-colors">
+        +
+      </button>
+    </div>
+  )
+}
 
 export default function CartPage() {
+  const { user } = useAuthStore()
+  const isBuyer = user?.role === 'buyer'
   const { cart, fetchCart, removeFromCart, updateQuantity } = useCartStore()
+  const guestItems = useGuestCartStore(s => s.items)
+  const updateGuestQty = useGuestCartStore(s => s.updateGuestQty)
+  const removeGuestItem = useGuestCartStore(s => s.removeGuestItem)
   const navigate = useNavigate()
 
-  useEffect(() => { fetchCart() }, [])
+  useEffect(() => { if (isBuyer) fetchCart() }, [isBuyer])
 
-  const items = cart?.cart_items || []
+  // Normalize server + guest rows to one shape for rendering.
+  const items = isBuyer
+    ? (cart?.cart_items || []).map(i => ({
+        key: `server:${i.id}`,
+        id: i.id,
+        name: i.product_name,
+        image: i.product_image,
+        price: parseFloat(i.total_price) / Math.max(1, Number(i.quantity) || 1),
+        lineTotal: parseFloat(i.total_price),
+        size: i.size,
+        color: i.color,
+        quantity: i.quantity,
+      }))
+    : guestItems.map(i => ({
+        key: `guest:${i.key}`,
+        id: i.key,
+        name: i.name,
+        image: i.image,
+        price: i.price,
+        lineTotal: i.price * i.quantity,
+        size: i.size,
+        color: i.color,
+        quantity: i.quantity,
+      }))
 
-  if (!cart) return (
+  const onQty = (row, qty) => {
+    if (isBuyer) updateQuantity(row.id, qty)
+    else updateGuestQty(row.id, qty)
+  }
+  const onRemove = (row) => {
+    if (isBuyer) removeFromCart(row.id)
+    else removeGuestItem(row.id)
+  }
+
+  if (isBuyer && !cart) return (
     <MainLayout>
       <div className="flex justify-center py-32"><Spinner /></div>
     </MainLayout>
@@ -28,7 +85,7 @@ export default function CartPage() {
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-24 text-center">
         <ShoppingBag size={48} className="mx-auto text-[var(--border)] mb-5" />
         <h2 className="serif text-3xl font-medium text-[var(--ink)] mb-3">Your bag is empty</h2>
-        <p className="text-sm text-[var(--muted)] mb-8">Looks like you haven't added anything yet.</p>
+        <p className="text-sm text-[var(--muted)] mb-8">Looks like you haven&apos;t added anything yet.</p>
         <Link to="/catalog">
           <Button>Continue Shopping</Button>
         </Link>
@@ -36,8 +93,8 @@ export default function CartPage() {
     </MainLayout>
   )
 
-  const subtotal = cartSubtotal(items)
-  const itemCount = cartItemCount(items)
+  const subtotal = items.reduce((n, i) => n + i.lineTotal, 0)
+  const itemCount = items.reduce((n, i) => n + Number(i.quantity || 0), 0)
   const delivery = deliveryFeeForCount(itemCount)
   const total = subtotal + delivery
 
@@ -52,10 +109,10 @@ export default function CartPage() {
           {/* Items */}
           <div className="lg:col-span-2 space-y-5">
             {items.map(item => (
-              <div key={item.id} className="flex gap-5 p-4 bg-white border border-[var(--border)] rounded-2xl">
+              <div key={item.key} className="flex gap-4 md:gap-5 p-4 bg-white border border-[var(--border)] rounded-2xl">
                 <div className="w-24 h-28 bg-[var(--off)] rounded-xl overflow-hidden flex-shrink-0">
-                  {item.product_image ? (
-                    <SafeImage src={item.product_image} alt={item.product_name}
+                  {item.image ? (
+                    <SafeImage src={item.image} alt={item.name}
                       className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -66,33 +123,24 @@ export default function CartPage() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0">
                       <h3 className="text-sm font-semibold text-[var(--ink)] line-clamp-1">
-                        {item.product_name}
+                        {item.name}
                       </h3>
                       <p className="text-xs text-[var(--muted)] mt-1">
                         {item.size} · {item.color}
                       </p>
                     </div>
                     <p className="text-sm font-bold text-[var(--ink)] flex-shrink-0">
-                      GHS {parseFloat(item.total_price).toFixed(2)}
+                      GHS {item.lineTotal.toFixed(2)}
                     </p>
                   </div>
 
                   <div className="flex items-center justify-between mt-4">
-                    <div className="flex items-center border border-[var(--border)] rounded-lg overflow-hidden">
-                      <button onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
-                        className="w-8 h-8 flex items-center justify-center text-[var(--muted)] hover:bg-[var(--off)] transition-colors">
-                        −
-                      </button>
-                      <span className="w-10 text-center text-sm font-semibold">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        className="w-8 h-8 flex items-center justify-center text-[var(--muted)] hover:bg-[var(--off)] transition-colors">
-                        +
-                      </button>
-                    </div>
-                    <button onClick={() => removeFromCart(item.id)}
-                      className="text-[var(--muted)] hover:text-rose-500 transition-colors p-1">
+                    <QtyStepper quantity={item.quantity} onChange={(q) => onQty(item, q)} />
+                    <button onClick={() => onRemove(item)}
+                      aria-label="Remove item"
+                      className="text-[var(--muted)] hover:text-rose-500 transition-colors p-2 min-w-[44px] min-h-[44px] flex items-center justify-center">
                       <Trash2 size={15} />
                     </button>
                   </div>
@@ -133,9 +181,14 @@ export default function CartPage() {
               </div>
 
               <Button size="full" onClick={() => navigate('/checkout')} className="rounded-xl">
-                Checkout
+                {isBuyer ? 'Checkout' : 'Checkout as guest'}
                 <ArrowRight size={15} />
               </Button>
+              {!isBuyer && (
+                <p className="text-xs text-[var(--muted)] text-center mt-3">
+                  No account needed · <Link to="/login" className="underline text-[var(--ink)]">Sign in</Link> to sync across devices
+                </p>
+              )}
 
               <Link to="/catalog"
                 className="block text-center text-sm text-[var(--muted)] hover:text-[var(--ink)] transition-colors mt-4">

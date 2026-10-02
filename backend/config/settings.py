@@ -116,6 +116,7 @@ REST_FRAMEWORK = {
         'register': '5/hour',
         'otp': '10/hour',
         'contact': '5/hour',
+        'checkout': '30/hour',
     },
 }
 

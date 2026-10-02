@@ -17,6 +17,7 @@ import CartPage from './pages/buyer/CartPage'
 import CheckoutPage from './pages/buyer/CheckoutPage'
 import OrdersPage from './pages/buyer/OrdersPage'
 import OrderTrackingPage from './pages/buyer/OrderTrackingPage'
+import GuestTrackPage from './pages/buyer/GuestTrackPage'
 import StorePage from './pages/buyer/StorePage'
 import VendorsPage from './pages/buyer/VendorsPage'
 import AIChatPage from './pages/buyer/AIChatPage'
@@ -248,9 +249,12 @@ export default function App() {
       {/* Vendor storefront */}
       <Route path="/store/:handle" element={<PrivateRoute roles={['buyer']}><StorePage /></PrivateRoute>} />
 
+      {/* Bag + checkout work for guests too (guest bag + guest checkout) */}
+      <Route path="/cart" element={<CartPage />} />
+      <Route path="/checkout" element={<CheckoutPage />} />
+      <Route path="/track/:reference" element={<GuestTrackPage />} />
+
       {/* Protected buyer */}
-      <Route path="/cart" element={<PrivateRoute roles={['buyer']}><CartPage /></PrivateRoute>} />
-      <Route path="/checkout" element={<PrivateRoute roles={['buyer']}><CheckoutPage /></PrivateRoute>} />
       <Route path="/orders" element={<PrivateRoute roles={['buyer']}><OrdersPage /></PrivateRoute>} />
       <Route path="/orders/:id/track" element={<PrivateRoute roles={['buyer']}><OrderTrackingPage /></PrivateRoute>} />
       <Route path="/wishlist" element={<PrivateRoute roles={['buyer']}><WishlistPage /></PrivateRoute>} />

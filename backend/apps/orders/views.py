@@ -48,6 +48,7 @@ from .serializers import (
     EmailLogSerializer,
 )
 from apps.core.permissions import IsBuyer, IsDriver, IsAdmin, IsAdminOrSeller, IsSeller
+from apps.products.models import Product
 from decimal import Decimal
 from django.db.models import Sum
 
@@ -430,6 +431,7 @@ class PlaceOrderView(APIView):
             reference = f'JAYS-{order.id}-{uuid.uuid4().hex}'
             callback_base = (getattr(settings, 'FRONTEND_URL', '') or '').strip()
             callback_url = callback_base.rstrip('/') + f'/orders/{order.id}/track' if callback_base else None
+            channels = serializer.validated_data.get('channels') or None
             if order.paystack_split_code:
                 init = initialize_split_transaction(
                     email=request.user.email,
@@ -438,6 +440,7 @@ class PlaceOrderView(APIView):
                     split_code=order.paystack_split_code,
                     order_id=order.id,
                     callback_url=callback_url,
+                    channels=channels,
                 )
             else:
                 init = initialize_plain_transaction(
@@ -446,6 +449,7 @@ class PlaceOrderView(APIView):
                     reference=reference,
                     order_id=order.id,
                     callback_url=callback_url,
+                    channels=channels,
                 )
             order.paystack_reference = init.get('reference', reference)
             order.save(update_fields=['paystack_reference'])
@@ -470,6 +474,282 @@ class PlaceOrderView(APIView):
         response_data['admin_net'] = str(admin_net)
 
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+# ============================================================
+# GUEST CHECKOUT (no account needed)
+# ============================================================
+
+def _resolve_guest_lines(items):
+    """Validate guest item payload against the DB. Returns (lines, error_response).
+
+    lines: list of (product, variant, quantity). Prices are ALWAYS recomputed
+    from the database in the view — client totals are never trusted.
+    """
+    lines = []
+    for entry in items:
+        try:
+            product = Product.objects.select_related('seller', 'created_by').get(
+                pk=entry['product_id'], is_active=True)
+        except Product.DoesNotExist:
+            return None, Response(
+                {'error': f"Product #{entry.get('product_id')} is no longer available."},
+                status=status.HTTP_400_BAD_REQUEST)
+        seller = product.seller or product.created_by
+        if seller and getattr(seller, 'verification_status', 'approved') in ('pending', 'rejected'):
+            return None, Response(
+                {'error': f'"{product.name}" is not available right now.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        variant = product.variants.filter(pk=entry['variant_id']).first()
+        if not variant:
+            return None, Response(
+                {'error': f'Selected option for "{product.name}" is invalid.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        qty = entry['quantity']
+        if variant.stock < qty:
+            return None, Response(
+                {'error': f'Only {variant.stock} left of "{product.name}".'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if seller and getattr(seller, 'role', '') == 'seller':
+            if not seller.paystack_subaccount_code or seller.subaccount_status != 'active':
+                return None, Response(
+                    {'error': 'Some items in your bag cannot be paid for right now. Try again later.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        lines.append((product, variant, qty))
+    return lines, None
+
+
+class GuestPlaceOrderView(APIView):
+    """Guest checkout: same pricing/split/OTP logic as registered checkout,
+    but the buyer stays null and contact lives on the order until claimed.
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'checkout'
+
+    @transaction.atomic
+    def post(self, request):
+        from .serializers import GuestPlaceOrderSerializer, GuestOrderResponseSerializer
+        serializer = GuestPlaceOrderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        lines, err = _resolve_guest_lines(data['items'])
+        if err:
+            return err
+
+        total_items = sum(qty for _, _, qty in lines)
+        delivery_fee = calculate_delivery_fee(total_items)
+        subtotal = sum(
+            Decimal(str(p.display_price)) * qty for p, _, qty in lines)
+        commission_collected_total = sum(
+            (Decimal(str(p.display_price)) - Decimal(str(p.effective_price))) * qty
+            for p, _, qty in lines)
+        total = max(Decimal('0.00'), subtotal + delivery_fee)
+        processing_fee = compute_processing_fee(total)
+        channels = data.get('channels') or None
+
+        order = Order.objects.create(
+            buyer=None,
+            guest_name=data['guest_name'].strip(),
+            guest_email=data['guest_email'].strip().lower(),
+            guest_phone=data['guest_phone'].strip(),
+            delivery_address=data['delivery_address'],
+            delivery_phone=data['guest_phone'].strip(),
+            delivery_note=data.get('delivery_note', ''),
+            delivery_landmark=data.get('delivery_landmark', ''),
+            subtotal=subtotal,
+            discount_amount=Decimal('0.00'),
+            delivery_fee=delivery_fee,
+            total=total,
+            processing_fee=processing_fee,
+            payment_method='paystack',
+            payment_status='unpaid',
+            driver_earnings=Decimal('0.00'),
+            commission_rate=Decimal('0.10'),
+            commission_collected=commission_collected_total,
+        )
+
+        seller_lines = {}
+        platform_direct = Decimal('0.00')
+        for product, variant, qty in lines:
+            primary_image = product.images.filter(is_primary=True).first()
+            image_url = primary_image.url if primary_image else ''
+            seller = product.seller or product.created_by
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                variant=variant,
+                seller=seller,
+                product_name=product.name,
+                product_image=image_url,
+                size=variant.size,
+                color=variant.color,
+                unit_price=product.display_price,
+                seller_net_price=product.effective_price,
+                quantity=qty,
+                commission_rate=product.commission_rate_effective,
+            )
+            line_total = Decimal(str(product.effective_price)) * qty
+            if seller and seller.role == 'seller':
+                line = seller_lines.setdefault(seller.id, [seller, Decimal('0.00')])
+                line[1] += line_total
+            else:
+                platform_direct += line_total
+
+        per_seller, _ = compute_order_split(
+            [(s, t) for s, t in seller_lines.values()]
+        )
+        admin_gross = commission_collected_total + delivery_fee + platform_direct
+        admin_net = allocate_fee(per_seller, admin_gross, processing_fee)
+        sellers_total = sum(e['net'] for e in per_seller.values())
+        actual_platform_share = (total + processing_fee) - sellers_total - processing_fee
+        if abs(admin_gross - actual_platform_share) > Decimal('0.10'):
+            logger.error(f'Guest order split validation failed for order {order.id}')
+            return Response(
+                {'error': 'Could not price this order. Please try again or contact support.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        otp_code = generate_otp()
+        DeliveryOTPLog.objects.create(
+            order=order,
+            otp_hash=hash_otp(otp_code),
+            otp_expires_at=get_otp_expiry(),
+            buyer_notified=False,
+            buyer_notification_method='email',
+            is_locked=False,
+        )
+
+        try:
+            seller_shares = [
+                (e['seller'].paystack_subaccount_code, e['net'])
+                for e in per_seller.values()
+            ]
+            if seller_shares:
+                split = create_transaction_split(
+                    name=f'Jays Store order {order.id}',
+                    seller_shares=seller_shares,
+                    bearer_share=admin_gross,
+                    metadata={
+                        'order_id': order.id,
+                        'commission': float(commission_collected_total),
+                        'delivery_fee': float(delivery_fee),
+                        'platform_items': float(platform_direct),
+                        'expected_platform_total': float(admin_gross),
+                        'guest': True,
+                    }
+                )
+                order.paystack_split_code = split.get('split_code', '')
+                order.save(update_fields=['paystack_split_code'])
+
+            reference = f'JAYS-{order.id}-{uuid.uuid4().hex}'
+            callback_base = (getattr(settings, 'FRONTEND_URL', '') or '').strip()
+            callback_url = callback_base.rstrip('/') + f'/track/{reference}' if callback_base else None
+            init_kwargs = dict(
+                email=order.guest_email,
+                gross_total=total + processing_fee,
+                reference=reference,
+                order_id=order.id,
+                callback_url=callback_url,
+                channels=channels,
+            )
+            if order.paystack_split_code:
+                init = initialize_split_transaction(
+                    split_code=order.paystack_split_code, **init_kwargs)
+            else:
+                init = initialize_plain_transaction(**init_kwargs)
+            order.paystack_reference = init.get('reference', reference)
+            order.save(update_fields=['paystack_reference'])
+        except Exception as exc:
+            response_data = GuestOrderResponseSerializer(order).data
+            response_data['payment_init_failed'] = str(exc)
+            response_data['message'] = 'Order saved but payment could not start. Retry from your tracking link.'
+            return Response(response_data, status=status.HTTP_502_BAD_GATEWAY)
+
+        response_data = GuestOrderResponseSerializer(order).data
+        response_data['authorization_url'] = init.get('authorization_url')
+        response_data['access_code'] = init.get('access_code')
+        response_data['reference'] = order.paystack_reference
+        response_data['processing_fee'] = str(processing_fee)
+        response_data['charged_total'] = str(total + processing_fee)
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+class GuestOrderTrackView(APIView):
+    """Public order tracking by Paystack reference (capability URL, no login).
+
+    GET returns status + items + totals only — no contact PII.
+    POST {email, channels?} re-initializes payment for unpaid orders (email must match).
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'checkout'
+
+    def _get_order(self, reference):
+        try:
+            return Order.objects.prefetch_related('items').get(paystack_reference=reference)
+        except Order.DoesNotExist:
+            return None
+
+    def get(self, request, reference):
+        from .serializers import GuestOrderTrackSerializer
+        order = self._get_order(reference)
+        if not order:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+        data = GuestOrderTrackSerializer(order).data
+        data['track_path'] = f'/track/{order.paystack_reference}'
+        data['is_guest_order'] = order.is_guest_order
+        return Response(data)
+
+    def post(self, request, reference):
+        """Retry payment for an unpaid guest order."""
+        order = self._get_order(reference)
+        if not order:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not order.is_guest_order:
+            return Response(
+                {'error': 'This order belongs to an account. Sign in to pay.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        email = (request.data.get('email') or '').strip().lower()
+        if not email or email != (order.guest_email or '').lower():
+            return Response({'error': 'Email does not match this order.'}, status=status.HTTP_400_BAD_REQUEST)
+        if order.status == 'cancelled':
+            return Response({'error': 'Order was cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+        if order.payment_status == 'paid':
+            return Response({'message': 'Order already paid', 'paid': True})
+        channels = request.data.get('channels') or None
+        if channels:
+            valid = [c for c in channels if c in ('card', 'mobile_money', 'bank_transfer', 'ussd', 'bank')]
+            channels = valid or None
+        try:
+            gross_total = Decimal(str(order.total)) + Decimal(str(order.processing_fee or 0))
+            new_reference = f'JAYS-{order.id}-{uuid.uuid4().hex}'
+            callback_base = (getattr(settings, 'FRONTEND_URL', '') or '').strip()
+            callback_url = callback_base.rstrip('/') + f'/track/{new_reference}' if callback_base else None
+            init_kwargs = dict(
+                email=order.guest_email,
+                gross_total=gross_total,
+                reference=new_reference,
+                order_id=order.id,
+                callback_url=callback_url,
+                channels=channels,
+            )
+            if order.paystack_split_code:
+                init = initialize_split_transaction(
+                    split_code=order.paystack_split_code, **init_kwargs)
+            else:
+                init = initialize_plain_transaction(**init_kwargs)
+        except Exception as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        order.payment_method = 'paystack'
+        order.paystack_reference = init.get('reference', new_reference)
+        order.save(update_fields=['payment_method', 'paystack_reference'])
+        return Response({
+            'authorization_url': init.get('authorization_url'),
+            'access_code': init.get('access_code'),
+            'reference': order.paystack_reference,
+            'amount': str(order.total),
+            'processing_fee': str(order.processing_fee),
+            'charged_total': str(gross_total),
+        })
 
 
 class BuyerOrderListView(generics.ListAPIView):
@@ -1007,7 +1287,7 @@ def _confirm_payment(order):
         # (Removed duplicate notify_buyer_of_otp call to avoid confusion)
         
         if not buyer_ok:
-            logger.error(f'Payment confirmation email failed for order {order.id} buyer {order.buyer.email}')
+            logger.error(f'Payment confirmation email failed for order {order.id} buyer {order.buyer_email}')
             # Don't raise - payment already processed, just log the email failure
     finally:
         try:
@@ -1238,8 +1518,13 @@ class PaystackInitializeView(APIView):
 
 
 class PaystackVerifyView(APIView):
-    """Verify a Paystack reference after checkout. Marks the order paid on success."""
-    permission_classes = [permissions.IsAuthenticated, IsBuyer]
+    """Verify a Paystack reference after checkout. Marks the order paid on success.
+
+    Guest orders (buyer null) verify without login — the unguessable
+    reference is the capability. Registered orders still require ownership.
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'checkout'
 
     def post(self, request):
         reference = (request.data.get('reference') or '').strip()
@@ -1283,17 +1568,28 @@ class PaystackVerifyView(APIView):
                         order_id = field.get('value')
                         break
             
+            user = request.user if request.user.is_authenticated else None
+            # Ownership scope: account orders need their owner; guest orders
+            # (buyer null) match on reference alone.
+            ownership = {'buyer': user} if user else {'buyer__isnull': True}
             if order_id:
                 order = Order.objects.select_for_update().filter(
-                    pk=order_id, buyer=request.user
+                    pk=order_id, **ownership
                 ).first()
             if order is None:
                 order = Order.objects.select_for_update().filter(
-                    paystack_reference=reference, buyer=request.user
+                    paystack_reference=reference, **ownership
                 ).first()
             if order is None:
                 order = Order.objects.select_for_update().filter(
-                    payment_reference=reference, buyer=request.user
+                    payment_reference=reference, **ownership
+                ).first()
+            if order is None and user:
+                # Logged-in buyer confirming a guest order (e.g. paid as
+                # guest, then signed in). Safe: Paystack success is verified
+                # below before anything is marked paid.
+                order = Order.objects.select_for_update().filter(
+                    paystack_reference=reference, buyer__isnull=True
                 ).first()
             
             if order is None:

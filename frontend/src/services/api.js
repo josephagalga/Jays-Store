@@ -79,6 +79,18 @@ export const verifyDeliveryPin = (orderId, code) =>
 export const placeOrder = (payload) =>
   api.post('/orders/place/', payload)
 
+export const placeGuestOrder = (payload) =>
+  api.post('/orders/guest/', payload)
+
+export const trackGuestOrder = (reference) =>
+  api.get(`/orders/track/${reference}/`)
+
+export const retryGuestPayment = (reference, { email, channels } = {}) =>
+  api.post(`/orders/track/${reference}/`, { email, channels })
+
+export const claimGuestAccount = (payload) =>
+  api.post('/accounts/guest-claim/', payload)
+
 export const fetchOrderReceipt = (orderId) =>
   api.get(`/orders/${orderId}/receipt/`)
 
@@ -86,6 +98,10 @@ export const fetchVendors = (search = '') =>
   api.get('/accounts/stores/', { params: search ? { search } : {} })
 
 api.placeOrder = placeOrder
+api.placeGuestOrder = placeGuestOrder
+api.trackGuestOrder = trackGuestOrder
+api.retryGuestPayment = retryGuestPayment
+api.claimGuestAccount = claimGuestAccount
 api.verifyDeliveryPin = verifyDeliveryPin
 api.verifyDeliveryOtp = verifyDeliveryOtp
 api.fetchOrderReceipt = fetchOrderReceipt

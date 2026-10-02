@@ -3,6 +3,7 @@ import { Search, ShoppingBag, Heart, X, Menu, User } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import useAuthStore from '../store/authStore'
 import useCartStore from '../store/cartStore'
+import useGuestCartStore from '../store/guestCartStore'
 import useWishlistStore from '../store/wishlistStore'
 
 export default function Navbar() {
@@ -12,10 +13,11 @@ export default function Navbar() {
   const [query, setQuery] = useState('')
   const { user, isAuthenticated, logout } = useAuthStore()
   const { cart } = useCartStore()
+  const guestCount = useGuestCartStore(s => s.guestCount())
   const { wishlistIds, fetchWishlistIds } = useWishlistStore()
   const navigate = useNavigate()
   const userMenuRef = useRef(null)
-  const itemCount = cart?.item_count || 0
+  const itemCount = (!isAuthenticated ? guestCount : 0) + (cart?.item_count || 0)
   const wishlistCount = wishlistIds?.length || 0
 
   useEffect(() => {

@@ -26,6 +26,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
         user = self.user
+        # Link guest orders placed with this email before they had an account.
+        try:
+            from apps.orders.models import Order
+            Order.objects.filter(
+                buyer__isnull=True, guest_email__iexact=user.email).update(buyer=user)
+        except Exception:
+            pass
         if user.role in ('driver', 'seller') and not user.is_verified:
             if user.verification_status == 'pending':
                 raise serializers.ValidationError(
@@ -153,12 +160,13 @@ class BuyerProfileSerializer(serializers.ModelSerializer):
 
 
 class SellerProfileSerializer(serializers.ModelSerializer):
+    """Owner view — includes payout fields (never expose publicly)."""
     full_name = serializers.ReadOnlyField()
     class Meta:
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name',
-            'role', 'phone_number', 'avatar',
+            'role', 'phone_number', 'avatar', 'is_verified',
             'store_name', 'store_description', 'store_logo',
             'store_banner', 'store_slug', 'store_address',
             'pickup_location',
@@ -170,12 +178,48 @@ class SellerProfileSerializer(serializers.ModelSerializer):
             'date_joined', 'last_active',
         ]
         read_only_fields = [
-            'id', 'email', 'role', 'store_slug',
+            'id', 'email', 'role', 'store_slug', 'is_verified',
             'paystack_subaccount_code', 'subaccount_status', 'subaccount_note',
             'seller_total_sales', 'seller_total_revenue',
             'seller_total_products', 'seller_average_rating',
             'seller_total_ratings', 'date_joined', 'last_active',
         ]
+
+
+class SellerPublicSerializer(serializers.ModelSerializer):
+    """Public storefront — no payout/bank/contact internals, ever."""
+    full_name = serializers.ReadOnlyField()
+    logo_url = serializers.SerializerMethodField()
+    banner_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'full_name', 'store_name', 'store_slug', 'store_description',
+            'store_address', 'pickup_location', 'is_verified',
+            'logo_url', 'banner_url',
+            'seller_total_sales', 'seller_average_rating', 'seller_total_ratings',
+        ]
+
+    def _abs(self, f):
+        request = self.context.get('request')
+        if f and request:
+            try:
+                return request.build_absolute_uri(f.url)
+            except Exception:
+                return None
+        if f:
+            try:
+                return f.url
+            except Exception:
+                return None
+        return None
+
+    def get_logo_url(self, obj):
+        return self._abs(obj.store_logo)
+
+    def get_banner_url(self, obj):
+        return self._abs(obj.store_banner)
 
 
 class PayoutAccountSerializer(serializers.ModelSerializer):
@@ -326,7 +370,7 @@ class VendorListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'full_name', 'store_name', 'store_slug', 'store_description',
             'store_address', 'pickup_location', 'phone_number',
-            'logo_url', 'banner_url',
+            'logo_url', 'banner_url', 'is_verified',
             'seller_total_sales', 'seller_average_rating', 'seller_total_ratings',
             'product_count',
         ]

@@ -16,9 +16,9 @@ export default function ShippingPage() {
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">Delivery Fees</h2>
             <ul className="list-disc ml-5 mt-2 space-y-1">
-              <li>1-2 items: GHS 5</li>
-              <li>3-5 items: GHS 10</li>
-              <li>6+ items: GHS 20</li>
+              <li>1-5 items: GHS 5</li>
+              <li>6-10 items: GHS 10</li>
+              <li>11+ items: GHS 20</li>
             </ul>
             <p className="mt-2">Delivery fees are calculated at checkout and are non-refundable unless the entire order is cancelled before dispatch.</p>
           </section>

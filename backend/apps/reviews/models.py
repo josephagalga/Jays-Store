@@ -25,6 +25,19 @@ class Review(models.Model):
     body = models.TextField(blank=True)
     # ↑ The full written review
 
+    # Fit feedback — powers the "fits true to size" meter on product pages.
+    # Optional: only meaningful for sized apparel, blank otherwise.
+    fit = models.CharField(
+        max_length=20,
+        choices=[
+            ('runs_small', 'Runs small'),
+            ('true_to_size', 'True to size'),
+            ('runs_large', 'Runs large'),
+        ],
+        blank=True,
+        default='',
+    )
+
     # Helpful votes — other buyers can mark a review as helpful
     helpful_votes = models.PositiveIntegerField(default=0)
 

@@ -97,6 +97,13 @@ class Order(models.Model):
         null=True,
         related_name='orders'
     )
+    # ↑ Null for guest checkout orders until the guest claims them into an account
+
+    # Guest checkout contact — used when buyer is null. Copied at order time
+    # so the order stays accurate even if details change later.
+    guest_name = models.CharField(max_length=100, blank=True, default='')
+    guest_email = models.EmailField(blank=True, default='')
+    guest_phone = models.CharField(max_length=20, blank=True, default='')
     driver = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -208,6 +215,32 @@ class Order(models.Model):
 
     def __str__(self):
         return f'Order #{self.id} — {self.buyer} — {self.status}'
+
+    @property
+    def buyer_email(self):
+        """Email for receipts/OTP — registered buyer or guest contact."""
+        if self.buyer and getattr(self.buyer, 'email', ''):
+            return self.buyer.email
+        return self.guest_email or ''
+
+    @property
+    def buyer_first_name(self):
+        if self.buyer and getattr(self.buyer, 'first_name', ''):
+            return self.buyer.first_name
+        return (self.guest_name or '').split(' ')[0] if self.guest_name else 'there'
+
+    @property
+    def buyer_display_name(self):
+        if self.buyer:
+            try:
+                return self.buyer.full_name
+            except Exception:
+                return getattr(self.buyer, 'email', 'Guest')
+        return self.guest_name or 'Guest'
+
+    @property
+    def is_guest_order(self):
+        return self.buyer_id is None
 
     @property
     def charged_total(self):

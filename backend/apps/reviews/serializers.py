@@ -19,7 +19,7 @@ class ReviewSerializer(serializers.ModelSerializer):
         model = Review
         fields = [
             'id', 'buyer_name', 'buyer_avatar',
-            'rating', 'title', 'body',
+            'rating', 'title', 'body', 'fit',
             'helpful_votes', 'has_voted_helpful',
             'images', 'created_at',
         ]
@@ -34,9 +34,14 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 
 class CreateReviewSerializer(serializers.ModelSerializer):
+    fit = serializers.ChoiceField(
+        choices=['runs_small', 'true_to_size', 'runs_large', ''],
+        required=False, allow_blank=True, default='',
+    )
+
     class Meta:
         model = Review
-        fields = ['product', 'rating', 'title', 'body']
+        fields = ['product', 'rating', 'title', 'body', 'fit']
 
     def validate_rating(self, value):
         if not 1 <= value <= 5:
@@ -83,3 +88,6 @@ class ProductRatingSummarySerializer(serializers.Serializer):
     three_star = serializers.IntegerField()
     two_star = serializers.IntegerField()
     one_star = serializers.IntegerField()
+    fit_runs_small = serializers.IntegerField(required=False, default=0)
+    fit_true_to_size = serializers.IntegerField(required=False, default=0)
+    fit_runs_large = serializers.IntegerField(required=False, default=0)
