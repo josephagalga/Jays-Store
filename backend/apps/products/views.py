@@ -59,8 +59,15 @@ class ProductListView(generics.ListAPIView):
     ordering = ['-created_at']
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True).select_related(
-            'category', 'subcategory'
+        # Public catalog: active products from verified sellers (or platform items).
+        # Products from pending/rejected sellers stay hidden until approval.
+        return Product.objects.filter(is_active=True).exclude(
+            seller__verification_status__in=['pending', 'rejected']
+        ).exclude(
+            seller__isnull=True,
+            created_by__verification_status__in=['pending', 'rejected'],
+        ).select_related(
+            'category', 'subcategory', 'seller', 'created_by'
         ).prefetch_related('images', 'variants')
 
 
@@ -70,8 +77,13 @@ class ProductDetailView(generics.RetrieveAPIView):
     lookup_field = 'slug'
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True).select_related(
-            'category', 'subcategory'
+        return Product.objects.filter(is_active=True).exclude(
+            seller__verification_status__in=['pending', 'rejected']
+        ).exclude(
+            seller__isnull=True,
+            created_by__verification_status__in=['pending', 'rejected'],
+        ).select_related(
+            'category', 'subcategory', 'seller', 'created_by'
         ).prefetch_related('images', 'variants')
 
 
@@ -82,6 +94,13 @@ class FeaturedProductsView(generics.ListAPIView):
     def get_queryset(self):
         return Product.objects.filter(
             is_active=True, is_featured=True
+        ).exclude(
+            seller__verification_status__in=['pending', 'rejected']
+        ).exclude(
+            seller__isnull=True,
+            created_by__verification_status__in=['pending', 'rejected'],
+        ).select_related(
+            'category', 'subcategory', 'seller', 'created_by'
         ).prefetch_related('images', 'variants')[:10]
 
 

@@ -1,6 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Outfit:wght@300;400;500;600&display=swap');
 @import "tailwindcss";
 
+@theme {
+  --color-cream: #FFFFFF;
+  --color-off: #F8F7F4;
+  --color-stone: #E9E6E0;
+  --color-line: #E2DED8;
+  --color-ink: #1A1A1A;
+  --color-fog: #7A7673;
+  --color-sand: #B8A898;
+  --font-display: 'Playfair Display', serif;
+  --font-body: 'Outfit', sans-serif;
+}
+
 @layer base {
   :root {
     --white:   #FFFFFF;
@@ -14,14 +26,31 @@
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
+  html {
+    scroll-behavior: smooth;
+    /* Page can never scroll sideways; inner scrollers (tables, rails) unaffected.
+       `clip` (unlike `hidden`) preserves position:sticky children like the navbar. */
+    overflow-x: clip;
+  }
+
   body {
     font-family: 'Outfit', sans-serif;
     background: var(--white);
     color: var(--ink);
     -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
   }
 
-  html { scroll-behavior: smooth; }
+  /* 16px minimum on form controls: stops iOS Safari auto-zoom on focus */
+  input, select, textarea {
+    font-size: 16px;
+  }
+
+  /* Visible keyboard focus everywhere */
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
 }
 
 @layer utilities {

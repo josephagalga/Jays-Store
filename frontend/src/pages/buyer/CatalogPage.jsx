@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { SlidersHorizontal, X, ChevronDown } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import ProductCard from '../../components/common/ProductCard'
-import Spinner from '../../components/ui/Spinner'
+import { ProductGridSkeleton } from '../../components/common/Skeletons'
 import api from '../../services/api'
 
 function useProducts(params) {
@@ -175,7 +175,7 @@ export default function CatalogPage() {
 
         {/* Grid */}
         {isLoading ? (
-          <div className="flex justify-center py-24"><Spinner /></div>
+          <ProductGridSkeleton count={8} />
         ) : products.length === 0 ? (
           <div className="text-center py-24">
             <p className="serif text-2xl font-medium text-[var(--ink)] mb-2">No products found</p>

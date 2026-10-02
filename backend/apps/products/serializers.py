@@ -57,6 +57,14 @@ class CategorySerializer(serializers.ModelSerializer):
 # PRODUCT SERIALIZERS
 # ============================================================
 
+def _seller_store(obj):
+    """Public store attribution for a product. Never exposes payout/bank data."""
+    seller = getattr(obj, 'seller', None) or getattr(obj, 'created_by', None)
+    if not seller or getattr(seller, 'role', None) not in ('seller', 'admin'):
+        return None
+    return seller
+
+
 class ProductListSerializer(serializers.ModelSerializer):
     """
     Lightweight serializer for product listings and search results.
@@ -68,6 +76,10 @@ class ProductListSerializer(serializers.ModelSerializer):
     variants = ProductVariantSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     subcategory_name = serializers.CharField(source='subcategory.name', read_only=True)
+    store_name = serializers.SerializerMethodField()
+    store_slug = serializers.SerializerMethodField()
+    store_verified = serializers.SerializerMethodField()
+    store_logo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -77,11 +89,36 @@ class ProductListSerializer(serializers.ModelSerializer):
             'category_name', 'subcategory_name',
             'average_rating', 'total_ratings', 'total_sold',
             'primary_image', 'is_featured', 'variants',
+            'store_name', 'store_slug', 'store_verified', 'store_logo_url',
         ]
-    
+
     def get_effective_price(self, obj):
         """Return display price (what buyers pay - includes commission markup)."""
         return str(obj.display_price)
+
+    def get_store_name(self, obj):
+        seller = _seller_store(obj)
+        if not seller:
+            return "Jay's Store"
+        return seller.store_name or seller.full_name
+
+    def get_store_slug(self, obj):
+        seller = _seller_store(obj)
+        return getattr(seller, 'store_slug', None) if seller else None
+
+    def get_store_verified(self, obj):
+        seller = _seller_store(obj)
+        return bool(seller and seller.is_verified) if seller else True
+
+    def get_store_logo_url(self, obj):
+        seller = _seller_store(obj)
+        if not seller or not getattr(seller, 'store_logo', None):
+            return None
+        try:
+            url = seller.store_logo.url
+        except Exception:
+            return None
+        return absolute_media_url(url, self.context.get('request'))
 
     def get_primary_image(self, obj):
         images = list(obj.images.all())
@@ -99,6 +136,10 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     effective_price = serializers.SerializerMethodField()  # Buyer-facing price (includes commission)
     discount_percentage = serializers.ReadOnlyField()
     commission_rate = serializers.SerializerMethodField()
+    store_name = serializers.SerializerMethodField()
+    store_slug = serializers.SerializerMethodField()
+    store_verified = serializers.SerializerMethodField()
+    store_logo_url = serializers.SerializerMethodField()
     images = ProductImageSerializer(many=True, read_only=True)
     variants = ProductVariantSerializer(many=True, read_only=True)
     category = CategorySerializer(read_only=True)
@@ -110,6 +151,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'brand', 'gender',
             'price', 'discount_price', 'effective_price', 'discount_percentage',
             'commission_rate',
+            'store_name', 'store_slug', 'store_verified', 'store_logo_url',
             'category', 'subcategory', 'tags',
             'average_rating', 'total_ratings', 'total_sold',
             'images', 'variants', 'is_featured', 'is_active',
@@ -119,6 +161,30 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     def get_effective_price(self, obj):
         """Return display price (what buyers pay - includes commission markup)."""
         return str(obj.display_price)
+
+    def get_store_name(self, obj):
+        seller = _seller_store(obj)
+        if not seller:
+            return "Jay's Store"
+        return seller.store_name or seller.full_name
+
+    def get_store_slug(self, obj):
+        seller = _seller_store(obj)
+        return getattr(seller, 'store_slug', None) if seller else None
+
+    def get_store_verified(self, obj):
+        seller = _seller_store(obj)
+        return bool(seller and seller.is_verified) if seller else True
+
+    def get_store_logo_url(self, obj):
+        seller = _seller_store(obj)
+        if not seller or not getattr(seller, 'store_logo', None):
+            return None
+        try:
+            url = seller.store_logo.url
+        except Exception:
+            return None
+        return absolute_media_url(url, self.context.get('request'))
 
     def get_commission_rate(self, obj):
         """Expose effective commission % so frontend can show price breakdown."""

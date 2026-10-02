@@ -55,10 +55,11 @@ export default function ProductCard({ product, index = 0 }) {
             </span>
           )}
 
-          {/* Wishlist */}
+          {/* Wishlist — always visible on touch, scales on hover for desktop */}
           <button onClick={e => { e.preventDefault(); e.stopPropagation(); toggleWishlist(product) }}
-            className="absolute top-3 right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-110">
-            <Heart size={13} className={wished ? 'fill-rose-500 text-rose-500' : 'text-[var(--muted)]'} />
+            aria-label={wished ? 'Remove from wishlist' : 'Add to wishlist'}
+            className="absolute top-3 right-3 w-10 h-10 min-w-[40px] min-h-[40px] bg-white rounded-full flex items-center justify-center shadow-sm transition-all duration-300 hover:scale-110">
+            <Heart size={15} className={wished ? 'fill-rose-500 text-rose-500' : 'text-[var(--muted)]'} />
           </button>
 
           {/* Quick add */}
@@ -82,8 +83,24 @@ export default function ProductCard({ product, index = 0 }) {
           <h3 className="text-sm font-medium text-[var(--ink)] line-clamp-1 group-hover:text-[var(--muted)] transition-colors">
             {product.name}
           </h3>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          {product.store_name && (
+            <p className="text-[11px] text-[var(--muted)] line-clamp-1">
+              Sold by{' '}
+              {product.store_slug ? (
+                <Link
+                  to={`/stores/${product.store_slug}`}
+                  onClick={e => e.stopPropagation()}
+                  className="font-medium text-[var(--ink)] hover:underline">
+                  {product.store_name}
+                </Link>
+              ) : (
+                <span className="font-medium text-[var(--ink)]">{product.store_name}</span>
+              )}
+              {product.store_verified && <span className="text-green-600"> ✓</span>}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
               <span className="text-sm font-semibold text-[var(--ink)]">
                 GHS {parseFloat(product.effective_price).toFixed(2)}
               </span>
@@ -94,7 +111,7 @@ export default function ProductCard({ product, index = 0 }) {
               )}
             </div>
             {product.total_ratings > 0 && (
-              <span className="text-[11px] text-[var(--muted)]">
+              <span className="text-[11px] text-[var(--muted)] flex-shrink-0">
                 ★ {parseFloat(product.average_rating).toFixed(1)}
               </span>
             )}

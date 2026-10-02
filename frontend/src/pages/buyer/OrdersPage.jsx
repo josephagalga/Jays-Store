@@ -4,10 +4,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Package, Clock, CheckCircle, XCircle, Truck, Star, Eye } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import SafeImage from '../../components/common/SafeImage'
-import Spinner from '../../components/ui/Spinner'
+import { OrderListSkeleton } from '../../components/common/Skeletons'
 import Badge from '../../components/ui/Badge'
 import api from '../../services/api'
-import useAuthStore from '../../store/authStore'
 import { payForOrder } from '../../utils/paystack'
 import toast from 'react-hot-toast'
 
@@ -23,7 +22,6 @@ const STATUS_CONFIG = {
 export default function OrdersPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
-  const { user } = useAuthStore()
   const [payingId, setPayingId] = useState(null)
 
   const { data: orders, isLoading } = useQuery({
@@ -55,7 +53,9 @@ export default function OrdersPage() {
 
   if (isLoading) return (
     <MainLayout>
-      <div className="flex justify-center py-32"><Spinner /></div>
+      <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
+        <OrderListSkeleton count={3} />
+      </div>
     </MainLayout>
   )
 

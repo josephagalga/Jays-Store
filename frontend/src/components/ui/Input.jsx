@@ -8,10 +8,10 @@ export default function Input({ label, error, hint, className = '', ...props }) 
       )}
       <input
         className={`
-          w-full px-4 py-3 text-sm rounded-xl border outline-none
+          w-full px-4 py-3 min-h-[48px] text-base md:text-sm rounded-xl border outline-none
           bg-white transition-all duration-150
           border-[var(--border)] focus:border-[var(--ink)]
-          placeholder:text-[var(--border)]
+          placeholder:text-[var(--muted)] placeholder:opacity-70
           disabled:bg-[var(--off)] disabled:cursor-not-allowed
           ${error ? 'border-rose-400 focus:border-rose-500' : ''}
           ${className}

@@ -6,7 +6,7 @@ import MainLayout from '../../layouts/MainLayout'
 import ProductCard from
   '../../components/common/ProductCard'
 import SafeImage from '../../components/common/SafeImage'
-import Spinner from '../../components/ui/Spinner'
+import { ProductGridSkeleton } from '../../components/common/Skeletons'
 import api from '../../services/api'
 
 // ── Data hooks ───────────────────────────────────────────────
@@ -252,14 +252,14 @@ function Featured({ products, isLoading }) {
       <div className="flex items-end justify-between mb-10">
         <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">New Arrivals</h2>
         <Link to="/catalog"
-          className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group">
+          className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group min-h-[44px]">
           View All
           <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
         </Link>
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-24"><Spinner /></div>
+        <ProductGridSkeleton count={4} />
       ) : !products?.length ? (
         <div className="text-center py-20 rounded-2xl bg-[var(--off)]">
           <ShoppingBag size={32} className="mx-auto text-[var(--border)] mb-3" />
@@ -286,7 +286,7 @@ function SliderBanner({ products }) {
       <div className="max-w-7xl mx-auto px-6 lg:px-10 mb-6 flex items-end justify-between">
         <h2 className="serif text-2xl font-medium text-[var(--ink)]">Popular Picks</h2>
         <Link to="/catalog"
-          className="hidden md:flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group">
+          className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group min-h-[44px]">
           Shop All <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
         </Link>
       </div>
@@ -369,6 +369,48 @@ function AIBanner() {
   )
 }
 
+// ── Browse-all band ──────────────────────────────────────────
+// Every seller's uploads, one shelf. Count is live from the catalog API.
+
+function useProductCount() {
+  return useQuery({
+    queryKey: ['product-count'],
+    queryFn: async () => {
+      const res = await api.get('/products/?page_size=1')
+      const data = res.data
+      return data?.count ?? (Array.isArray(data) ? data.length : 0)
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+}
+
+function BrowseAllBand() {
+  const [ref, visible] = useReveal()
+  const { data: count } = useProductCount()
+
+  return (
+    <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-6 reveal ${visible ? 'visible' : ''}`}>
+      <Link to="/catalog"
+        className="group flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-[var(--off)] hover:bg-[var(--stone)] transition-colors rounded-3xl p-8 md:p-10">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--muted)] mb-3">
+            Every store · One shelf
+          </p>
+          <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] leading-tight">
+            Browse all {count ? `${count} ` : ''}products
+          </h2>
+          <p className="text-sm text-[var(--muted)] font-light mt-2 max-w-md">
+            Everything uploaded by every seller — new drops appear here first.
+          </p>
+        </div>
+        <span className="inline-flex items-center justify-center gap-2 px-7 py-3.5 min-h-[48px] bg-[var(--ink)] text-white text-sm font-semibold rounded-full group-hover:gap-3 transition-all flex-shrink-0">
+          Shop all <ArrowRight size={15} />
+        </span>
+      </Link>
+    </section>
+  )
+}
+
 // ── Join section ─────────────────────────────────────────────
 
 function JoinSection() {
@@ -424,6 +466,7 @@ export default function HomePage() {
       <Categories categories={categories} />
       <Featured products={featured} isLoading={featuredLoading} />
       <SliderBanner products={featured} />
+      <BrowseAllBand />
       <AIBanner />
       <JoinSection />
     </MainLayout>
