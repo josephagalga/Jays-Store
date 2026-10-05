@@ -31,7 +31,9 @@ urlpatterns = [
     path('admin/users/<int:pk>/commission-rate/', views.AdminUpdateCommissionRateView.as_view(), name='admin-update-commission'),
     path('admin/commission-audit-logs/', views.AdminCommissionAuditLogView.as_view(), name='admin-commission-logs'),
     path('admin/contact-messages/', views.ContactMessageListView.as_view(), name='admin-contact-list'),
+    path('admin/contact-messages/<int:pk>/', views.ContactMessageDetailView.as_view(), name='admin-contact-detail'),
     path('admin/newsletter/', views.NewsletterListView.as_view(), name='admin-newsletter-list'),
+    path('admin/newsletter/<int:pk>/', views.NewsletterDeleteView.as_view(), name='admin-newsletter-delete'),
 
     # Public support
     path('contact/', views.ContactMessageCreateView.as_view(), name='contact-create'),

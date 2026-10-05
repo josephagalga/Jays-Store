@@ -22,9 +22,9 @@ export default function AdminFinancePage() {
     new Column({ key: 'sellers_net', label: 'To Sellers', width: '140px', render: formatCurrency }),
     new Column({ key: 'commission', label: 'Commission', width: '120px', render: formatCurrency }),
     new Column({ key: 'delivery_fee', label: 'Delivery', width: '120px', render: formatCurrency }),
-    new Column({ key: 'paystack_fee', label: 'Paystack Fee', width: '120px', render: (v, row) => formatCurrency(v || row.fee_estimated ? `${v} (est.)` : v) }),
+    new Column({ key: 'paystack_fee', label: 'Paystack Fee', width: '120px', render: (v, row) => `${formatCurrency(v)}${row.fee_estimated ? ' (est.)' : ''}` }),
     new Column({ key: 'platform_net', label: 'Platform Net', width: '140px', render: formatCurrency }),
-    new Column({ key: 'fee_estimated', label: 'Est.', width: '80px', render: (v) => v ? '⚠' : '✓' }),
+    new Column({ key: 'fee_estimated', label: 'Est.', width: '80px', render: (v) => v ? 'est.' : '—' }),
   ]
 
   if (isLoading) return (

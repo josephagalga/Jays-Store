@@ -492,6 +492,32 @@ class ContactMessageListView(generics.ListAPIView):
     queryset = ContactMessage.objects.all().order_by('-created_at')
 
 
+class ContactMessageDetailView(APIView):
+    """Admin reads (marks read) or deletes a contact message."""
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get_object(self, pk):
+        try:
+            return ContactMessage.objects.get(pk=pk)
+        except ContactMessage.DoesNotExist:
+            return None
+
+    def patch(self, request, pk):
+        msg = self.get_object(pk)
+        if not msg:
+            return Response({'error': 'Message not found'}, status=status.HTTP_404_NOT_FOUND)
+        msg.is_read = True
+        msg.save(update_fields=['is_read'])
+        return Response(ContactMessageSerializer(msg).data)
+
+    def delete(self, request, pk):
+        msg = self.get_object(pk)
+        if not msg:
+            return Response({'error': 'Message not found'}, status=status.HTTP_404_NOT_FOUND)
+        msg.delete()
+        return Response({'message': 'Message deleted'})
+
+
 class NewsletterSubscribeView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_scope = 'contact'
@@ -514,6 +540,19 @@ class NewsletterListView(generics.ListAPIView):
     serializer_class = NewsletterSubscriberSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdmin]
     queryset = NewsletterSubscriber.objects.all().order_by('-created_at')
+
+
+class NewsletterDeleteView(APIView):
+    """Admin removes a newsletter subscriber."""
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def delete(self, request, pk):
+        try:
+            sub = NewsletterSubscriber.objects.get(pk=pk)
+        except NewsletterSubscriber.DoesNotExist:
+            return Response({'error': 'Subscriber not found'}, status=status.HTTP_404_NOT_FOUND)
+        sub.delete()
+        return Response({'message': 'Subscriber removed'})
 
 
 # ============================================================

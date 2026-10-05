@@ -178,8 +178,8 @@ export default function AdminInventoryPage() {
           </div>
         )}
 
-        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-x-auto">
+          <table className="w-full min-w-[720px]">
             <thead className="bg-[var(--off)] border-b border-[var(--border)]">
               <tr>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">Product</th>
