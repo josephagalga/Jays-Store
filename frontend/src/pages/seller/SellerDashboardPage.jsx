@@ -153,7 +153,7 @@ export default function SellerDashboardPage() {
         ))}
       </div>
 
-      {/* Commission Info Widget */}
+      {/* Commission Info Widget — fixed 10/5 tiers */}
       {commissionInfo && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 mb-6">
           <div className="flex items-start gap-3">
@@ -162,30 +162,30 @@ export default function SellerDashboardPage() {
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-blue-900 mb-1">
-                Your Commission Rate: {commissionInfo.commission_rate}%
+                Commission: 10% under GHS 100 · 5% from GHS 100
               </h3>
               <p className="text-sm text-blue-800 mb-3">
                 {commissionInfo.explanation}
               </p>
-              <div className="bg-white rounded-lg px-4 py-3 text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-blue-700">You list at:</span>
-                  <span className="font-semibold text-blue-900">GHS {commissionInfo.example.your_price}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-blue-700">Buyers pay:</span>
-                  <span className="font-semibold text-blue-900">GHS {commissionInfo.example.buyer_pays}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-blue-700">You receive:</span>
-                  <span className="font-bold text-green-600">GHS {commissionInfo.example.your_price}</span>
-                </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {(commissionInfo.tiers || []).map(tier => (
+                  <div key={tier.label} className="bg-white rounded-lg px-4 py-3 text-xs space-y-1">
+                    <p className="font-semibold text-blue-900">{tier.label} — {tier.rate}%</p>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">You list at:</span>
+                      <span className="font-semibold text-blue-900">GHS {tier.example.your_price}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Buyers pay:</span>
+                      <span className="font-semibold text-blue-900">GHS {tier.example.buyer_pays}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">You receive:</span>
+                      <span className="font-bold text-green-600">GHS {tier.example.your_price}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              {commissionInfo.last_updated && (
-                <p className="text-xs text-blue-600 mt-2">
-                  Last updated: {new Date(commissionInfo.last_updated).toLocaleDateString()}
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -299,7 +299,7 @@ export default function SellerDashboardPage() {
           </div>
         </div>
         <p className="text-xs text-white/40 mt-4">
-          No withdrawals needed — every sale settles instantly to your account (item total minus 10% commission).
+          No withdrawals needed — every sale settles instantly to your account (item total minus 10% commission under GHS 100, 5% from GHS 100).
         </p>
 
         {showPayoutForm && (

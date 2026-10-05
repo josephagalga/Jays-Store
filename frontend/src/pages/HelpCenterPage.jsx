@@ -42,7 +42,7 @@ const sections = [
       },
       {
         title: 'Pricing & Commission',
-        body: 'You set your net price (what you want to receive). The platform adds its commission on top — buyers pay the marked-up price. You always receive exactly what you listed. Commission rates are 0-30% (set by admin).'
+        body: 'You set your net price (what you want to receive). The platform adds its commission on top — buyers pay the marked-up price. You always receive exactly what you listed. Commission is fixed: 10% on products under GHS 100, 5% on products of GHS 100 or more.'
       },
       {
         title: 'Self-Delivery Option',
@@ -92,7 +92,7 @@ const sections = [
       },
       {
         title: 'Seller Management',
-        body: 'View all sellers, update commission rates (per-seller or bulk), and view commission audit logs. Sellers can be self-delivery or platform-delivery; all earnings settle instantly via Paystack splits.'
+        body: 'View all sellers, review the fixed 10/5 commission tiers and past rate-change history. Sellers can be self-delivery or platform-delivery; all earnings settle instantly via Paystack splits.'
       },
       {
         title: 'Driver Verification',

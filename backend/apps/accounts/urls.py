@@ -28,7 +28,6 @@ urlpatterns = [
     path('admin/drivers/<int:pk>/', views.AdminDriverDetailView.as_view(), name='admin-driver-detail'),
     path('admin/drivers/<int:pk>/verify/', views.AdminVerifyDriverView.as_view(), name='admin-verify-driver'),
     path('admin/users/<int:pk>/delete/', views.AdminDeleteUserView.as_view(), name='admin-delete-user'),
-    path('admin/users/<int:pk>/commission-rate/', views.AdminUpdateCommissionRateView.as_view(), name='admin-update-commission'),
     path('admin/commission-audit-logs/', views.AdminCommissionAuditLogView.as_view(), name='admin-commission-logs'),
     path('admin/contact-messages/', views.ContactMessageListView.as_view(), name='admin-contact-list'),
     path('admin/contact-messages/<int:pk>/', views.ContactMessageDetailView.as_view(), name='admin-contact-detail'),

@@ -125,7 +125,6 @@ export const adminApi = {
   // Users
   getUsers: (params) => api.get('/accounts/admin/users/', { params }),
   deleteUser: (id) => api.delete(`/accounts/admin/users/${id}/delete/`),
-  updateCommissionRate: (id, rate) => api.patch(`/accounts/admin/users/${id}/commission-rate/`, { commission_rate: rate }),
   getCommissionAuditLogs: (params) => api.get('/accounts/admin/commission-audit-logs/', { params }),
 
   // Drivers

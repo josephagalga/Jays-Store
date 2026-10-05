@@ -27,12 +27,12 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">4. Ordering and Payment</h2>
-            <p>All prices are in Ghana Cedis (GHS). A marketplace fee is added to the seller&apos;s listed price and shown before you pay. Payments are processed securely through Paystack. Orders are confirmed only after successful payment.</p>
+            <p>All prices are in Ghana Cedis (GHS). A fixed marketplace fee is added to the seller&apos;s listed price and shown before you pay: 10% on products under GHS 100, 5% on products of GHS 100 or more. Payments are processed securely through Paystack. Orders are confirmed only after successful payment.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">5. Delivery</h2>
-            <p>Delivery fees: GHS 5 (1-2 items), GHS 10 (3-5 items), GHS 20 (6+ items). Delivery within Navrongo and surrounding areas. You must provide a valid address and phone number. OTP verification is required upon delivery.</p>
+            <p>Platform delivery fees: GHS 5 (1-5 items), GHS 10 (6-10 items), GHS 20 (11+ items). Sellers who deliver themselves set their own flat per-order fee, shown at checkout. Delivery within Navrongo and surrounding areas. You must provide a valid address and phone number. OTP verification is required upon delivery.</p>
           </section>
 
           <section>

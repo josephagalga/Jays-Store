@@ -163,43 +163,27 @@ class Product(models.Model):
     
     @property
     def commission_rate_effective(self):
-        """Get effective commission rate with automatic tiered pricing.
-        
-        Tiered commission structure (based on seller's net price):
-        - Products >= 100.00 GHS: 5% commission (encourages high-value listings)
-        - Products < 100.00 GHS: Seller's admin-configured rate (default 10%, range 0-30%)
-        
-        Priority order:
-        1. Snapshot rate if explicitly set (overrides tiered system - admin locked)
-        2. Tiered rate based on effective_price (seller's net after discount)
-        3. 0% for platform-owned products (no commission)
-        
-        Note: Only admins can modify commission rates. Tiered rates apply automatically.
-        Implemented: October 1, 2026
+        """Fixed two-tier commission (based on seller's net price).
+
+        - Net < 100.00 GHS: 10% commission
+        - Net >= 100.00 GHS: 5% commission
+        - Platform-owned products: 0% (no commission)
+
+        The old per-seller rate and snapshot overrides are retired:
+        commission_rate_snapshot is ignored (kept in DB for history only).
         """
         from decimal import Decimal
-        
-        # Priority 1: Use snapshot if explicitly set (admin has locked this product's rate)
-        if self.commission_rate_snapshot is not None:
-            return self.commission_rate_snapshot
-        
+
         # Get seller to check if this is a seller product
         seller = self.seller or self.created_by
-        
+
         if seller and seller.role == 'seller':
-            # Priority 2: Apply automatic tiered rates based on product's net price
             base_price = self.effective_price  # Seller's net price (includes discount if applicable)
-            
-            # Tiered commission logic
             if base_price >= Decimal('100.00'):
-                # High-value products: lower commission to encourage premium listings
-                return Decimal('5.00')  # 5% for products >= 100 GHS
-            else:
-                # Low-value products: use seller's admin-configured commission rate
-                # Admin sets this per-seller (default 10%, range 0-30%)
-                return getattr(seller, 'commission_rate', Decimal('10.00'))
-        
-        # Priority 3: Platform-listed products have no commission
+                return Decimal('5.00')
+            return Decimal('10.00')
+
+        # Platform-listed products have no commission
         return Decimal('0.00')
     
     @property
@@ -353,21 +337,4 @@ class Wishlist(models.Model):
 
 
 # Signal to capture commission rate snapshot on product creation
-from django.db.models.signals import pre_save
-from django.dispatch import receiver
 
-@receiver(pre_save, sender=Product)
-def capture_commission_rate_snapshot(sender, instance, **kwargs):
-    """Snapshot seller's commission rate when product is created.
-    
-    On product creation (pk is None): snapshot = seller's current rate
-    On product update: only update snapshot if explicitly being changed
-    
-    This allows two behaviors:
-    1. Keep snapshot = locked rate (commission changes don't affect this product)
-    2. Set snapshot = None (product follows seller's current rate)
-    """
-    if instance.pk is None:  # New product only
-        seller = instance.seller or instance.created_by
-        if seller and seller.role == 'seller' and hasattr(seller, 'commission_rate'):
-            instance.commission_rate_snapshot = seller.commission_rate

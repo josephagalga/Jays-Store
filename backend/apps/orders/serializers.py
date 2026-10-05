@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from decimal import Decimal
-from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Settlement, EmailLog, PLATFORM_COMMISSION_RATE
+from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Settlement, EmailLog
 
 
 ACTIVE_OTP_STATUSES = {'pending', 'accepted', 'picked_up'}

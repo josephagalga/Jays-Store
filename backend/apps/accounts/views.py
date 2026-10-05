@@ -283,57 +283,6 @@ class AdminVerifyDriverView(generics.UpdateAPIView):
             'driver': AdminDriverDetailSerializer(driver, context={'request': request}).data,
         })
 
-class AdminUpdateCommissionRateView(APIView):
-    """Admin updates a seller's commission rate with audit logging."""
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
-    
-    def patch(self, request, pk):
-        from decimal import Decimal, InvalidOperation
-        from .admin import update_seller_commission_rate
-        
-        try:
-            seller = User.objects.get(pk=pk, role='seller')
-        except User.DoesNotExist:
-            return Response({'error': 'Seller not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        # Get new rate
-        try:
-            new_rate = Decimal(str(request.data.get('commission_rate', '')))
-            if new_rate < 0 or new_rate > 30:
-                return Response(
-                    {'error': 'Commission rate must be between 0.00 and 30.00'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        except (InvalidOperation, ValueError):
-            return Response(
-                {'error': 'Invalid commission rate format'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        apply_to_existing = request.data.get('apply_to_existing', False)
-        reason = request.data.get('reason', '').strip()
-        
-        # Update with audit trail
-        affected_count = update_seller_commission_rate(
-            seller=seller,
-            new_rate=new_rate,
-            changed_by=request.user,
-            apply_to_existing=apply_to_existing,
-            reason=reason
-        )
-        
-        return Response({
-            'message': 'Commission rate updated successfully',
-            'seller': {
-                'id': seller.id,
-                'email': seller.email,
-                'store_name': seller.store_name,
-                'commission_rate': str(seller.commission_rate),
-            },
-            'affected_products': affected_count
-        })
-
-
 class AdminCommissionAuditLogView(generics.ListAPIView):
     """Admin views commission rate change history."""
     permission_classes = [permissions.IsAuthenticated, IsAdmin]
@@ -560,32 +509,32 @@ class NewsletterDeleteView(APIView):
 # ============================================================
 
 class SellerCommissionInfoView(APIView):
-    """Seller views their commission rate and pricing calculator."""
+    """Seller views the fixed commission tiers and pricing examples."""
     permission_classes = [permissions.IsAuthenticated, IsSeller]
-    
+
     def get(self, request):
         from decimal import Decimal, ROUND_HALF_UP
-        
-        seller = request.user
-        rate = seller.commission_rate
-        
-        # Example calculation for seller's understanding
-        example = Decimal('50.00')
-        multiplier = Decimal('1.00') + (rate / Decimal('100.00'))
-        buyer_price = (example * multiplier).quantize(Decimal('0.01'), ROUND_HALF_UP)
-        commission = buyer_price - example
-        
-        return Response({
-            'commission_rate': str(rate),
-            'last_updated': seller.commission_rate_updated_at,
-            'explanation': (
-                f'When you list a product at GHS {example}, buyers will pay GHS {buyer_price}. '
-                f'You receive GHS {example}, platform keeps GHS {commission} commission.'
-            ),
-            'example': {
-                'your_price': str(example),
+
+        def example_for(net, rate):
+            net = Decimal(net)
+            buyer_price = (net * (Decimal('1.00') + rate / Decimal('100.00'))).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+            return {
+                'your_price': str(net),
                 'buyer_pays': str(buyer_price),
-                'commission': str(commission)
-            },
+                'commission': str(buyer_price - net),
+            }
+
+        return Response({
+            'tiers': [
+                {'label': 'Under GHS 100', 'rate': '10.00',
+                 'example': example_for('50.00', Decimal('10.00'))},
+                {'label': 'GHS 100 and above', 'rate': '5.00',
+                 'example': example_for('150.00', Decimal('5.00'))},
+            ],
+            'explanation': (
+                'Commission is fixed for everyone: 10% on products under GHS 100, '
+                '5% on products of GHS 100 or more (based on your listed net price).'
+            ),
             'note': 'The commission is added on top of your price and paid by the buyer. You always receive exactly what you list.'
         })
