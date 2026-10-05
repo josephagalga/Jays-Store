@@ -1,0 +1,52 @@
+import { useQuery } from '@tanstack/react-query'
+import MainLayout from '../../layouts/MainLayout'
+import { DataTable } from '../../components/shared/DataTable'
+import { adminApi } from '../../services/api'
+
+export default function AdminNewsletterPage() {
+
+  const { data: subscribers, isLoading, refetch } = useQuery({
+    queryKey: ['admin-newsletter'],
+    queryFn: adminApi.getNewsletterSubscribers,
+    staleTime: 1000 * 60 * 5,
+  })
+
+
+  if (isLoading) return (
+    <MainLayout>
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+        <div className="flex justify-center py-32">Loading…</div>
+      </div>
+    </MainLayout>
+  )
+
+  return (
+    <MainLayout>
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">Newsletter Subscribers</h1>
+            <p className="text-sm text-[var(--muted)] mt-1">Manage newsletter subscribers</p>
+          </div>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--ink)] text-white text-sm font-medium rounded-xl hover:opacity-80 transition-opacity"
+          >
+            Refresh
+          </button>
+        </div>
+
+        <DataTable
+          columns={[
+            { key: 'email', label: 'Email', width: '300px', render: (v) => <p className="font-medium text-[var(--ink)]">{v}</p> },
+            { key: 'is_active', label: 'Status', width: '120px', render: (v) => <span className={`px-2.5 py-1 text-[10px] font-semibold rounded-full ${v ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{v ? 'Active' : 'Inactive'}</span> },
+            { key: 'created_at', label: 'Subscribed', width: '160px', render: (v) => new Date(v).toLocaleString('en-GH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+          ]}
+          data={subscribers || []}
+          keyField="email"
+          emptyMessage="No subscribers yet"
+        />
+      </div>
+    </MainLayout>
+  )
+}

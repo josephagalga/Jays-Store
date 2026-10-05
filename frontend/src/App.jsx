@@ -17,6 +17,7 @@ import CartPage from './pages/buyer/CartPage'
 import CheckoutPage from './pages/buyer/CheckoutPage'
 import OrdersPage from './pages/buyer/OrdersPage'
 import OrderTrackingPage from './pages/buyer/OrderTrackingPage'
+import BuyerOrderReceiptPage from './pages/buyer/BuyerOrderReceiptPage'
 import GuestTrackPage from './pages/buyer/GuestTrackPage'
 import StorePage from './pages/buyer/StorePage'
 import VendorsPage from './pages/buyer/VendorsPage'
@@ -30,6 +31,8 @@ import SellerProductsPage from './pages/seller/SellerProductsPage'
 import SellerAddProductPage from './pages/seller/SellerAddProductPage'
 import SellerStorePage from './pages/seller/SellerStorePage'
 import SellerOrdersPage from './pages/seller/SellerOrdersPage'
+import SellerWalletPage from './pages/seller/SellerWalletPage'
+import SellerPayoutsPage from './pages/seller/SellerPayoutsPage'
 
 // Driver pages
 import DriverDashboardPage from './pages/driver/DriverDashboardPage'
@@ -44,6 +47,15 @@ import AdminDriversPage from './pages/admin/AdminDriversPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminPayoutsPage from './pages/admin/AdminPayoutsPage'
 import AdminCommissionPage from './pages/admin/AdminCommissionPage'
+import AdminFinancePage from './pages/admin/AdminFinancePage'
+import AdminSellerEarningsPage from './pages/admin/AdminSellerEarningsPage'
+import AdminCommissionAuditLogsPage from './pages/admin/AdminCommissionAuditLogsPage'
+import AdminContactMessagesPage from './pages/admin/AdminContactMessagesPage'
+import AdminNewsletterPage from './pages/admin/AdminNewsletterPage'
+import AdminEmailLogsPage from './pages/admin/AdminEmailLogsPage'
+import AdminPayoutActionsPage from './pages/admin/AdminPayoutActionsPage'
+import AdminInventoryPage from './pages/admin/AdminInventoryPage'
+import AdminCategoriesPage from './pages/admin/AdminCategoriesPage'
 
 // General pages
 import AboutPage from './pages/AboutPage'
@@ -133,6 +145,8 @@ function DashboardLayout({ children }) {
       { label: 'My Products', to: '/seller/products' },
       { label: 'Add Product', to: '/seller/products/add' },
       { label: 'My Orders', to: '/seller/orders' },
+      { label: 'Wallet', to: '/seller/wallet' },
+      { label: 'Payouts', to: '/seller/payouts' },
       { label: 'View Store', to: user?.store_slug ? `/stores/${user.store_slug}` : '/' },
     ],
     driver: [
@@ -143,11 +157,20 @@ function DashboardLayout({ children }) {
     admin: [
       { label: 'Dashboard', to: '/admin/dashboard' },
       { label: 'Products', to: '/admin/products' },
+      { label: 'Inventory', to: '/admin/inventory' },
+      { label: 'Categories', to: '/admin/categories' },
       { label: 'Orders', to: '/admin/orders' },
+      { label: 'Finance', to: '/admin/finance' },
+      { label: 'Seller Earnings', to: '/admin/seller-earnings' },
       { label: 'Settlements', to: '/admin/payouts' },
+      { label: 'Payout Actions', to: '/admin/payout-actions' },
       { label: 'Commissions', to: '/admin/commissions' },
+      { label: 'Audit Logs', to: '/admin/commission-audit-logs' },
       { label: 'Drivers', to: '/admin/drivers' },
       { label: 'Users', to: '/admin/users' },
+      { label: 'Messages', to: '/admin/contact-messages' },
+      { label: 'Newsletter', to: '/admin/newsletter' },
+      { label: 'Email Logs', to: '/admin/email-logs' },
     ],
   }
 
@@ -259,6 +282,7 @@ export default function App() {
       {/* Protected buyer */}
       <Route path="/orders" element={<PrivateRoute roles={['buyer']}><OrdersPage /></PrivateRoute>} />
       <Route path="/orders/:id/track" element={<PrivateRoute roles={['buyer']}><OrderTrackingPage /></PrivateRoute>} />
+      <Route path="/orders/:id/receipt" element={<PrivateRoute roles={['buyer']}><BuyerOrderReceiptPage /></PrivateRoute>} />
       <Route path="/wishlist" element={<PrivateRoute roles={['buyer']}><WishlistPage /></PrivateRoute>} />
       <Route path="/assistant" element={<PrivateRoute roles={['buyer']}><AIChatPage /></PrivateRoute>} />
       <Route path="/profile" element={<PrivateRoute roles={['buyer']}><BuyerProfilePage /></PrivateRoute>} />
@@ -282,6 +306,16 @@ export default function App() {
       <Route path="/seller/orders" element={
         <PrivateRoute roles={['seller']}>
           <DashboardLayout><SellerOrdersPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/seller/wallet" element={
+        <PrivateRoute roles={['seller']}>
+          <DashboardLayout><SellerWalletPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/seller/payouts" element={
+        <PrivateRoute roles={['seller']}>
+          <DashboardLayout><SellerPayoutsPage /></DashboardLayout>
         </PrivateRoute>
       } />
 
@@ -336,6 +370,51 @@ export default function App() {
       <Route path="/admin/commissions" element={
         <PrivateRoute roles={['admin']}>
           <DashboardLayout><AdminCommissionPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/finance" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminFinancePage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/seller-earnings" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminSellerEarningsPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/commission-audit-logs" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminCommissionAuditLogsPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/contact-messages" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminContactMessagesPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/newsletter" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminNewsletterPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/email-logs" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminEmailLogsPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/payout-actions" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminPayoutActionsPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/inventory" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminInventoryPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/categories" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminCategoriesPage /></DashboardLayout>
         </PrivateRoute>
       } />
 

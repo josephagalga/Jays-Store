@@ -106,3 +106,109 @@ api.verifyDeliveryPin = verifyDeliveryPin
 api.verifyDeliveryOtp = verifyDeliveryOtp
 api.fetchOrderReceipt = fetchOrderReceipt
 api.fetchVendors = fetchVendors
+
+// ============================================================
+// ADMIN API
+// ============================================================
+
+export const adminApi = {
+  // Dashboard
+  getDashboard: () => api.get('/accounts/admin/dashboard/'),
+
+  // Users
+  getUsers: (params) => api.get('/accounts/admin/users/', { params }),
+  deleteUser: (id) => api.delete(`/accounts/admin/users/${id}/delete/`),
+  updateCommissionRate: (id, rate) => api.patch(`/accounts/admin/users/${id}/commission-rate/`, { commission_rate: rate }),
+  getCommissionAuditLogs: (params) => api.get('/accounts/admin/commission-audit-logs/', { params }),
+
+  // Drivers
+  getDrivers: (params) => api.get('/accounts/admin/users/', { params: { ...params, role: 'driver' } }),
+  getDriverDetail: (id) => api.get(`/accounts/admin/drivers/${id}/`),
+  verifyDriver: (id, status, note) => api.patch(`/accounts/admin/drivers/${id}/verify/`, { verification_status: status, verification_note: note }),
+
+  // Contact messages
+  getContactMessages: (params) => api.get('/accounts/admin/contact-messages/', { params }),
+
+  // Newsletter
+  getNewsletterSubscribers: (params) => api.get('/accounts/admin/newsletter/', { params }),
+
+  // Email logs
+  getEmailLogs: (params) => api.get('/orders/admin/email-logs/', { params }),
+  testEmail: (to) => api.post('/orders/admin/email-logs/test/', { to }),
+
+  // Finance
+  getFinance: () => api.get('/orders/admin/finance/'),
+  getSellerEarnings: () => api.get('/orders/admin/seller-earnings/'),
+
+  // Payouts & settlements
+  getSettlements: (params) => api.get('/admin/settlements/', { params }),
+  getPayouts: (params) => api.get('/admin/payouts/', { params }),
+  updatePayout: (id, action) => api.patch(`/admin/payouts/${id}/`, { action }),
+
+  // Products
+  getProducts: (params) => api.get('/products/manage/', { params }),
+  updateProduct: (id, data) => api.patch(`/products/manage/${id}/`, data),
+
+  // Categories
+  getCategories: () => api.get('/products/categories/'),
+  createCategory: (data) => api.post('/products/admin/categories/create/', data),
+  updateCategory: (id, data) => api.patch(`/products/admin/categories/${id}/`, data),
+  deleteCategory: (id) => api.delete(`/products/admin/categories/${id}/`),
+
+  // Inventory
+  getInventory: (params) => api.get('/products/admin/inventory/', { params }),
+
+  // Reviews
+  getReviews: (params) => api.get('/reviews/admin/', { params }),
+  toggleReview: (id, isVisible) => api.patch(`/reviews/admin/${id}/toggle/`, { is_visible: isVisible }),
+}
+
+// ============================================================
+// SELLER API
+// ============================================================
+
+export const sellerApi = {
+  // Profile
+  getProfile: () => api.get('/accounts/profile/seller/'),
+  updateProfile: (data) => api.patch('/accounts/profile/seller/', data),
+
+  // Payout account
+  getPayoutAccount: () => api.get('/accounts/seller/payout-account/'),
+  updatePayoutAccount: (data) => api.patch('/accounts/seller/payout-account/', data),
+  getBanks: () => api.get('/accounts/seller/banks/'),
+
+  // Commission info
+  getCommissionInfo: () => api.get('/accounts/seller/commission-info/'),
+
+  // Wallet & Payouts
+  getWallet: () => api.get('/seller/wallet/'),
+  getPayouts: (params) => api.get('/seller/payouts/', { params }),
+  requestPayout: (amount) => api.post('/seller/payouts/', { amount }),
+
+  // Delivery mode
+  updateDeliveryMode: (mode, fee) => api.patch('/accounts/profile/seller/', {
+    delivery_mode: mode,
+    custom_delivery_fee: fee,
+  }),
+}
+
+// ============================================================
+// BUYER API
+// ============================================================
+
+export const buyerApi = {
+  // Profile
+  getProfile: () => api.get('/accounts/profile/buyer/'),
+  updateProfile: (data) => api.patch('/accounts/profile/buyer/', data),
+  deleteAccount: () => api.delete('/accounts/me/'),
+}
+
+// ============================================================
+// DRIVER API
+// ============================================================
+
+export const driverApi = {
+  // Profile
+  getProfile: () => api.get('/accounts/profile/driver/'),
+  updateProfile: (data) => api.patch('/accounts/profile/driver/', data),
+}
