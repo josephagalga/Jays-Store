@@ -92,7 +92,7 @@ const sections = [
       },
       {
         title: 'Seller Management',
-        body: 'View all sellers, update commission rates (per-seller or bulk), view commission audit logs, and manage payouts. Sellers can be self-delivery or platform-delivery.'
+        body: 'View all sellers, update commission rates (per-seller or bulk), and view commission audit logs. Sellers can be self-delivery or platform-delivery; all earnings settle instantly via Paystack splits.'
       },
       {
         title: 'Driver Verification',

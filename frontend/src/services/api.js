@@ -147,10 +147,8 @@ export const adminApi = {
   getFinance: () => api.get('/orders/admin/finance/'),
   getSellerEarnings: () => api.get('/orders/admin/seller-earnings/'),
 
-  // Payouts & settlements
+  // Settlements (instant payouts — history only)
   getSettlements: (params) => api.get('/admin/settlements/', { params }),
-  getPayouts: (params) => api.get('/admin/payouts/', { params }),
-  updatePayout: (id, action) => api.patch(`/admin/payouts/${id}/`, { action }),
 
   // Products
   getProducts: (params) => api.get('/products/manage/', { params }),
@@ -202,10 +200,9 @@ export const sellerApi = {
   // Commission info
   getCommissionInfo: () => api.get('/accounts/seller/commission-info/'),
 
-  // Wallet & Payouts
+  // Wallet & settlements (instant payouts — history only, no withdrawals)
   getWallet: () => api.get('/seller/wallet/'),
-  getPayouts: (params) => api.get('/seller/payouts/', { params }),
-  requestPayout: (amount) => api.post('/seller/payouts/', { amount }),
+  getSettlements: (params) => api.get('/seller/settlements/', { params }),
 
   // Delivery mode
   updateDeliveryMode: (mode, fee) => api.patch('/accounts/profile/seller/', {

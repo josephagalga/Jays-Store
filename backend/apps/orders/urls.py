@@ -58,7 +58,4 @@ urlpatterns = [
     path('admin/email-logs/', views.AdminEmailLogListView.as_view(), name='admin-email-logs'),
     path('admin/email-logs/test/', views.AdminTestEmailView.as_view(), name='admin-email-test'),
     path('seller/wallet/', views.SellerWalletView.as_view(), name='seller-wallet'),
-    path('seller/payouts/', views.SellerPayoutListCreateView.as_view(), name='seller-payouts'),
-    path('admin/payouts/', views.SellerPayoutListCreateView.as_view(), name='admin-payout-list'),
-    path('admin/payouts/<int:pk>/', views.AdminPayoutActionView.as_view(), name='admin-payout-action'),
 ]

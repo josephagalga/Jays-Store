@@ -426,53 +426,11 @@ class DeliveryRating(models.Model):
             self.driver.update_driver_rating(self.rating)
 
 
-class Payout(models.Model):
-    """
-    Seller withdrawal requests. Platform takes 10% commission;
-    sellers withdraw the remaining 90% to MoMo / bank.
-    """
-    class Status(models.TextChoices):
-        PENDING = 'pending', 'Pending'
-        APPROVED = 'approved', 'Approved'
-        PAID = 'paid', 'Paid'
-        REJECTED = 'rejected', 'Rejected'
-
-    seller = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='payouts'
-    )
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    momo_number = models.CharField(max_length=20)
-    momo_network = models.CharField(
-        max_length=20,
-        choices=[
-            ('mtn', 'MTN MoMo'),
-            ('telecel', 'Telecel Cash'),
-            ('at', 'AirtelTigo Money'),
-            ('bank', 'Bank Transfer'),
-        ],
-        default='mtn'
-    )
-    account_name = models.CharField(max_length=100, blank=True)
-    status = models.CharField(max_length=15, choices=Status.choices, default=Status.PENDING)
-    admin_note = models.TextField(blank=True)
-    requested_at = models.DateTimeField(auto_now_add=True)
-    processed_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        db_table = 'payouts'
-        ordering = ['-requested_at']
-
-    def __str__(self):
-        return f'Payout #{self.id} — {self.seller.email} — GHS {self.amount} ({self.status})'
-
-
 class DeliveryOTPLog(models.Model):
     """
     OTP sent to buyer for delivery confirmation.
     Driver verifies with buyer before marking delivered.
-    OTP is hashed and expires after 15 minutes.
+    OTP is hashed (verify) + encrypted (owner display) and lives 7 days.
     """
     order = models.OneToOneField(
         Order,

@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
-from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, Settlement, PLATFORM_COMMISSION_RATE, DeliveryOTPLog
+from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Settlement, PLATFORM_COMMISSION_RATE, DeliveryOTPLog
 from .otp_utils import generate_otp, hash_otp, verify_otp, get_otp_expiry, encrypt_otp
 from .emails import (
     send_payment_confirmation,
@@ -39,7 +39,6 @@ from .serializers import (
     DeliveryRatingSerializer,
     CouponSerializer,
     ValidateCouponSerializer,
-    PayoutSerializer,
     SellerWalletSerializer,
     SellerOrderListSerializer,
     SettlementSerializer,
@@ -52,28 +51,32 @@ from django.db.models import Sum
 
 
 def get_seller_wallet(seller):
+    # Instant-settlement model: each paid sale settles straight to the
+    # seller's subaccount, so there is no withdrawable balance — only
+    # lifetime totals. Commission is buyer-funded (unit - net per item).
+    from .models import Settlement as SettlementModel
+    settled = SettlementModel.objects.filter(
+        seller=seller, status='settled')
     gross = Decimal('0.00')
-    # Seller credited immediately when buyer pays (not after delivery)
-    for item in OrderItem.objects.filter(seller=seller, order__payment_status='paid').select_related('order'):
-        gross += Decimal(str(item.unit_price)) * item.quantity
-    # Platform commission = 10% of product price (captured at payment)
-    commission = gross * Decimal(str(PLATFORM_COMMISSION_RATE))
-    net = gross - commission
-    agg = Payout.objects.filter(seller=seller, status__in=['approved', 'paid']).aggregate(total=Sum('amount'))
-    paid_out = agg['total'] or Decimal('0.00')
-    agg2 = Payout.objects.filter(seller=seller, status='pending').aggregate(total=Sum('amount'))
-    pending = agg2['total'] or Decimal('0.00')
-    # Available = what's in seller balance (credited at payment) minus withdrawals
-    available = Decimal(str(seller.seller_balance)) - Decimal(str(paid_out)) - Decimal(str(pending))
+    delivery = Decimal('0.00')
+    net = Decimal('0.00')
+    for s in settled:
+        gross += Decimal(str(s.gross_share))
+        delivery += Decimal(str(s.delivery_share))
+        net += Decimal(str(s.net_share))
+    commission = Decimal('0.00')
+    for item in OrderItem.objects.filter(
+            seller=seller, order__payment_status='paid').select_related('order'):
+        commission += (
+            Decimal(str(item.unit_price)) - Decimal(str(item.seller_net_price))
+        ) * item.quantity
     return {
         'gross_revenue': gross,
         'commission_rate': PLATFORM_COMMISSION_RATE,
         'commission_paid': commission,
         'net_earnings': net,
-        'paid_out': paid_out,
-        'pending_payouts': pending,
-        'available_balance': max(Decimal('0.00'), available),
-        'seller_balance': seller.seller_balance,
+        'delivery_earned': delivery,
+        'settled_orders': settled.count(),
     }
 
 
@@ -1078,41 +1081,6 @@ class SellerWalletView(APIView):
                 return Response({'error': 'seller_id query param required for admins'}, status=status.HTTP_400_BAD_REQUEST)
         wallet = get_seller_wallet(seller)
         return Response(SellerWalletSerializer(wallet).data)
-
-
-class SellerPayoutListCreateView(generics.ListCreateAPIView):
-    """Seller lists own payouts and requests new withdrawals."""
-    serializer_class = PayoutSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminOrSeller]
-
-    def get_queryset(self):
-        if self.request.user.role == 'admin':
-            return Payout.objects.all().select_related('seller').order_by('-requested_at')
-        return Payout.objects.filter(seller=self.request.user).order_by('-requested_at')
-
-    def perform_create(self, serializer):
-        serializer.save(seller=self.request.user)
-
-
-class AdminPayoutActionView(APIView):
-    """Admin approves / marks paid / rejects a payout request."""
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
-
-    def patch(self, request, pk):
-        try:
-            payout = Payout.objects.get(pk=pk)
-        except Payout.DoesNotExist:
-            return Response({'error': 'Payout not found'}, status=status.HTTP_404_NOT_FOUND)
-        action = request.data.get('action', '')
-        note = request.data.get('admin_note', '')
-        if action not in ['approve', 'pay', 'reject']:
-            return Response({'error': 'action must be approve, pay or reject'}, status=status.HTTP_400_BAD_REQUEST)
-        mapping = {'approve': 'approved', 'pay': 'paid', 'reject': 'rejected'}
-        payout.status = mapping[action]
-        payout.admin_note = note
-        payout.processed_at = timezone.now()
-        payout.save()
-        return Response(PayoutSerializer(payout).data)
 
 
 class SellerOrderListView(generics.ListAPIView):

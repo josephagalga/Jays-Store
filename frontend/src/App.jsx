@@ -32,7 +32,6 @@ import SellerAddProductPage from './pages/seller/SellerAddProductPage'
 import SellerStorePage from './pages/seller/SellerStorePage'
 import SellerOrdersPage from './pages/seller/SellerOrdersPage'
 import SellerWalletPage from './pages/seller/SellerWalletPage'
-import SellerPayoutsPage from './pages/seller/SellerPayoutsPage'
 
 // Driver pages
 import DriverDashboardPage from './pages/driver/DriverDashboardPage'
@@ -53,7 +52,6 @@ import AdminCommissionAuditLogsPage from './pages/admin/AdminCommissionAuditLogs
 import AdminContactMessagesPage from './pages/admin/AdminContactMessagesPage'
 import AdminNewsletterPage from './pages/admin/AdminNewsletterPage'
 import AdminEmailLogsPage from './pages/admin/AdminEmailLogsPage'
-import AdminPayoutActionsPage from './pages/admin/AdminPayoutActionsPage'
 import AdminInventoryPage from './pages/admin/AdminInventoryPage'
 import AdminCategoriesPage from './pages/admin/AdminCategoriesPage'
 import AdminReviewsPage from './pages/admin/AdminReviewsPage'
@@ -147,7 +145,6 @@ function DashboardLayout({ children }) {
       { label: 'Add Product', to: '/seller/products/add' },
       { label: 'My Orders', to: '/seller/orders' },
       { label: 'Wallet', to: '/seller/wallet' },
-      { label: 'Payouts', to: '/seller/payouts' },
       { label: 'View Store', to: user?.store_slug ? `/stores/${user.store_slug}` : '/' },
     ],
     driver: [
@@ -163,7 +160,7 @@ function DashboardLayout({ children }) {
       { label: 'Orders', to: '/admin/orders' },
       { label: 'Finance', to: '/admin/finance' },
       { label: 'Seller Earnings', to: '/admin/seller-earnings' },
-      { label: 'Settlements', to: '/admin/payouts' },
+      { label: 'Settlements', to: '/admin/settlements' },
       { label: 'Payout Actions', to: '/admin/payout-actions' },
       { label: 'Commissions', to: '/admin/commissions' },
       { label: 'Audit Logs', to: '/admin/commission-audit-logs' },
@@ -313,11 +310,6 @@ export default function App() {
           <DashboardLayout><SellerWalletPage /></DashboardLayout>
         </PrivateRoute>
       } />
-      <Route path="/seller/payouts" element={
-        <PrivateRoute roles={['seller']}>
-          <DashboardLayout><SellerPayoutsPage /></DashboardLayout>
-        </PrivateRoute>
-      } />
 
       {/* Driver */}
       <Route path="/driver/dashboard" element={
@@ -362,7 +354,7 @@ export default function App() {
           <DashboardLayout><AdminUsersPage /></DashboardLayout>
         </PrivateRoute>
       } />
-      <Route path="/admin/payouts" element={
+      <Route path="/admin/settlements" element={
         <PrivateRoute roles={['admin']}>
           <DashboardLayout><AdminPayoutsPage /></DashboardLayout>
         </PrivateRoute>
@@ -400,11 +392,6 @@ export default function App() {
       <Route path="/admin/email-logs" element={
         <PrivateRoute roles={['admin']}>
           <DashboardLayout><AdminEmailLogsPage /></DashboardLayout>
-        </PrivateRoute>
-      } />
-      <Route path="/admin/payout-actions" element={
-        <PrivateRoute roles={['admin']}>
-          <DashboardLayout><AdminPayoutActionsPage /></DashboardLayout>
         </PrivateRoute>
       } />
       <Route path="/admin/inventory" element={

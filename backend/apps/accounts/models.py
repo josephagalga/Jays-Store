@@ -171,11 +171,6 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     seller_total_ratings = models.PositiveIntegerField(default=0)
     # ↑ Total number of ratings received across all products
 
-    # Seller balance — legacy ledger from the old simulated-payout model.
-    # Instant Paystack split settlement now pays sellers directly, so this is
-    # no longer credited. Kept so old rows still read.
-    seller_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
-
     # Instant settlement — Paystack Split subaccount. Buyer payments settle
     # each seller's share straight to their own account; funds never sit
     # with the platform.

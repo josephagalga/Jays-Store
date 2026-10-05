@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from decimal import Decimal
-from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, Settlement, EmailLog, PLATFORM_COMMISSION_RATE
+from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Settlement, EmailLog, PLATFORM_COMMISSION_RATE
 
 
 ACTIVE_OTP_STATUSES = {'pending', 'accepted', 'picked_up'}
@@ -557,53 +557,15 @@ class DeliveryRatingSerializer(serializers.ModelSerializer):
         return value
 
 
-class PayoutSerializer(serializers.ModelSerializer):
-    seller_name = serializers.CharField(source='seller.full_name', read_only=True)
-    seller_email = serializers.CharField(source='seller.email', read_only=True)
-
-    class Meta:
-        model = Payout
-        fields = [
-            'id', 'seller', 'seller_name', 'seller_email',
-            'amount', 'momo_number', 'momo_network', 'account_name',
-            'status', 'admin_note', 'requested_at', 'processed_at',
-        ]
-        read_only_fields = ['id', 'seller', 'status', 'admin_note', 'requested_at', 'processed_at']
-
-    def validate_amount(self, value):
-        if value <= 0:
-            raise serializers.ValidationError('Amount must be greater than zero')
-        request = self.context.get('request')
-        if request:
-            from django.db.models import Sum
-            seller = request.user
-            gross = OrderItem.objects.filter(
-                seller=seller, order__status='delivered'
-            ).aggregate(total=Sum('unit_price'))['total'] or Decimal('0.00')
-            # unit_price * quantity — compute properly
-            gross = Decimal('0.00')
-            for item in OrderItem.objects.filter(seller=seller, order__status='delivered').select_related('order'):
-                gross += Decimal(str(item.unit_price)) * item.quantity
-            net_earnings = gross * (Decimal('1.00') - Decimal(str(PLATFORM_COMMISSION_RATE)))
-            paid_out = Payout.objects.filter(
-                seller=seller, status__in=['pending', 'approved', 'paid']
-            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-            available = net_earnings - Decimal(str(paid_out))
-            if Decimal(str(value)) > available:
-                raise serializers.ValidationError(
-                    f'Insufficient balance. Available: GHS {available:.2f}'
-                )
-        return value
-
-
 class SellerWalletSerializer(serializers.Serializer):
+    """Instant-settlement earnings — no withdrawals exist; every sale settles
+    straight to the seller's subaccount at charge time."""
     gross_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
     commission_rate = serializers.FloatField()
     commission_paid = serializers.DecimalField(max_digits=12, decimal_places=2)
     net_earnings = serializers.DecimalField(max_digits=12, decimal_places=2)
-    paid_out = serializers.DecimalField(max_digits=12, decimal_places=2)
-    pending_payouts = serializers.DecimalField(max_digits=12, decimal_places=2)
-    available_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
+    delivery_earned = serializers.DecimalField(max_digits=12, decimal_places=2)
+    settled_orders = serializers.IntegerField()
 
 
 class SettlementSerializer(serializers.ModelSerializer):
