@@ -179,6 +179,20 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     # Instant settlement — Paystack Split subaccount. Buyer payments settle
     # each seller's share straight to their own account; funds never sit
     # with the platform.
+    # SELF-DELIVERY — seller delivers their own items and keeps a delivery fee.
+    # 'platform': Jay's Store drivers deliver (tiered fee goes to platform).
+    # 'self': seller delivers; their flat fee is added at checkout and settled to them.
+    delivery_mode = models.CharField(
+        max_length=20,
+        choices=[('platform', 'Platform delivery'), ('self', 'Self delivery')],
+        default='platform',
+    )
+    custom_delivery_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00,
+        validators=[MinValueValidator(0.00), MaxValueValidator(50.00)],
+        help_text="Flat delivery fee per order when self-delivering (0.00-50.00 GHS).",
+    )
+
     payout_account_number = models.CharField(max_length=30, blank=True, default='')
     # ↑ MoMo number or bank account number that receives settlements
     payout_bank_code = models.CharField(max_length=20, blank=True, default='')

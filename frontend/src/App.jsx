@@ -52,6 +52,7 @@ import PrivacyPage from './pages/PrivacyPage'
 import TermsPage from './pages/TermsPage'
 import RefundPage from './pages/RefundPage'
 import ShippingPage from './pages/ShippingPage'
+import HelpCenterPage from './pages/HelpCenterPage'
 
 // ── Route guards ──────────────────────────────────────────────
 
@@ -238,6 +239,7 @@ export default function App() {
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/refund" element={<RefundPage />} />
       <Route path="/shipping" element={<ShippingPage />} />
+      <Route path="/help" element={<HelpCenterPage />} />
 
       {/* Public buyer */}
       <Route path="/" element={<HomePage />} />

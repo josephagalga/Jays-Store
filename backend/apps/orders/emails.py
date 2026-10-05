@@ -176,29 +176,48 @@ def send_seller_sale_alert(order, connection=None):
         seller_items.setdefault(seller.id, {'seller': seller, 'items': []})
         seller_items[seller.id]['items'].append(item)
 
+    breakdown = getattr(order, 'delivery_breakdown', None) or {}
     for entry in seller_items.values():
         seller = entry['seller']
         items = entry['items']
         s = nets.get(seller.id)
         if s is not None:
-            # Use settlement record (most accurate)
+            # Use settlement record (most accurate, includes self-delivery fee)
             net = float(s.net_share)
+            delivery_fee = float(getattr(s, 'delivery_share', 0) or 0)
         else:
             # Fallback: calculate from seller_net_price (correct for buyer-pays model)
             net = sum(float(i.seller_net_price) * i.quantity for i in items)
+            delivery_fee = 0.0
+        self_delivers = ((breakdown.get(str(seller.id)) or {}).get('mode')) == 'self'
         subject = f"Jay's Store — New sale! Order #{order.id}"
         lines = '\n'.join(
             f'- {i.product_name} ({i.size} / {i.color}) x{i.quantity}'
             for i in items
         )
+        if self_delivers and delivery_fee > 0:
+            payout_note = (
+                f"Your expected payout: GHS {net:.2f} "
+                f"(includes your GHS {delivery_fee:.2f} delivery fee).\n"
+            )
+            handoff_note = (
+                "You deliver these items YOURSELF — please deliver to the buyer "
+                "and confirm the handoff in your Seller Dashboard with the buyer's "
+                "delivery OTP.\n\n"
+            )
+        else:
+            payout_note = f"Your expected payout: GHS {net:.2f}\n"
+            handoff_note = (
+                "A driver will pick up from your store — please have the items ready.\n\n"
+            )
         body = (
             f"Hi {seller.store_name or seller.first_name},\n\n"
             f"You have a new sale in Order #{order.id}:\n{lines}\n\n"
-            f"Your expected payout: GHS {net:.2f}\n"
+            + payout_note +
             f"Payment has been received by Jay's Store and your share "
             f"settles to your payout account. Track it in Seller Dashboard "
             f"under Settlements.\n\n"
-            f"A driver will pick up from your store — please have the items ready.\n\n"
+            + handoff_note +
             f"Jay's Store"
         )
         if _send(seller.email, subject, body, kind='seller_alert', order=order,
@@ -244,10 +263,13 @@ def send_admin_payment_alert(order, connection=None):
     
     fee = float(getattr(order, 'processing_fee', 0) or 0)
     charged = float(order.total) + fee
-    
-    # Calculate what platform receives (commission + delivery fee)
-    # In bearer_type='account', platform keeps full commission + delivery
-    platform_receives = float(commission_collected) + float(order.delivery_fee)
+    self_delivery = float(getattr(order, 'self_delivery_total', 0) or 0)
+    platform_delivery = float(order.delivery_fee) - self_delivery
+
+    # Calculate what platform receives: commission + PLATFORM delivery only.
+    # Self-delivery fees bypass the platform and settle straight to sellers.
+    # In bearer_type='account', platform keeps full commission + platform delivery.
+    platform_receives = float(commission_collected) + platform_delivery
     
     subject = f"💰 Jay's Store — Payment Received! Order #{order.id}"
     body = (
@@ -261,15 +283,16 @@ def send_admin_payment_alert(order, connection=None):
         f"  • Processing fee: GHS {fee:.2f}\n\n"
         
         f"Payment split:\n"
-        f"  • To sellers: GHS {float(sellers_total):.2f}\n"
+        f"  • To sellers (products): GHS {float(sellers_total):.2f}\n"
         f"  • Commission (yours): GHS {float(commission_collected):.2f}\n"
-        f"  • Delivery fee (yours): GHS {float(order.delivery_fee):.2f}\n"
+        f"  • Platform delivery (yours): GHS {platform_delivery:.2f}\n"
+        f"  • Self-delivery to sellers: GHS {self_delivery:.2f}\n"
         f"  • Processing fee (Paystack): GHS {fee:.2f}\n\n"
-        
+
         f"{'='*60}\n"
         f"💵 YOU RECEIVE: GHS {platform_receives:.2f}\n"
         f"{'='*60}\n"
-        f"   (Commission + Delivery fee)\n\n"
+        f"   (Commission + Platform delivery)\n\n"
         
         f"Paystack will deposit this to your main account within 24 hours.\n"
         f"Check settlements: https://dashboard.paystack.com/#/settlements\n\n"

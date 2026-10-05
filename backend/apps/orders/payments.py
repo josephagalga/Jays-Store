@@ -57,6 +57,93 @@ def compute_processing_fee(net_total):
     return _q(uncapped)
 
 
+def seller_delivery_mode(seller):
+    """'self' if this seller delivers their own items, else 'platform'."""
+    if not seller or getattr(seller, 'role', '') != 'seller':
+        return 'platform'
+    return 'self' if getattr(seller, 'delivery_mode', 'platform') == 'self' else 'platform'
+
+
+def seller_delivery_fee(seller):
+    """Flat per-order self-delivery fee, clamped to 0–50 GHS."""
+    try:
+        fee = _q(getattr(seller, 'custom_delivery_fee', 0) or 0)
+    except Exception:
+        return Decimal('0.00')
+    if fee < 0:
+        return Decimal('0.00')
+    return min(fee, Decimal('50.00'))
+
+
+def price_checkout_lines(lines):
+    """Price an order's lines with per-seller delivery.
+
+    lines: iterable of (product, quantity). Prices come from the DB objects.
+    Returns a dict with subtotal, commission_collected, platform item count,
+    platform_delivery, self_groups {seller_id: {seller, fee, store}},
+    delivery_fee (total charged), total, breakdown (JSON snapshot),
+    needs_driver, and seller_nets {seller_id: [seller, net]} for splitting.
+
+    Pure-platform carts produce EXACTLY the legacy numbers.
+    """
+    from .models import calculate_delivery_fee
+
+    subtotal = Decimal('0.00')
+    commission_collected = Decimal('0.00')
+    platform_count = 0
+    platform_direct = Decimal('0.00')
+    seller_nets = {}  # seller_id -> [seller, product-net total]
+    self_groups = {}  # seller_id -> {seller, fee, store}
+
+    for product, qty in lines:
+        qty = int(qty)
+        buyer_line = Decimal(str(product.display_price)) * qty
+        seller_line = Decimal(str(product.effective_price)) * qty
+        subtotal += buyer_line
+        commission_collected += buyer_line - seller_line
+        seller = getattr(product, 'seller', None) or getattr(product, 'created_by', None)
+        if seller_delivery_mode(seller) == 'self':
+            entry = self_groups.setdefault(seller.id, {
+                'seller': seller, 'fee': seller_delivery_fee(seller),
+                'store': seller.store_name or seller.email,
+            })
+            net = seller_nets.setdefault(seller.id, [seller, Decimal('0.00')])
+            net[1] += seller_line
+        else:
+            platform_count += qty
+            if seller and getattr(seller, 'role', '') == 'seller':
+                net = seller_nets.setdefault(seller.id, [seller, Decimal('0.00')])
+                net[1] += seller_line
+            else:
+                platform_direct += seller_line
+
+    platform_delivery = calculate_delivery_fee(platform_count) if platform_count else Decimal('0.00')
+    self_delivery_total = sum((g['fee'] for g in self_groups.values()), Decimal('0.00'))
+    delivery_fee = platform_delivery + self_delivery_total
+    total = max(Decimal('0.00'), subtotal + delivery_fee)
+
+    breakdown = {
+        str(sid): {'mode': 'self', 'fee': str(g['fee']), 'store': g['store']}
+        for sid, g in self_groups.items()
+    }
+    breakdown['platform'] = {'items': platform_count, 'fee': str(platform_delivery)}
+
+    return {
+        'subtotal': _q(subtotal),
+        'commission_collected': _q(commission_collected),
+        'platform_count': platform_count,
+        'platform_direct': _q(platform_direct),
+        'platform_delivery': _q(platform_delivery),
+        'self_groups': self_groups,
+        'self_delivery_total': _q(self_delivery_total),
+        'delivery_fee': _q(delivery_fee),
+        'total': _q(total),
+        'breakdown': breakdown,
+        'needs_driver': platform_count > 0,
+        'seller_nets': seller_nets,
+    }
+
+
 def compute_order_split(items):
     """Per-seller shares for an order's items. NO commission deducted (buyer already paid it).
     

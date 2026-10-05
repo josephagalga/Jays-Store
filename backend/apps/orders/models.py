@@ -195,6 +195,16 @@ class Order(models.Model):
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.10)
     # ↑ How much the driver earns from this delivery
     
+    # Self-delivery totals (placement-time snapshot math, see delivery_breakdown)
+    self_delivery_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    # ↑ Sum of self-delivering sellers' flat fees in this order. Settles to them.
+    #   Platform's delivery share = delivery_fee - self_delivery_total.
+    delivery_breakdown = models.JSONField(default=dict, blank=True)
+    # ↑ {seller_id: {'mode': 'platform'|'self', 'fee': 'GHS str', 'store': name},
+    #   'platform': {'items': n, 'fee': 'GHS str'}} — snapshot at placement.
+    needs_driver = models.BooleanField(default=True)
+    # ↑ False when every line is self-delivery (driver board skips these).
+
     # Commission collected from buyer (buyer-pays-commission model)
     commission_collected = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     # ↑ Total commission markup collected from buyer (difference between buyer-paid
@@ -470,6 +480,9 @@ class DeliveryOTPLog(models.Model):
         related_name='otp_log'
     )
     otp_hash = models.CharField(max_length=128)
+    # Encrypted (Fernet, server key) copy — shown back ONLY to the order owner
+    # on active orders. Verification always uses otp_hash, never this.
+    otp_encrypted = models.TextField(blank=True, default='')
     otp_created_at = models.DateTimeField(auto_now_add=True)
     otp_expires_at = models.DateTimeField()
     buyer_notified = models.BooleanField(default=False)
@@ -558,6 +571,9 @@ class Settlement(models.Model):
     # ↑ Seller's pro-rata slice of the Paystack gateway fee
     net_share = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     # ↑ What Paystack settles to the seller: gross - commission - fee_slice
+    delivery_share = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    # ↑ Self-delivery fee routed to the seller (0 for platform delivery).
+    #   net_share includes this: sellers receive product net + own delivery fee.
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.PENDING)
     paystack_reference = models.CharField(max_length=100, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -569,6 +585,33 @@ class Settlement(models.Model):
 
     def __str__(self):
         return f'Settlement order #{self.order_id} → {self.seller} GHS {self.net_share} ({self.status})'
+
+
+class SellerHandoff(models.Model):
+    """One self-delivering seller's part of an order.
+
+    Created at payment confirmation for every self-mode seller in the order.
+    The order completes when the driver part (if any) is delivered AND every
+    handoff here is confirmed with the buyer's OTP.
+    """
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name='handoffs')
+    seller = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='handoffs')
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'seller_handoffs'
+        ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['order', 'seller'], name='unique_handoff_per_seller_order'),
+        ]
+
+    def __str__(self):
+        state = 'confirmed' if self.confirmed_at else 'pending'
+        return f'Handoff order #{self.order_id} → {self.seller} ({state})'
 
 
 def calculate_delivery_fee(total_items):

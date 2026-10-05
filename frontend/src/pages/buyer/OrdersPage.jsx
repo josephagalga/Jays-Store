@@ -186,7 +186,12 @@ export default function OrdersPage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <span className="font-bold text-[var(--ink)]">
-                      GHS {parseFloat(order.total).toFixed(2)}
+                      GHS {parseFloat(order.charged_total ?? (parseFloat(order.total) + parseFloat(order.processing_fee || 0))).toFixed(2)}
+                      {parseFloat(order.processing_fee || 0) > 0 && (
+                        <span className="block text-[10px] font-normal text-[var(--muted)]">
+                          incl. GHS {parseFloat(order.processing_fee).toFixed(2)} Paystack fee
+                        </span>
+                      )}
                     </span>
                     {order.payment_status === 'paid' && order.status !== 'cancelled' && (
                       <span className="text-xs text-green-600 font-medium">✓ Paid — receipt emailed</span>

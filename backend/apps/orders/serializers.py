@@ -8,12 +8,32 @@ ACTIVE_OTP_STATUSES = {'pending', 'accepted', 'picked_up'}
 
 
 def get_buyer_otp(order, request):
-    """The buyer's delivery OTP — NEVER returned to client for security.
-    
-    OTP is sent only via email. This function returns None to ensure
-    OTP is not exposed through API responses.
+    """The buyer's delivery OTP — returned ONLY to the authenticated order
+    owner, and only while the order is active and the code is live
+    (unverified, unlocked, unexpired).
+
+    The code is stored encrypted (server key) and decrypted here on demand.
+    Drivers submit codes; sellers/admins never receive them through these
+    serializers — email remains the primary channel.
     """
-    return None
+    try:
+        from django.utils import timezone
+        from .otp_utils import decrypt_otp
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return None
+        if order.buyer_id != getattr(user, 'id', None):
+            return None
+        if order.status not in ACTIVE_OTP_STATUSES:
+            return None
+        otp_log = getattr(order, 'otp_log', None)
+        if not otp_log or otp_log.is_verified or otp_log.is_locked:
+            return None
+        if otp_log.otp_expires_at and timezone.now() > otp_log.otp_expires_at:
+            return None
+        return decrypt_otp(getattr(otp_log, 'otp_encrypted', '')) or None
+    except Exception:
+        return None
 
 
 # ============================================================
@@ -154,13 +174,15 @@ class OrderSerializer(serializers.ModelSerializer):
     coupon_code = serializers.CharField(source='coupon.code', read_only=True)
     paystack_reference = serializers.CharField(read_only=True)
     delivery_otp = serializers.SerializerMethodField()
+    charged_total = serializers.ReadOnlyField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'status', 'buyer_name', 'buyer_email', 'driver_name', 'driver_phone',
             'delivery_address', 'delivery_phone', 'delivery_note', 'delivery_landmark',
-            'subtotal', 'discount_amount', 'delivery_fee', 'processing_fee', 'total', 'driver_earnings',
+            'subtotal', 'discount_amount', 'delivery_fee', 'self_delivery_total', 'delivery_breakdown',
+            'needs_driver', 'processing_fee', 'total', 'charged_total', 'driver_earnings',
             'coupon_code', 'payment_method', 'payment_status', 'payment_reference',
             'paystack_reference', 'paid_at',
             'delivery_pin', 'pin_verified', 'delivery_otp',
@@ -182,12 +204,13 @@ class OrderListSerializer(serializers.ModelSerializer):
     item_count = serializers.SerializerMethodField()
     items = OrderItemSerializer(many=True, read_only=True)
     delivery_otp = serializers.SerializerMethodField()
+    charged_total = serializers.ReadOnlyField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'status', 'buyer_name', 'driver_name',
-            'total', 'processing_fee', 'payment_status', 'payment_method', 'paystack_reference',
+            'total', 'processing_fee', 'charged_total', 'payment_status', 'payment_method', 'paystack_reference',
             'delivery_otp', 'item_count', 'created_at', 'items',
         ]
 
@@ -285,7 +308,8 @@ class GuestOrderResponseSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'id', 'status', 'payment_status', 'payment_method',
-            'subtotal', 'delivery_fee', 'processing_fee', 'total', 'charged_total',
+            'subtotal', 'delivery_fee', 'self_delivery_total', 'delivery_breakdown',
+            'needs_driver', 'processing_fee', 'total', 'charged_total',
             'guest_name', 'guest_email', 'is_guest_order', 'track_path', 'items',
             'created_at',
         ]
@@ -310,16 +334,21 @@ class GuestOrderResponseSerializer(serializers.ModelSerializer):
 
 
 class GuestOrderTrackSerializer(serializers.ModelSerializer):
-    """Minimal public tracking payload — status + items + totals, no contact PII."""
+    """Minimal public tracking payload — status + items + totals, no contact PII.
+
+    Includes the delivery OTP while the order is active and the code is live.
+    The unguessable reference is the capability; without it nothing is exposed.
+    """
     charged_total = serializers.ReadOnlyField()
     items = serializers.SerializerMethodField()
+    delivery_otp = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'status', 'payment_status', 'payment_method',
             'subtotal', 'delivery_fee', 'processing_fee', 'total', 'charged_total',
-            'items', 'created_at', 'paid_at', 'delivered_at',
+            'delivery_otp', 'items', 'created_at', 'paid_at', 'delivered_at',
         ]
 
     def get_items(self, obj):
@@ -334,6 +363,21 @@ class GuestOrderTrackSerializer(serializers.ModelSerializer):
             }
             for i in obj.items.all()
         ]
+
+    def get_delivery_otp(self, obj):
+        try:
+            from django.utils import timezone
+            from .otp_utils import decrypt_otp
+            if obj.status not in {'pending', 'accepted', 'picked_up'}:
+                return None
+            otp_log = getattr(obj, 'otp_log', None)
+            if not otp_log or otp_log.is_verified or otp_log.is_locked:
+                return None
+            if otp_log.otp_expires_at and timezone.now() > otp_log.otp_expires_at:
+                return None
+            return decrypt_otp(getattr(otp_log, 'otp_encrypted', '')) or None
+        except Exception:
+            return None
 
 
 class SellerOrderListSerializer(serializers.ModelSerializer):
@@ -553,7 +597,7 @@ class SettlementSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'order', 'seller', 'seller_name', 'seller_email',
             'subaccount_code', 'gross_share', 'commission', 'fee_slice',
-            'net_share', 'status', 'paystack_reference',
+            'delivery_share', 'net_share', 'status', 'paystack_reference',
             'created_at', 'settled_at',
         ]
         read_only_fields = ['id', 'created_at', 'settled_at']

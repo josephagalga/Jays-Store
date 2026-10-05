@@ -32,6 +32,7 @@ urlpatterns = [
 
     # OTP delivery confirmation (replaces PIN)
     path('orders/<int:pk>/verify-otp/', views.VerifyDeliveryOTPView.as_view(), name='verify-otp'),
+    path('orders/<int:pk>/confirm-handoff/', views.SellerConfirmHandoffView.as_view(), name='confirm-handoff'),
 
     # Driver
     path('driver/orders/', views.DriverAvailableOrdersView.as_view(), name='driver-available-orders'),
@@ -53,7 +54,9 @@ urlpatterns = [
     path('seller/settlements/', views.SellerSettlementListView.as_view(), name='seller-settlements'),
     path('admin/settlements/', views.AdminSettlementListView.as_view(), name='admin-settlements'),
     path('admin/finance/', views.AdminFinanceView.as_view(), name='admin-finance'),
+    path('admin/seller-earnings/', views.AdminSellerEarningsView.as_view(), name='admin-seller-earnings'),
     path('admin/email-logs/', views.AdminEmailLogListView.as_view(), name='admin-email-logs'),
+    path('admin/email-logs/test/', views.AdminTestEmailView.as_view(), name='admin-email-test'),
     path('seller/wallet/', views.SellerWalletView.as_view(), name='seller-wallet'),
     path('seller/payouts/', views.SellerPayoutListCreateView.as_view(), name='seller-payouts'),
     path('admin/payouts/', views.SellerPayoutListCreateView.as_view(), name='admin-payout-list'),

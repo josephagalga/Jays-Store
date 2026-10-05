@@ -226,7 +226,14 @@ export default function OrderTrackingPage() {
             </div>
             <div>
               <p className="text-[var(--muted)]">Total Paid</p>
-              <p className="font-medium text-[var(--ink)]">GHS {parseFloat(order.total).toFixed(2)}</p>
+              <p className="font-medium text-[var(--ink)]">
+                GHS {parseFloat(order.charged_total ?? (parseFloat(order.total) + parseFloat(order.processing_fee || 0))).toFixed(2)}
+              </p>
+              {parseFloat(order.processing_fee || receipt?.processing_fee || 0) > 0 && (
+                <p className="text-[11px] text-[var(--muted)] mt-0.5">
+                  incl. GHS {parseFloat(order.processing_fee || receipt?.processing_fee || 0).toFixed(2)} Paystack fee
+                </p>
+              )}
             </div>
             {parseFloat(order.processing_fee || receipt?.processing_fee || 0) > 0 && (
               <div>

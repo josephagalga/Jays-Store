@@ -170,6 +170,7 @@ class SellerProfileSerializer(serializers.ModelSerializer):
             'store_name', 'store_description', 'store_logo',
             'store_banner', 'store_slug', 'store_address',
             'pickup_location',
+            'delivery_mode', 'custom_delivery_fee',
             'payout_account_number', 'payout_bank_code', 'payout_account_name',
             'paystack_subaccount_code', 'subaccount_status', 'subaccount_note',
             'seller_total_sales', 'seller_total_revenue',

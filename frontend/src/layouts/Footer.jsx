@@ -50,7 +50,7 @@ export default function Footer() {
           {/* Links */}
           {[
             ['Shop', [['New In', '/catalog'], ['Men', '/catalog?gender=men'], ['Women', '/catalog?gender=women'], ['Kids', '/catalog?gender=kids'], ['Sale', '/catalog?sale=true']]],
-            ['Help', [['About', '/about'],['Contact', '/contact'],['Careers', '/'],['Press', '/']]],
+            ['Help', [['Help Center', '/help'],['About', '/about'],['Contact', '/contact'],['Careers', '/'],['Press', '/']]],
             ['Legal', [['Privacy Policy', '/privacy'],['Terms of Service', '/terms'],['Refund Policy', '/refund'],['Shipping', '/shipping']]],
             ['Join', [['Buy Fashion', '/register'], ['Sell Fashion', '/register/seller'], ['Deliver Orders', '/register/driver']]],
           ].map(([heading, links]) => (

@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
 from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, Settlement, PLATFORM_COMMISSION_RATE, DeliveryOTPLog, calculate_delivery_fee
-from .otp_utils import generate_otp, hash_otp, verify_otp, get_otp_expiry
+from .otp_utils import generate_otp, hash_otp, verify_otp, get_otp_expiry, encrypt_otp
 from .emails import (
     send_payment_confirmation,
     send_delivery_otp,
@@ -239,32 +239,31 @@ class PlaceOrderView(APIView):
                 'error': 'Some sellers in your cart have incomplete payment setup.',
                 'invalid_sellers': invalid_sellers
             }, status=status.HTTP_400_BAD_REQUEST)
-        total_items = sum(ci.quantity for ci in cart.cart_items.all())
-        delivery_fee = calculate_delivery_fee(total_items)
-        subtotal = cart.total
-
-        # No promo codes — removed from checkout
-        discount_amount = Decimal('0.00')
-
-        total = max(Decimal('0.00'), subtotal + delivery_fee)
+        # Price everything through the shared helper (per-seller delivery groups).
+        # Pure-platform carts produce EXACTLY the legacy numbers.
+        from .payments import price_checkout_lines
+        cart_lines = [
+            (ci.product, ci.quantity)
+            for ci in cart.cart_items.select_related(
+                'product', 'product__seller', 'product__created_by')
+        ]
+        priced = price_checkout_lines(cart_lines)
+        subtotal = priced['subtotal']
+        delivery_fee = priced['delivery_fee']
+        total = priced['total']
         # Gateway fee passed on to buyer + sellers (pro-rata, see payments.py)
         processing_fee = compute_processing_fee(total)
 
         commission_rate = Decimal('0.10')
 
         # Generate OTP (4-digit, cryptographically secure) now; it is EMAILED only after payment
-        # confirms, and NOT returned in any API response for security
+        # confirms. Stored hashed (verify) + encrypted (owner display).
         otp_code = generate_otp()
         otp_hash = hash_otp(otp_code)
         otp_expires_at = get_otp_expiry()
 
-        # Calculate commission collected from buyers BEFORE creating order
-        # This is the markup collected: (buyer paid - seller net) for all items
-        commission_collected_total = Decimal('0.00')
-        for cart_item in cart.cart_items.select_related('product'):
-            buyer_line_total = cart_item.product.display_price * cart_item.quantity
-            seller_line_total = cart_item.product.effective_price * cart_item.quantity
-            commission_collected_total += (buyer_line_total - seller_line_total)
+        commission_collected_total = priced['commission_collected']
+        platform_direct = priced['platform_direct']
 
         order = Order.objects.create(
             buyer=request.user,
@@ -275,17 +274,19 @@ class PlaceOrderView(APIView):
             subtotal=subtotal,
             discount_amount=Decimal('0.00'),
             delivery_fee=delivery_fee,
+            self_delivery_total=priced['self_delivery_total'],
+            delivery_breakdown=priced['breakdown'],
+            needs_driver=priced['needs_driver'],
             total=total,
             processing_fee=processing_fee,
             payment_method='paystack',
             payment_status='unpaid',
             driver_earnings=Decimal('0.00'),  # drivers paid physically, out-of-system
             commission_rate=commission_rate,
-            commission_collected=commission_collected_total,  # NEW: Store calculated commission
+            commission_collected=commission_collected_total,
         )
 
-        seller_lines = {}  # seller_id -> [seller, line_total]
-        platform_direct = Decimal('0.00')  # items with no vendor → platform keeps all
+        seller_lines = priced['seller_nets']  # seller_id -> [seller, product-net total]
         for cart_item in cart.cart_items.select_related('product', 'variant'):
             primary_image = cart_item.product.images.filter(is_primary=True).first()
             image_url = ''
@@ -309,28 +310,25 @@ class PlaceOrderView(APIView):
                 commission_rate=commission_rate_at_purchase,
             )
 
-            # NOTE: no seller_balance crediting — sellers settle instantly via
-            # Paystack split, funds never touch the platform.
-            # Use seller_net_price (what they receive), not display_price
-            line_total = Decimal(str(cart_item.product.effective_price)) * cart_item.quantity
-            if seller and seller.role == 'seller':
-                line = seller_lines.setdefault(seller.id, [seller, Decimal('0.00')])
-                line[1] += line_total
-            else:
-                platform_direct += line_total
-            
             # STOCK DEDUCTION REMOVED - happens after payment confirms in _confirm_payment()
 
-        # Per-seller shares: net amounts (commission already collected from buyer in order total)
-        # Platform-listed items (no vendor) go entirely to the admin share.
+        # Per-seller shares: product nets (commission already collected from buyer).
+        # Self-delivery sellers additionally receive their flat delivery fee.
         per_seller, _ = compute_order_split(
             [(s, t) for s, t in seller_lines.values()]
         )
-        # FIX: Use actual commission collected from buyers, not zero-value from per_seller
-        # Platform receives: commission markup + delivery fee + platform-owned items
-        admin_gross = commission_collected_total + delivery_fee + platform_direct
+        delivery_shares = {}  # seller_id -> delivery GHS settled to them
+        for sid, group in priced['self_groups'].items():
+            if sid in per_seller:
+                per_seller[sid]['net'] = per_seller[sid]['net'] + group['fee']
+                delivery_shares[sid] = group['fee']
+        # Platform receives: commission markup + PLATFORM delivery + platform-owned items.
+        # (Self-delivery fees bypass the platform and settle to sellers.)
+        admin_gross = (
+            commission_collected_total + priced['platform_delivery'] + platform_direct
+        )
         admin_net = allocate_fee(per_seller, admin_gross, processing_fee)
-        
+
         # Log split breakdown for debugging and verification
         import logging
         logger = logging.getLogger(__name__)
@@ -340,7 +338,9 @@ class PlaceOrderView(APIView):
             f'Buyer charged: {total + processing_fee:.2f} GHS | '
             f'Sellers net: {sellers_total_net:.2f} GHS | '
             f'Commission: {commission_collected_total:.2f} GHS | '
-            f'Delivery: {delivery_fee:.2f} GHS | '
+            f'Delivery: {delivery_fee:.2f} GHS '
+            f'(platform {priced["platform_delivery"]:.2f}, '
+            f'self {priced["self_delivery_total"]:.2f}) | '
             f'Platform items: {platform_direct:.2f} GHS | '
             f'Admin gross: {admin_gross:.2f} GHS | '
             f'Processing fee: {processing_fee:.2f} GHS'
@@ -349,10 +349,12 @@ class PlaceOrderView(APIView):
         # SETTLEMENT CREATION REMOVED - happens after payment confirms in _confirm_payment()
 
         # OTP log created now; emailed only after payment confirms.
-        # Stored as hash with 15-minute expiry and 3-attempt lockout
+        # Stored as hash (verify) + encrypted copy (owner display), 7-day
+        # lifespan, 3-attempt lockout.
         DeliveryOTPLog.objects.create(
             order=order,
             otp_hash=otp_hash,
+            otp_encrypted=encrypt_otp(otp_code),
             otp_expires_at=otp_expires_at,
             buyer_notified=False,
             buyer_notification_method='email',
@@ -537,14 +539,13 @@ class GuestPlaceOrderView(APIView):
         if err:
             return err
 
-        total_items = sum(qty for _, _, qty in lines)
-        delivery_fee = calculate_delivery_fee(total_items)
-        subtotal = sum(
-            Decimal(str(p.display_price)) * qty for p, _, qty in lines)
-        commission_collected_total = sum(
-            (Decimal(str(p.display_price)) - Decimal(str(p.effective_price))) * qty
-            for p, _, qty in lines)
-        total = max(Decimal('0.00'), subtotal + delivery_fee)
+        from .payments import price_checkout_lines
+        priced = price_checkout_lines([(p, qty) for p, _, qty in lines])
+        subtotal = priced['subtotal']
+        delivery_fee = priced['delivery_fee']
+        total = priced['total']
+        commission_collected_total = priced['commission_collected']
+        platform_direct = priced['platform_direct']
         processing_fee = compute_processing_fee(total)
         channels = data.get('channels') or None
 
@@ -560,6 +561,9 @@ class GuestPlaceOrderView(APIView):
             subtotal=subtotal,
             discount_amount=Decimal('0.00'),
             delivery_fee=delivery_fee,
+            self_delivery_total=priced['self_delivery_total'],
+            delivery_breakdown=priced['breakdown'],
+            needs_driver=priced['needs_driver'],
             total=total,
             processing_fee=processing_fee,
             payment_method='paystack',
@@ -569,8 +573,6 @@ class GuestPlaceOrderView(APIView):
             commission_collected=commission_collected_total,
         )
 
-        seller_lines = {}
-        platform_direct = Decimal('0.00')
         for product, variant, qty in lines:
             primary_image = product.images.filter(is_primary=True).first()
             image_url = primary_image.url if primary_image else ''
@@ -589,17 +591,16 @@ class GuestPlaceOrderView(APIView):
                 quantity=qty,
                 commission_rate=product.commission_rate_effective,
             )
-            line_total = Decimal(str(product.effective_price)) * qty
-            if seller and seller.role == 'seller':
-                line = seller_lines.setdefault(seller.id, [seller, Decimal('0.00')])
-                line[1] += line_total
-            else:
-                platform_direct += line_total
 
         per_seller, _ = compute_order_split(
-            [(s, t) for s, t in seller_lines.values()]
+            [(s, t) for s, t in priced['seller_nets'].values()]
         )
-        admin_gross = commission_collected_total + delivery_fee + platform_direct
+        for sid, group in priced['self_groups'].items():
+            if sid in per_seller:
+                per_seller[sid]['net'] = per_seller[sid]['net'] + group['fee']
+        admin_gross = (
+            commission_collected_total + priced['platform_delivery'] + platform_direct
+        )
         admin_net = allocate_fee(per_seller, admin_gross, processing_fee)
         sellers_total = sum(e['net'] for e in per_seller.values())
         actual_platform_share = (total + processing_fee) - sellers_total - processing_fee
@@ -613,6 +614,7 @@ class GuestPlaceOrderView(APIView):
         DeliveryOTPLog.objects.create(
             order=order,
             otp_hash=hash_otp(otp_code),
+            otp_encrypted=encrypt_otp(otp_code),
             otp_expires_at=get_otp_expiry(),
             buyer_notified=False,
             buyer_notification_method='email',
@@ -829,8 +831,9 @@ class DriverAvailableOrdersView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated, IsDriver]
 
     def get_queryset(self):
+        # All-self-delivery orders need no driver — sellers hand off themselves.
         return Order.objects.filter(
-            status='pending', payment_status='paid'
+            status='pending', payment_status='paid', needs_driver=True
         ).prefetch_related('items').order_by('created_at')
 
 
@@ -906,6 +909,19 @@ class DriverUpdateOrderStatusView(APIView):
             if not otp_log or not otp_log.is_verified:
                 return Response(
                     {'error': 'Delivery OTP verification required before marking as delivered'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # Mixed orders: every self-delivering seller must confirm first.
+            from .models import SellerHandoff
+            pending_handoff = SellerHandoff.objects.filter(
+                order=order, confirmed_at__isnull=True
+            ).select_related('seller').first()
+            if pending_handoff:
+                store = (pending_handoff.seller.store_name
+                         if pending_handoff.seller and pending_handoff.seller.store_name
+                         else 'A seller')
+                return Response(
+                    {'error': f'Waiting on {store} to confirm their own delivery first.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -1019,11 +1035,12 @@ class StorePageView(APIView):
         except CustomUser.DoesNotExist:
             return Response({'error': 'Store not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Vendor's products only
+        # Vendor's products only.
+        # NOTE: seller earnings are NEVER public — sellers see their own via
+        # /seller/wallet/, admins via the earnings leaderboard.
         from apps.products.serializers import ProductListSerializer
         products = vendor.store_products.filter(is_active=True)
 
-        wallet = get_seller_wallet(vendor)
         data = {
             'vendor_id': vendor.id,
             'store_name': vendor.store_name,
@@ -1033,12 +1050,12 @@ class StorePageView(APIView):
             'store_logo': vendor.store_logo.url if vendor.store_logo else None,
             'store_banner': vendor.store_banner.url if vendor.store_banner else None,
             'verified': vendor.verification_status == 'approved',
+            'delivery_mode': vendor.delivery_mode,
             'social_links': {
                 'facebook': getattr(vendor, 'facebook_url', None) or None,
                 'instagram': getattr(vendor, 'instagram_url', None) or None,
                 'twitter': getattr(vendor, 'twitter_url', None) or None,
             },
-            'wallet': SellerWalletSerializer(wallet).data,
             'products': ProductListSerializer(products, many=True, context={'request': request}).data,
         }
         return Response(data)
@@ -1112,12 +1129,36 @@ class SellerOrderListView(generics.ListAPIView):
         return Order.objects.filter(items__seller=seller).distinct().prefetch_related('items').select_related('buyer', 'driver').order_by('-created_at')
 
 
+def _complete_order_if_ready(order):
+    """Mark an order delivered when every part is done: the driver part
+    (if the order needs one) plus all self-delivery handoffs. Returns True
+    if the order just completed. Never raises (email failures are logged)."""
+    if order.status == 'delivered':
+        return False
+    from .models import SellerHandoff
+    if SellerHandoff.objects.filter(order=order, confirmed_at__isnull=True).exists():
+        return False
+    if order.needs_driver and order.status != 'delivered':
+        # Driver completion is recorded by DriverUpdateOrderStatusView;
+        # this helper only completes driverless (all-self) orders here.
+        return False
+    order.status = 'delivered'
+    order.delivered_at = timezone.now()
+    order.save(update_fields=['status', 'delivered_at'])
+    try:
+        from .emails import send_delivered_email
+        send_delivered_email(order)
+    except Exception:
+        pass
+    return True
+
+
 class VerifyDeliveryOTPView(APIView):
     """Driver submits the 4-digit OTP the buyer received via email.
 
     Security:
     - OTP is hashed in database, never stored plaintext
-    - Expires after 15 minutes
+    - 7-day lifespan (must survive until the driver arrives), resend rotates
     - Hard lockout after 3 failed attempts
     - Rate limited per order
     """
@@ -1179,6 +1220,79 @@ class VerifyDeliveryOTPView(APIView):
             )
 
 
+class SellerConfirmHandoffView(APIView):
+    """A self-delivering seller confirms their handoff with the buyer's OTP.
+
+    Same code, same lockout/expiry as driver verification (shared log).
+    Completes the order when every part is done (see _complete_order_if_ready).
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSeller]
+    throttle_scope = 'otp'
+
+    @transaction.atomic
+    def post(self, request, pk):
+        from .models import SellerHandoff
+        try:
+            order = Order.objects.select_for_update().get(
+                pk=pk, items__seller=request.user, payment_status='paid')
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        handoff = SellerHandoff.objects.filter(
+            order=order, seller=request.user).first()
+        if not handoff:
+            return Response(
+                {'error': 'Your items in this order use platform delivery.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if handoff.confirmed_at:
+            return Response({'message': 'Handoff already confirmed', 'confirmed': True})
+
+        code = (request.data.get('code') or '').strip()
+        if not code or len(code) != 4 or not code.isdigit():
+            return Response({'error': 'OTP must be a 4-digit code'}, status=status.HTTP_400_BAD_REQUEST)
+
+        otp_log = getattr(order, 'otp_log', None)
+        if not otp_log:
+            return Response({'error': 'OTP log not found'}, status=status.HTTP_404_NOT_FOUND)
+        if otp_log.is_locked:
+            return Response(
+                {'error': 'OTP verification locked. Too many failed attempts. Contact support.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if timezone.now() > otp_log.otp_expires_at:
+            return Response(
+                {'error': 'OTP expired. Ask the buyer to request a new one.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        if not verify_otp(code, otp_log.otp_hash):
+            otp_log.attempts += 1
+            if otp_log.attempts >= 3:
+                otp_log.is_locked = True
+            otp_log.save()
+            if otp_log.is_locked:
+                return Response(
+                    {'error': 'OTP verification locked after 3 failed attempts. Contact support.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            remaining = max(0, 3 - otp_log.attempts)
+            return Response(
+                {'error': f'Invalid OTP. {remaining} attempts remaining.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        if not otp_log.is_verified:
+            otp_log.is_verified = True
+            otp_log.verified_at = timezone.now()
+            otp_log.save()
+        order.pin_verified = True
+        order.save(update_fields=['pin_verified'])
+        handoff.confirmed_at = timezone.now()
+        handoff.save(update_fields=['confirmed_at'])
+        completed = _complete_order_if_ready(order)
+        return Response({
+            'message': 'Handoff confirmed' + (' — order delivered!' if completed else ''),
+            'confirmed': True,
+            'order_delivered': completed,
+        })
+
+
 def _confirm_payment(order):
     """First-paid actions: deduct stock, create settlements, send emails.
 
@@ -1210,7 +1324,10 @@ def _confirm_payment(order):
                 # Admin handles fulfillment manually
     
     # STEP 2: CREATE SETTLEMENT RECORDS (for paid orders only)
-    # Recalculate seller shares from order items
+    # Recalculate seller shares from order items. Self-delivery sellers also
+    # receive their flat delivery fee (snapshotted at placement).
+    from .models import SellerHandoff
+    breakdown = getattr(order, 'delivery_breakdown', None) or {}
     seller_shares = {}
     for item in order.items.select_related('seller'):
         seller = item.seller
@@ -1222,15 +1339,22 @@ def _confirm_payment(order):
                 }
             # Use seller_net_price (what they receive), not unit_price (what buyer paid)
             seller_shares[seller.id]['gross'] += item.seller_net_price * item.quantity
-    
+
+    def _snapshot_delivery(seller_id):
+        try:
+            return Decimal(str((breakdown.get(str(seller_id)) or {}).get('fee', '0')))
+        except Exception:
+            return Decimal('0.00')
+
     # Create settlement records
     for entry in seller_shares.values():
         seller = entry['seller']
         gross = entry['gross']
         commission = Decimal('0.00')  # No commission deducted in buyer-pays model
         fee_slice = Decimal('0.00')  # Buyer covers gateway fee (bearer_type='account')
-        net = gross
-        
+        delivery_share = _snapshot_delivery(seller.id)
+        net = gross + delivery_share
+
         Settlement.objects.create(
             order=order,
             seller=seller,
@@ -1238,18 +1362,32 @@ def _confirm_payment(order):
             gross_share=gross,
             commission=commission,
             fee_slice=fee_slice,
+            delivery_share=delivery_share,
             net_share=net,
             status='settled',  # Immediately settled (Paystack split executed)
             settled_at=timezone.now(),
             paystack_reference=order.paystack_reference,
         )
-    
+
+    # Handoff records for self-delivering sellers (driver board skips if none needed)
+    for entry in seller_shares.values():
+        seller = entry['seller']
+        mode = ((breakdown.get(str(seller.id)) or {}).get('mode', 'platform'))
+        if mode == 'self':
+            SellerHandoff.objects.get_or_create(order=order, seller=seller)
+
     # Log expected vs actual platform share for verification
-    expected_platform = order.commission_collected + order.delivery_fee
+    # Platform keeps commission + PLATFORM delivery only (self fees bypass it).
+    platform_delivery = (
+        Decimal(str(order.delivery_fee or 0)) - Decimal(str(order.self_delivery_total or 0))
+    )
+    expected_platform = order.commission_collected + platform_delivery
     logger.info(
         f'Order {order.id} payment confirmed | '
         f'Platform should receive: {expected_platform:.2f} GHS | '
-        f'(Commission: {order.commission_collected:.2f}, Delivery: {order.delivery_fee:.2f}) | '
+        f'(Commission: {order.commission_collected:.2f}, '
+        f'Platform delivery: {platform_delivery:.2f}, '
+        f'Self delivery to sellers: {order.self_delivery_total:.2f}) | '
         f'Verify in Paystack: https://dashboard.paystack.com/#/settlements | '
         f'Split code: {order.paystack_split_code}'
     )
@@ -1266,19 +1404,20 @@ def _confirm_payment(order):
         send_admin_payment_alert(order, connection=connection)
         send_seller_sale_alert(order, connection=connection)
 
-        # OTP is stored hashed — generate a fresh code here, persist hash+expiry,
-        # and email the plaintext once. Never persist or return plaintext.
-        from .otp_utils import generate_otp as _gen_otp, hash_otp as _hash_otp, get_otp_expiry as _otp_expiry
+        # OTP is stored hashed (verify) + encrypted (owner display) — generate
+        # a fresh code here, persist, and email the plaintext once.
+        from .otp_utils import generate_otp as _gen_otp, hash_otp as _hash_otp, get_otp_expiry as _otp_expiry, encrypt_otp as _enc_otp
         otp_log = getattr(order, 'otp_log', None)
         otp = _gen_otp()
         if otp_log:
             otp_log.otp_hash = _hash_otp(otp)
+            otp_log.otp_encrypted = _enc_otp(otp)
             otp_log.otp_expires_at = _otp_expiry()
             otp_log.attempts = 0
             otp_log.is_locked = False
             otp_log.is_verified = False
             otp_log.verified_at = None
-            otp_log.save(update_fields=['otp_hash', 'otp_expires_at', 'attempts', 'is_locked', 'is_verified', 'verified_at'])
+            otp_log.save(update_fields=['otp_hash', 'otp_encrypted', 'otp_expires_at', 'attempts', 'is_locked', 'is_verified', 'verified_at'])
 
         # Send payment confirmation with OTP included
         buyer_ok = send_payment_confirmation(order, otp_code=otp, connection=connection)
@@ -1681,17 +1820,18 @@ class ResendConfirmationView(APIView):
             order = Order.objects.prefetch_related('items').get(pk=pk, buyer=request.user)
         except Order.DoesNotExist:
             return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
-        # Never re-send the old code (stored hashed). Rotate a fresh OTP instead.
-        from .otp_utils import generate_otp as _gen_otp, hash_otp as _hash_otp, get_otp_expiry as _otp_expiry
+        # Rotate a fresh OTP (hash for verify + encrypted copy for display).
+        from .otp_utils import generate_otp as _gen_otp, hash_otp as _hash_otp, get_otp_expiry as _otp_expiry, encrypt_otp as _enc_otp
         otp_log = getattr(order, 'otp_log', None)
         otp = None
         if otp_log and not otp_log.is_verified and order.payment_status == 'paid':
             otp = _gen_otp()
             otp_log.otp_hash = _hash_otp(otp)
+            otp_log.otp_encrypted = _enc_otp(otp)
             otp_log.otp_expires_at = _otp_expiry()
             otp_log.attempts = 0
             otp_log.is_locked = False
-            otp_log.save(update_fields=['otp_hash', 'otp_expires_at', 'attempts', 'is_locked'])
+            otp_log.save(update_fields=['otp_hash', 'otp_encrypted', 'otp_expires_at', 'attempts', 'is_locked'])
         ok = send_payment_confirmation(order, otp_code=otp)
         if otp:
             notify_buyer_of_otp(order, otp)
@@ -1741,6 +1881,24 @@ class AdminEmailLogListView(generics.ListAPIView):
         return qs
 
 
+class AdminTestEmailView(APIView):
+    """Deliverability triage: sends a test email to the admin address and
+    reports success/failure inline (failures also land in EmailLog)."""
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    throttle_scope = 'contact'
+
+    def post(self, request):
+        from .emails import _send
+        admin_email = (getattr(settings, 'ADMIN_NOTIFICATION_EMAIL', '') or '').strip()
+        to = (request.data.get('to') or admin_email).strip()
+        if not to:
+            return Response({'error': 'No recipient configured'}, status=status.HTTP_400_BAD_REQUEST)
+        ok = _send(to, "Jay's Store — test email",
+                   "If you received this, outbound email is working.",
+                   kind='admin_test', order=None)
+        return Response({'sent': ok, 'to': to})
+
+
 class AdminFinanceView(APIView):
     """Per paid order: what the buyer paid, what sellers got, and the
     platform's true net (charged − seller nets − ACTUAL Paystack fee)."""
@@ -1779,4 +1937,51 @@ class AdminFinanceView(APIView):
         return Response({
             'rows': rows,
             'totals': {k: str(v) for k, v in totals.items()},
+        })
+
+
+class AdminSellerEarningsView(APIView):
+    """Per-seller lifetime earnings across all paid orders.
+    Sorted by net (highest first). Highlights top/least earners."""
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        from django.contrib.auth import get_user_model
+        from django.db.models import Sum, DecimalField, ExpressionWrapper, F
+        from decimal import Decimal
+
+        User = get_user_model()
+        sellers = User.objects.filter(role='seller').annotate(
+            total_orders=Sum('settlements__order__id'),
+            gross_revenue=Sum('settlements__gross_share'),
+            total_commission=Sum('settlements__commission'),
+            total_fee_slice=Sum('settlements__fee_slice'),
+            total_delivery_share=Sum('settlements__delivery_share'),
+            net_earnings=Sum('settlements__net_share'),
+        ).order_by('-net_earnings')
+
+        rows = []
+        for s in sellers:
+            rows.append({
+                'id': s.id,
+                'store_name': s.store_name or s.email,
+                'store_slug': s.store_slug,
+                'total_orders': s.total_orders or 0,
+                'gross_revenue': str(s.gross_revenue or Decimal('0.00')),
+                'commission': str(s.total_commission or Decimal('0.00')),
+                'delivery_share': str(s.total_delivery_share or Decimal('0.00')),
+                'net_earnings': str(s.net_earnings or Decimal('0.00')),
+            })
+
+        if rows:
+            top = rows[0]
+            bottom = rows[-1]
+        else:
+            top = bottom = None
+
+        return Response({
+            'rows': rows,
+            'top_earner': top,
+            'least_earner': bottom,
+            'total_sellers': len(rows),
         })

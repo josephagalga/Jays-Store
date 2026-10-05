@@ -143,12 +143,28 @@ class GuestClaimView(APIView):
 # PROFILES
 # ============================================================
 
-class BuyerProfileView(generics.RetrieveUpdateAPIView):
+class BuyerProfileView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = BuyerProfileSerializer
     permission_classes = [permissions.IsAuthenticated, IsBuyer]
 
     def get_object(self):
         return self.request.user
+
+    def destroy(self, request, *args, **kwargs):
+        """Soft-delete: deactivate user, anonymize personal data, keep orders for legal records."""
+        user = self.get_object()
+        user.is_active = False
+        user.email = f'deleted_{user.id}_{user.email}'
+        user.first_name = 'Deleted'
+        user.last_name = 'User'
+        user.phone_number = ''
+        user.delivery_address = ''
+        user.save()
+        # Tokens invalidated by next refresh attempt (token blacklist if used)
+        return Response(
+            {'message': 'Account deactivated. Your data has been anonymized.'},
+            status=status.HTTP_200_OK
+        )
 
 
 class SellerProfileView(generics.RetrieveUpdateAPIView):

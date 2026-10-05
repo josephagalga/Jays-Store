@@ -1,7 +1,7 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { useEffect } from 'react'
-import { Package, ShoppingBag, Star, TrendingUp } from 'lucide-react'
+import { Package, ShoppingBag, Star, Trash2, AlertTriangle } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import Input from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
@@ -47,7 +47,6 @@ export default function BuyerProfilePage() {
   const stats = [
     { icon: <Package size={20} />, label: 'Total Orders', value: profile?.total_orders || 0 },
     { icon: <ShoppingBag size={20} />, label: 'Completed', value: profile?.completed_orders || 0 },
-    { icon: <TrendingUp size={20} />, label: 'Total Spent', value: `GHS ${parseFloat(profile?.total_spent || 0).toFixed(2)}` },
     { icon: <Star size={20} />, label: 'Cancelled', value: profile?.cancelled_orders || 0 },
   ]
 
@@ -89,7 +88,45 @@ export default function BuyerProfilePage() {
             </div>
           </form>
         </div>
+
+        {/* Danger Zone — Delete Account */}
+        <div className="mt-10 bg-rose-50 border border-rose-200 rounded-2xl p-6">
+          <h3 className="serif text-xl font-medium text-rose-700 mb-4 flex items-center gap-2">
+            <AlertTriangle size={20} /> Danger Zone
+          </h3>
+          <p className="text-sm text-rose-700/80 mb-4">
+            Deleting your account is permanent. Your personal data will be removed immediately
+            and cannot be recovered. Past orders will remain for legal records but will no longer
+            be linked to your account. You will lose access to your order history and wishlist.
+          </p>
+          <Button
+            variant="danger"
+            size="full"
+            onClick={handleDeleteAccount}
+            className="rounded-xl">
+            <Trash2 size={16} className="mr-2" /> Delete My Account
+          </Button>
+        </div>
       </div>
     </MainLayout>
   )
+}
+
+function handleDeleteAccount() {
+  if (!window.confirm('This will permanently delete your account. Are you sure?')) return
+  if (!window.confirm('Type "DELETE" to confirm')) {
+    const input = window.prompt('Type DELETE to confirm account deletion:')
+    if (input !== 'DELETE') {
+      toast.error('Deletion cancelled')
+      return
+    }
+  }
+  api.delete('/accounts/me/')
+    .then(() => {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      toast.success('Account deleted')
+      window.location.href = '/'
+    })
+    .catch(err => toast.error(err.response?.data?.error || 'Failed to delete account'))
 }
