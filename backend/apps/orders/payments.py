@@ -4,7 +4,8 @@ Money model (locked in with the store owner):
 - Buyer pays (items + delivery fee + gateway fee) in ONE Paystack charge.
 - Paystack auto-settles each seller's net share straight to their
   subaccount at charge time. Seller funds never sit with the platform.
-- Platform keeps: full 10% commission + full delivery fee.
+- Platform keeps: commission + platform delivery fee. Self-delivery
+  fees bypass the platform and settle straight to those sellers.
 - Paystack gateway fee is buyer-funded: buyer pays it on top (itemized at
   checkout), sellers get gross - commission untouched, Paystack deducts
   its fee once from the admin pot.
@@ -16,8 +17,6 @@ from decimal import Decimal, ROUND_HALF_UP
 import requests
 from django.conf import settings
 from django.utils import timezone
-
-from .models import PLATFORM_COMMISSION_RATE
 
 logger = logging.getLogger(__name__)
 

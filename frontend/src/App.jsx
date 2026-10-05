@@ -20,7 +20,6 @@ import OrderTrackingPage from './pages/buyer/OrderTrackingPage'
 import BuyerOrderReceiptPage from './pages/buyer/BuyerOrderReceiptPage'
 import MyReviewsPage from './pages/buyer/MyReviewsPage'
 import GuestTrackPage from './pages/buyer/GuestTrackPage'
-import StorePage from './pages/buyer/StorePage'
 import VendorsPage from './pages/buyer/VendorsPage'
 import AIChatPage from './pages/buyer/AIChatPage'
 import BuyerProfilePage from './pages/buyer/BuyerProfilePage'
@@ -273,9 +272,6 @@ export default function App() {
       <Route path="/vendors" element={<VendorsPage />} />
       <Route path="/products/:slug" element={<ProductDetailPage />} />
       <Route path="/stores/:storeSlug" element={<SellerStorePage />} />
-
-      {/* Vendor storefront */}
-      <Route path="/store/:handle" element={<PrivateRoute roles={['buyer']}><StorePage /></PrivateRoute>} />
 
       {/* Bag + checkout work for guests too (guest bag + guest checkout) */}
       <Route path="/cart" element={<CartPage />} />

@@ -51,7 +51,6 @@ const useGuestCartStore = create(
       clearGuestCart: () => set({ items: [] }),
 
       guestCount: () => get().items.reduce((n, i) => n + i.quantity, 0),
-      guestSubtotal: () => get().items.reduce((n, i) => n + i.price * i.quantity, 0),
 
       /** Payload shape the guest checkout endpoint expects. */
       guestLines: () => get().items.map(i => ({

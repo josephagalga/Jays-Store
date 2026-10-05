@@ -1,6 +1,5 @@
 from django.contrib import admin
 from django.utils import timezone
-from django.contrib import messages
 from decimal import Decimal
 from .models import CustomUser, CommissionRateAuditLog
 from apps.products.models import Product

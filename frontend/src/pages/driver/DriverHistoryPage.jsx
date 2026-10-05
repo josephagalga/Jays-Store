@@ -55,7 +55,6 @@ export default function DriverHistoryPage() {
   const past = orders?.filter(o => !['accepted', 'picked_up'].includes(o.status)) || []
 
   const renderCard = (order) => {
-    const isActive = ['accepted', 'picked_up'].includes(order.status)
     return (
       <div key={order.id} className="bg-white border border-[var(--border)] rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">

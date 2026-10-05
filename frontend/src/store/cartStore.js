@@ -45,7 +45,7 @@ const useCartStore = create(
           await api.delete(`/cart/items/${itemId}/`)
           await get().fetchCart()
           toast.success('Item removed')
-        } catch (error) {
+        } catch {
           toast.error('Failed to remove item')
         }
       },

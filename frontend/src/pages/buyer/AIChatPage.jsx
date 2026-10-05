@@ -1,6 +1,5 @@
 ﻿import { useState, useRef, useEffect } from 'react'
-import { Send, Sparkles, X, RotateCcw } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Send, Sparkles, RotateCcw } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import ProductCard from '../../components/common/ProductCard'
 import api from '../../services/api'
@@ -70,7 +69,7 @@ export default function AIChatPage() {
   }
 
   const clearChat = async () => {
-    try { await api.post('/recommendations/chat/clear/') } catch {}
+    try { await api.post('/recommendations/chat/clear/') } catch { /* best-effort clear */ }
     setMessages([{
       role: 'ai',
       content: "Chat cleared! What are you looking for today?",

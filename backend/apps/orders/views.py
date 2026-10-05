@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import random
 import uuid
 
 import requests
@@ -10,11 +9,10 @@ from rest_framework.views import APIView
 from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
-from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, Settlement, PLATFORM_COMMISSION_RATE, DeliveryOTPLog, calculate_delivery_fee
+from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Payout, Settlement, PLATFORM_COMMISSION_RATE, DeliveryOTPLog
 from .otp_utils import generate_otp, hash_otp, verify_otp, get_otp_expiry, encrypt_otp
 from .emails import (
     send_payment_confirmation,
-    send_delivery_otp,
     send_seller_sale_alert,
     send_delivered_email,
     send_admin_payment_alert,
@@ -1947,7 +1945,7 @@ class AdminSellerEarningsView(APIView):
 
     def get(self, request):
         from django.contrib.auth import get_user_model
-        from django.db.models import Sum, DecimalField, ExpressionWrapper, F
+        from django.db.models import Sum
         from decimal import Decimal
 
         User = get_user_model()

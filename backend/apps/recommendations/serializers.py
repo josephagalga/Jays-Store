@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SearchHistory, AIConversation, ProductView
+from .models import SearchHistory, ProductView
 from apps.products.serializers import ProductListSerializer
 
 

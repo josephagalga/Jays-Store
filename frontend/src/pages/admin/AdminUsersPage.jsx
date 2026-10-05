@@ -20,7 +20,7 @@ export default function AdminUsersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/accounts/admin/users/${id}/delete/`),
-    onSuccess: (_, id) => {
+    onSuccess: () => {
       qc.invalidateQueries(['admin-users'])
       qc.invalidateQueries(['admin-dashboard'])
       toast.success('User deleted')

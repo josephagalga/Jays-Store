@@ -4,10 +4,9 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils.text import slugify
-from .models import Category, SubCategory, Product, ProductVariant, ProductImage, Wishlist
+from .models import Category, Product, ProductVariant, ProductImage, Wishlist
 from .serializers import (
     CategorySerializer,
-    SubCategorySerializer,
     ProductListSerializer,
     ProductDetailSerializer,
     ProductCreateUpdateSerializer,

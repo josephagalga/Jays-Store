@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { TrendingUp, Edit2, Save, X, History, AlertCircle } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
-import Button from '../../components/ui/Button'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 

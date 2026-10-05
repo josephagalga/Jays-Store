@@ -73,9 +73,6 @@ export default api
 export const verifyDeliveryOtp = (orderId, code) =>
   api.post(`/orders/${orderId}/verify-otp/`, { code })
 
-export const verifyDeliveryPin = (orderId, code) =>
-  api.post(`/orders/${orderId}/verify-otp/`, { code })
-
 export const placeOrder = (payload) =>
   api.post('/orders/place/', payload)
 
@@ -113,7 +110,6 @@ api.placeGuestOrder = placeGuestOrder
 api.trackGuestOrder = trackGuestOrder
 api.retryGuestPayment = retryGuestPayment
 api.claimGuestAccount = claimGuestAccount
-api.verifyDeliveryPin = verifyDeliveryPin
 api.verifyDeliveryOtp = verifyDeliveryOtp
 api.fetchOrderReceipt = fetchOrderReceipt
 api.fetchVendors = fetchVendors

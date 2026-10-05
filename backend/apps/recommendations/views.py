@@ -4,7 +4,6 @@ from rest_framework.views import APIView
 from .models import SearchHistory, AIConversation, ProductView
 from .serializers import (
     AIMessageSerializer,
-    AIResponseSerializer,
     SearchHistorySerializer,
     RecentlyViewedSerializer,
 )
