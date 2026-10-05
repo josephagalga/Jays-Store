@@ -92,3 +92,18 @@ IMPORTANT NOTES:
 - Keep BOTH terminals open while using the website.
 - Always ensure the Backend is running before starting the Frontend.
 ===========================================================================
+
+===========================================================================
+STALE-ORDER ESCALATION (paid driverless orders waiting > 24h)
+===========================================================================
+- Preview what would escalate (sends nothing):
+    python manage.py escalate_stale_orders --dry-run
+- Run for real (stamps orders + emails admin once per order):
+    python manage.py escalate_stale_orders
+- Custom threshold, e.g. 12 hours:
+    python manage.py escalate_stale_orders --hours 12
+- Production: add a Render Cron Job running every 6 hours with the
+  command above (no code changes needed).
+- Escalated orders appear in Admin Dashboard under "Needs attention"
+  until a driver accepts or the order is cancelled/delivered.
+===========================================================================

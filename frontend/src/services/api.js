@@ -149,6 +149,7 @@ export const adminApi = {
 
   // Settlements (instant payouts — history only)
   getSettlements: (params) => api.get('/admin/settlements/', { params }),
+  getStaleOrders: () => api.get('/orders/admin/orders-stale/'),
 
   // Products
   getProducts: (params) => api.get('/products/manage/', { params }),

@@ -326,6 +326,43 @@ def send_admin_payment_alert(order, connection=None):
                 connection=connection)
 
 
+def send_stale_escalation(order, waiting_hours, connection=None):
+    """Alert the admin that a paid driverless order has waited too long.
+
+    Never raises — the caller logs failures via EmailLog rows.
+    """
+    admin_email = (getattr(settings, 'ADMIN_NOTIFICATION_EMAIL', '') or '').strip()
+    if not admin_email:
+        return False
+    from .models import SellerHandoff
+    pending = SellerHandoff.objects.filter(
+        order=order, confirmed_at__isnull=True).select_related('seller')
+    if pending.exists():
+        sellers_state = '\n'.join(
+            f"  - {(h.seller.store_name if h.seller and h.seller.store_name else 'A seller')}: "
+            f"self-delivery handoff PENDING"
+            for h in pending
+        )
+    else:
+        sellers_state = '  (no self-delivery sellers waiting — driver simply never accepted)'
+    charged = float(order.total or 0) + float(order.processing_fee or 0)
+    subject = f"Jay's Store — Order #{order.id} needs a driver ({waiting_hours:.0f}h waiting)"
+    body = (
+        f"A paid order has been waiting for a driver for {waiting_hours:.0f} hours.\n\n"
+        f"Order #{order.id} — {order.buyer_display_name} ({order.buyer_email or 'no email'})\n"
+        f"Buyer charged: GHS {charged:.2f}\n"
+        f"Deliver to: {order.delivery_address}\n"
+        f"Phone: {order.delivery_phone}\n"
+        + (f"Landmark: {order.delivery_landmark}\n" if getattr(order, 'delivery_landmark', '') else '')
+        + f"\nSeller handoffs:\n{sellers_state}\n\n"
+        f"Action: assign a driver manually or contact the buyer. "
+        f"This alert fires once per order.\n\n"
+        f"Jay's Store"
+    )
+    return _send(admin_email, subject, body, kind='stale_escalation', order=order,
+                connection=connection)
+
+
 def send_delivered_email(order, connection=None):
     buyer_email = _buyer_email(order)
     if not buyer_email:

@@ -204,6 +204,9 @@ class Order(models.Model):
     #   'platform': {'items': n, 'fee': 'GHS str'}} — snapshot at placement.
     needs_driver = models.BooleanField(default=True)
     # ↑ False when every line is self-delivery (driver board skips these).
+    escalated_at = models.DateTimeField(null=True, blank=True)
+    # ↑ Set once by the stale-order job when a driverless paid order waits
+    #   too long. Never reset — one escalation per order, re-runs are no-ops.
 
     # Commission collected from buyer (buyer-pays-commission model)
     commission_collected = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -476,6 +479,7 @@ class EmailLog(models.Model):
         ('seller_alert', 'Seller sale alert'),
         ('admin_alert', 'Admin payment alert'),
         ('delivered', 'Delivered notice'),
+        ('stale_escalation', 'Stale driverless order escalation'),
     ]
 
     to_email = models.EmailField(max_length=254, blank=True, default='')

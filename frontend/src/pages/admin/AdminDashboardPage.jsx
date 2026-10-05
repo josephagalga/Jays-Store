@@ -1,7 +1,9 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Users, Truck, Package, TrendingUp, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Users, Truck, Package, TrendingUp, Clock, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
 import api from '../../services/api'
+import { adminApi } from '../../services/api'
 import toast from 'react-hot-toast'
 
 export default function AdminDashboardPage() {
@@ -32,6 +34,12 @@ export default function AdminDashboardPage() {
       qc.invalidateQueries(['admin-dashboard'])
       toast.success('Driver updated')
     },
+  })
+
+  const { data: staleOrders } = useQuery({
+    queryKey: ['admin-stale-orders'],
+    queryFn: adminApi.getStaleOrders,
+    staleTime: 1000 * 60 * 5,
   })
 
   if (isLoading) return <div className="flex justify-center py-32"><Spinner /></div>
@@ -78,6 +86,39 @@ export default function AdminDashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Needs attention — escalated driverless orders */}
+      {staleOrders?.count > 0 && (
+        <div className="bg-rose-50/60 border border-rose-200 rounded-2xl overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-rose-200 flex items-center gap-2">
+            <AlertTriangle size={16} className="text-rose-500" />
+            <h2 className="serif text-xl font-medium text-[var(--ink)]">
+              Needs Attention ({staleOrders.count})
+            </h2>
+          </div>
+          <div className="divide-y divide-rose-100">
+            {staleOrders.rows.map(order => (
+              <div key={order.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[var(--ink)]">
+                    Order #{order.id} · waiting {order.waiting_hours}h · GHS {parseFloat(order.charged_total).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-[var(--muted)] mt-0.5 truncate">
+                    {order.buyer_name} · {order.delivery_phone} · {order.delivery_address}
+                  </p>
+                  <p className="text-xs text-[var(--muted)] mt-0.5">
+                    Seller handoffs: {order.handoffs_done}/{order.handoffs_total} confirmed
+                  </p>
+                </div>
+                <Link to={`/admin/orders?highlight=${order.id}`}
+                  className="flex-shrink-0 px-4 py-2 min-h-[44px] inline-flex items-center text-xs font-semibold bg-white border border-[var(--border)] rounded-xl hover:border-[var(--ink)] transition-colors">
+                  Review order
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Pending driver verifications */}
       {pendingDrivers?.length > 0 && (

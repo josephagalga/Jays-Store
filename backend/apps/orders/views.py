@@ -1021,6 +1021,45 @@ class AdminOrderDetailView(generics.RetrieveAPIView):
     queryset = Order.objects.all().prefetch_related('items').select_related('buyer', 'driver')
 
 
+class AdminStaleOrdersView(APIView):
+    """Orders escalated by the stale-order job that still need a driver.
+
+    Clears automatically once a driver accepts (or the order is
+    cancelled/delivered) — the dashboard filters on live state.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        orders = Order.objects.filter(
+            payment_status='paid',
+            status='pending',
+            needs_driver=True,
+            driver__isnull=True,
+            escalated_at__isnull=False,
+        ).select_related('buyer').prefetch_related('items', 'handoffs').order_by('escalated_at')
+        data = []
+        for order in orders:
+            handoffs_total = order.handoffs.count()
+            handoffs_done = sum(1 for h in order.handoffs.all() if h.confirmed_at)
+            data.append({
+                'id': order.id,
+                'buyer_name': order.buyer_display_name,
+                'buyer_email': order.buyer_email,
+                'delivery_phone': order.delivery_phone,
+                'delivery_address': order.delivery_address,
+                'total': str(order.total),
+                'charged_total': str(order.charged_total),
+                'created_at': order.created_at,
+                'escalated_at': order.escalated_at,
+                'waiting_hours': round(
+                    (timezone.now() - order.created_at).total_seconds() / 3600, 1),
+                'handoffs_done': handoffs_done,
+                'handoffs_total': handoffs_total,
+                'item_count': order.items.count(),
+            })
+        return Response({'rows': data, 'count': len(data)})
+
+
 # ============================================================
 # SELLER WALLET & PAYOUT VIEWS
 # ============================================================

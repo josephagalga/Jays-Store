@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import useAuthStore from './store/authStore'
@@ -130,11 +130,14 @@ function PublicOnlyRoute({ children }) {
 function DashboardLayout({ children }) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [openGroup, setOpenGroup] = useState(null)
 
   const handleLogout = () => {
     logout()
     setMobileNavOpen(false)
+    setOpenGroup(null)
     navigate('/login', { replace: true })
   }
 
@@ -154,26 +157,46 @@ function DashboardLayout({ children }) {
     ],
     admin: [
       { label: 'Dashboard', to: '/admin/dashboard' },
-      { label: 'Products', to: '/admin/products' },
-      { label: 'Inventory', to: '/admin/inventory' },
-      { label: 'Categories', to: '/admin/categories' },
-      { label: 'Orders', to: '/admin/orders' },
-      { label: 'Finance', to: '/admin/finance' },
-      { label: 'Seller Earnings', to: '/admin/seller-earnings' },
-      { label: 'Settlements', to: '/admin/settlements' },
-      { label: 'Payout Actions', to: '/admin/payout-actions' },
-      { label: 'Commissions', to: '/admin/commissions' },
-      { label: 'Audit Logs', to: '/admin/commission-audit-logs' },
-      { label: 'Drivers', to: '/admin/drivers' },
-      { label: 'Users', to: '/admin/users' },
-      { label: 'Messages', to: '/admin/contact-messages' },
-      { label: 'Newsletter', to: '/admin/newsletter' },
-      { label: 'Email Logs', to: '/admin/email-logs' },
-      { label: 'Reviews', to: '/admin/reviews' },
+      {
+        heading: 'Catalog',
+        links: [
+          { label: 'Products', to: '/admin/products' },
+          { label: 'Inventory', to: '/admin/inventory' },
+          { label: 'Categories', to: '/admin/categories' },
+        ],
+      },
+      {
+        heading: 'Money',
+        links: [
+          { label: 'Orders', to: '/admin/orders' },
+          { label: 'Finance', to: '/admin/finance' },
+          { label: 'Seller Earnings', to: '/admin/seller-earnings' },
+          { label: 'Settlements', to: '/admin/settlements' },
+        ],
+      },
+      {
+        heading: 'People',
+        links: [
+          { label: 'Drivers', to: '/admin/drivers' },
+          { label: 'Users', to: '/admin/users' },
+        ],
+      },
+      {
+        heading: 'Trust & Comms',
+        links: [
+          { label: 'Commissions', to: '/admin/commissions' },
+          { label: 'Audit Logs', to: '/admin/commission-audit-logs' },
+          { label: 'Reviews', to: '/admin/reviews' },
+          { label: 'Messages', to: '/admin/contact-messages' },
+          { label: 'Newsletter', to: '/admin/newsletter' },
+          { label: 'Email Logs', to: '/admin/email-logs' },
+        ],
+      },
     ],
   }
 
   const links = navLinks[user?.role] || []
+  const isGroup = (item) => !!item.heading
 
   return (
     <div className="min-h-screen bg-[var(--off)] flex flex-col">
@@ -184,12 +207,68 @@ function DashboardLayout({ children }) {
           </Link>
 
           <nav className="hidden md:flex items-center gap-1 flex-1">
-            {links.map(({ label, to }) => (
-              <Link key={label} to={to}
-                className="px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] rounded-lg transition-all">
-                {label}
-              </Link>
-            ))}
+            {links.map((item) => {
+              if (!isGroup(item)) {
+                const active = location.pathname === item.to
+                return (
+                  <Link key={item.label} to={item.to}
+                    aria-current={active ? 'page' : undefined}
+                    className={`px-3 py-2 text-sm rounded-lg transition-all ${
+                      active
+                        ? 'font-semibold text-[var(--ink)] bg-[var(--off)]'
+                        : 'text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)]'
+                    }`}>
+                    {item.label}
+                  </Link>
+                )
+              }
+              const groupActive = item.links.some(l => location.pathname === l.to)
+              return (
+                <div key={item.heading} className="relative group"
+                  onMouseEnter={() => setOpenGroup(item.heading)}
+                  onMouseLeave={() => setOpenGroup(null)}>
+                  <button type="button"
+                    aria-expanded={openGroup === item.heading}
+                    aria-haspopup="true"
+                    onClick={() => setOpenGroup(openGroup === item.heading ? null : item.heading)}
+                    onFocus={() => setOpenGroup(item.heading)}
+                    className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-all ${
+                      groupActive
+                        ? 'font-semibold text-[var(--ink)] bg-[var(--off)]'
+                        : 'text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)]'
+                    }`}>
+                    {item.heading}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                      className={`transition-transform ${openGroup === item.heading ? 'rotate-180' : ''}`}>
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  <div className={`absolute left-0 top-full pt-1 transition-all duration-150 ${
+                    openGroup === item.heading
+                      ? 'opacity-100 visible translate-y-0'
+                      : 'opacity-0 invisible -translate-y-1 pointer-events-none'
+                  }`}>
+                    <div className="w-52 bg-white border border-[var(--border)] rounded-2xl shadow-lg shadow-black/5 p-1.5">
+                      {item.links.map(({ label, to }) => {
+                        const active = location.pathname === to
+                        return (
+                          <Link key={label} to={to}
+                            onClick={() => setOpenGroup(null)}
+                            aria-current={active ? 'page' : undefined}
+                            className={`block px-3 py-2.5 text-sm rounded-lg transition-colors ${
+                              active
+                                ? 'font-semibold text-[var(--ink)] bg-[var(--off)]'
+                                : 'text-[var(--ink)] hover:bg-[var(--off)]'
+                            }`}>
+                            {label}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </nav>
 
           <div className="flex items-center gap-3 flex-shrink-0">
@@ -219,14 +298,42 @@ function DashboardLayout({ children }) {
         </div>
 
         {mobileNavOpen && (
-          <nav className="md:hidden border-t border-[var(--border)] bg-white px-6 py-3 flex flex-col gap-1">
-            {links.map(({ label, to }) => (
-              <Link key={label} to={to}
-                onClick={() => setMobileNavOpen(false)}
-                className="px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">
-                {label}
-              </Link>
-            ))}
+          <nav className="md:hidden border-t border-[var(--border)] bg-white px-6 py-3 flex flex-col gap-1 max-h-[70vh] overflow-y-auto">
+            {links.map((item) => {
+              if (!isGroup(item)) {
+                const active = location.pathname === item.to
+                return (
+                  <Link key={item.label} to={item.to}
+                    onClick={() => setMobileNavOpen(false)}
+                    aria-current={active ? 'page' : undefined}
+                    className={`px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                      active ? 'bg-[var(--off)] text-[var(--ink)] font-semibold' : 'text-[var(--ink)] hover:bg-[var(--off)]'
+                    }`}>
+                    {item.label}
+                  </Link>
+                )
+              }
+              return (
+                <div key={item.heading} className="flex flex-col">
+                  <p className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                    {item.heading}
+                  </p>
+                  {item.links.map(({ label, to }) => {
+                    const active = location.pathname === to
+                    return (
+                      <Link key={label} to={to}
+                        onClick={() => setMobileNavOpen(false)}
+                        aria-current={active ? 'page' : undefined}
+                        className={`px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                          active ? 'bg-[var(--off)] text-[var(--ink)] font-semibold' : 'text-[var(--ink)] hover:bg-[var(--off)]'
+                        }`}>
+                        {label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )
+            })}
             <button
               onClick={handleLogout}
               className="text-left px-3 py-2.5 text-sm font-medium text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
