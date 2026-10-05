@@ -389,6 +389,7 @@ class SellerOrderListSerializer(serializers.ModelSerializer):
     buyer_phone = serializers.CharField(source='buyer.phone_number', read_only=True)
     driver_name = serializers.CharField(source='driver.full_name', read_only=True)
     item_count = serializers.SerializerMethodField()
+    my_handoff = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -398,11 +399,30 @@ class SellerOrderListSerializer(serializers.ModelSerializer):
             'payment_method', 'item_count', 'created_at',
             'delivery_address', 'delivery_phone', 'delivery_note', 'delivery_landmark',
             'delivery_fee', 'delivery_pin', 'pin_verified',
+            'needs_driver', 'my_handoff',
         ]
         read_only_fields = ['id', 'created_at']
 
     def get_item_count(self, obj):
         return obj.items.count()
+
+    def get_my_handoff(self, obj):
+        """This seller's handoff state: 'none' (platform delivery),
+        'pending' (enter buyer OTP to confirm), or 'confirmed'."""
+        try:
+            request = self.context.get('request')
+            seller_id = getattr(getattr(request, 'user', None), 'id', None)
+            if not seller_id:
+                return 'none'
+            handoff = next(
+                (h for h in obj.handoffs.all() if h.seller_id == seller_id),
+                None,
+            )
+            if not handoff:
+                return 'none'
+            return 'confirmed' if handoff.confirmed_at else 'pending'
+        except Exception:
+            return 'none'
 
 
 class DriverOrderListSerializer(serializers.ModelSerializer):

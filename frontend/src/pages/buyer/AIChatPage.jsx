@@ -22,7 +22,22 @@ export default function AIChatPage() {
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [recentTopics, setRecentTopics] = useState([])
   const bottomRef = useRef()
+
+  useEffect(() => {
+    api.getSearchHistory()
+      .then(res => {
+        const rows = Array.isArray(res.data) ? res.data : res.data.results || []
+        const seen = new Set()
+        setRecentTopics(rows.map(r => r.query).filter(q => {
+          if (!q || seen.has(q)) return false
+          seen.add(q)
+          return true
+        }).slice(0, 5))
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -134,9 +149,15 @@ export default function AIChatPage() {
         {/* Suggestions */}
         {messages.length === 1 && (
           <div className="flex flex-wrap gap-2 mb-4">
+            {recentTopics.map(q => (
+              <button key={`recent-${q}`} onClick={() => send(q)}
+                className="px-4 py-2 min-h-[44px] text-sm border border-[var(--ink)] rounded-full text-[var(--ink)] bg-[var(--off)] hover:bg-white transition-all">
+                ↻ {q.length > 42 ? `${q.slice(0, 42)}…` : q}
+              </button>
+            ))}
             {SUGGESTIONS.map(s => (
               <button key={s} onClick={() => send(s)}
-                className="px-4 py-2 text-sm border border-[var(--border)] rounded-full text-[var(--muted)] hover:border-[var(--ink)] hover:text-[var(--ink)] transition-all bg-white">
+                className="px-4 py-2 min-h-[44px] text-sm border border-[var(--border)] rounded-full text-[var(--muted)] hover:border-[var(--ink)] hover:text-[var(--ink)] transition-all bg-white">
                 {s}
               </button>
             ))}

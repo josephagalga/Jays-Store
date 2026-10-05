@@ -8,6 +8,7 @@ import ProductCard from
 import SafeImage from '../../components/common/SafeImage'
 import { ProductGridSkeleton } from '../../components/common/Skeletons'
 import api from '../../services/api'
+import useAuthStore from '../../store/authStore'
 
 // ── Data hooks ───────────────────────────────────────────────
 
@@ -30,6 +31,19 @@ function useCategories() {
       const res = await api.get('/products/categories/')
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
+  })
+}
+
+function useRecentlyViewed(enabled) {
+  return useQuery({
+    queryKey: ['recently-viewed'],
+    queryFn: async () => {
+      const res = await api.getRecentlyViewed()
+      const rows = Array.isArray(res.data) ? res.data : res.data.results || []
+      return rows.map(r => r.product).filter(Boolean)
+    },
+    enabled: !!enabled,
+    staleTime: 1000 * 60 * 5,
   })
 }
 
@@ -453,6 +467,37 @@ function JoinSection() {
   )
 }
 
+// ── Recently viewed rail (buyers only, hidden when empty) ──
+
+function RecentlyViewed() {
+  const [ref, visible] = useReveal()
+  const { isAuthenticated, user } = useAuthStore()
+  const { data: products } = useRecentlyViewed(isAuthenticated && user?.role === 'buyer')
+
+  if (!products?.length) return null
+
+  return (
+    <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-10 reveal ${visible ? 'visible' : ''}`}>
+      <div className="flex items-end justify-between mb-8">
+        <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">Recently viewed</h2>
+        <Link to="/catalog"
+          className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group min-h-[44px]">
+          View All
+          <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+        </Link>
+      </div>
+      <div className="flex gap-4 md:gap-5 overflow-x-auto pb-2 -mx-6 px-6 lg:mx-0 lg:px-0"
+        style={{ scrollSnapType: 'x mandatory' }}>
+        {products.slice(0, 10).map((product, i) => (
+          <div key={product.id} className="w-[160px] sm:w-[200px] flex-shrink-0" style={{ scrollSnapAlign: 'start' }}>
+            <ProductCard product={product} index={i} />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 // ── Page ─────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -465,6 +510,7 @@ export default function HomePage() {
       <TrustBar />
       <Categories categories={categories} />
       <Featured products={featured} isLoading={featuredLoading} />
+      <RecentlyViewed />
       <SliderBanner products={featured} />
       <BrowseAllBand />
       <AIBanner />

@@ -4,9 +4,28 @@ from apps.orders.models import Order
 
 
 class ReviewImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = ReviewImage
-        fields = ['id', 'image', 'order']
+        fields = ['id', 'image', 'image_url', 'order']
+
+    def get_image_url(self, obj):
+        if not obj.image:
+            return None
+        try:
+            url = obj.image.url
+        except Exception:
+            return None
+        if str(url).startswith(('http://', 'https://')):
+            return url
+        request = self.context.get('request')
+        if request:
+            try:
+                return request.build_absolute_uri(url)
+            except Exception:
+                pass
+        return url
 
 
 class ReviewSerializer(serializers.ModelSerializer):
@@ -14,13 +33,14 @@ class ReviewSerializer(serializers.ModelSerializer):
     buyer_avatar = serializers.ImageField(source='buyer.avatar', read_only=True)
     images = ReviewImageSerializer(many=True, read_only=True)
     has_voted_helpful = serializers.SerializerMethodField()
+    product_name = serializers.CharField(source='product.name', read_only=True)
 
     class Meta:
         model = Review
         fields = [
-            'id', 'buyer_name', 'buyer_avatar',
+            'id', 'product', 'product_name', 'buyer_name', 'buyer_avatar',
             'rating', 'title', 'body', 'fit',
-            'helpful_votes', 'has_voted_helpful',
+            'helpful_votes', 'has_voted_helpful', 'is_visible',
             'images', 'created_at',
         ]
 
@@ -41,7 +61,8 @@ class CreateReviewSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Review
-        fields = ['product', 'rating', 'title', 'body', 'fit']
+        fields = ['id', 'product', 'rating', 'title', 'body', 'fit']
+        read_only_fields = ['id']
 
     def validate_rating(self, value):
         if not 1 <= value <= 5:

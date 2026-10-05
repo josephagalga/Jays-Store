@@ -18,6 +18,7 @@ import CheckoutPage from './pages/buyer/CheckoutPage'
 import OrdersPage from './pages/buyer/OrdersPage'
 import OrderTrackingPage from './pages/buyer/OrderTrackingPage'
 import BuyerOrderReceiptPage from './pages/buyer/BuyerOrderReceiptPage'
+import MyReviewsPage from './pages/buyer/MyReviewsPage'
 import GuestTrackPage from './pages/buyer/GuestTrackPage'
 import StorePage from './pages/buyer/StorePage'
 import VendorsPage from './pages/buyer/VendorsPage'
@@ -56,6 +57,7 @@ import AdminEmailLogsPage from './pages/admin/AdminEmailLogsPage'
 import AdminPayoutActionsPage from './pages/admin/AdminPayoutActionsPage'
 import AdminInventoryPage from './pages/admin/AdminInventoryPage'
 import AdminCategoriesPage from './pages/admin/AdminCategoriesPage'
+import AdminReviewsPage from './pages/admin/AdminReviewsPage'
 
 // General pages
 import AboutPage from './pages/AboutPage'
@@ -171,6 +173,7 @@ function DashboardLayout({ children }) {
       { label: 'Messages', to: '/admin/contact-messages' },
       { label: 'Newsletter', to: '/admin/newsletter' },
       { label: 'Email Logs', to: '/admin/email-logs' },
+      { label: 'Reviews', to: '/admin/reviews' },
     ],
   }
 
@@ -286,6 +289,7 @@ export default function App() {
       <Route path="/wishlist" element={<PrivateRoute roles={['buyer']}><WishlistPage /></PrivateRoute>} />
       <Route path="/assistant" element={<PrivateRoute roles={['buyer']}><AIChatPage /></PrivateRoute>} />
       <Route path="/profile" element={<PrivateRoute roles={['buyer']}><BuyerProfilePage /></PrivateRoute>} />
+      <Route path="/profile/reviews" element={<PrivateRoute roles={['buyer']}><MyReviewsPage /></PrivateRoute>} />
 
       {/* Seller */}
       <Route path="/seller/dashboard" element={
@@ -415,6 +419,11 @@ export default function App() {
       <Route path="/admin/categories" element={
         <PrivateRoute roles={['admin']}>
           <DashboardLayout><AdminCategoriesPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/reviews" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminReviewsPage /></DashboardLayout>
         </PrivateRoute>
       } />
 

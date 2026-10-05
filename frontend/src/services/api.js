@@ -98,6 +98,17 @@ export const fetchVendors = (search = '') =>
   api.get('/accounts/stores/', { params: search ? { search } : {} })
 
 api.placeOrder = placeOrder
+api.uploadReviewImage = (reviewId, file) => {
+  const fd = new FormData()
+  fd.append('image', file)
+  return api.post(`/reviews/${reviewId}/images/`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+api.voteHelpful = (reviewId) => api.post(`/reviews/${reviewId}/helpful/`)
+api.getMyReviews = () => api.get('/reviews/my-reviews/')
+api.getRecentlyViewed = () => api.get('/recommendations/recently-viewed/')
+api.getSearchHistory = () => api.get('/recommendations/search-history/')
 api.placeGuestOrder = placeGuestOrder
 api.trackGuestOrder = trackGuestOrder
 api.retryGuestPayment = retryGuestPayment
@@ -160,7 +171,22 @@ export const adminApi = {
 
   // Reviews
   getReviews: (params) => api.get('/reviews/admin/', { params }),
-  toggleReview: (id, isVisible) => api.patch(`/reviews/admin/${id}/toggle/`, { is_visible: isVisible }),
+  toggleReview: (id) => api.patch(`/reviews/admin/${id}/toggle/`, {}),
+
+  // Buyer reviews
+  getMyReviews: () => api.get('/reviews/my-reviews/'),
+  voteHelpful: (reviewId) => api.post(`/reviews/${reviewId}/helpful/`),
+  uploadReviewImage: (reviewId, file) => {
+    const fd = new FormData()
+    fd.append('image', file)
+    return api.post(`/reviews/${reviewId}/images/`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  // Discovery
+  getRecentlyViewed: () => api.get('/recommendations/recently-viewed/'),
+  getSearchHistory: () => api.get('/recommendations/search-history/'),
 }
 
 // ============================================================

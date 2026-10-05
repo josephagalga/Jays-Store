@@ -1,14 +1,82 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
-import { Package, Clock, CheckCircle, Truck, MapPin, Mail, Printer, Receipt as ReceiptIcon } from 'lucide-react'
+import { Package, Clock, CheckCircle, Truck, MapPin, Mail, Printer, Receipt as ReceiptIcon, Star } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import SafeImage from '../../components/common/SafeImage'
 import Spinner from '../../components/ui/Spinner'
+import Button from '../../components/ui/Button'
 import Receipt from '../../components/common/Receipt'
 import api from '../../services/api'
 import { verifyPaystackReference, payForOrder } from '../../utils/paystack'
 import toast from 'react-hot-toast'
+
+function RateDriver({ orderId, driverName }) {
+  const [rating, setRating] = useState(0)
+  const [hover, setHover] = useState(0)
+  const [comment, setComment] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!rating) return toast.error('Please select a star rating')
+    setSubmitting(true)
+    try {
+      await api.post(`/orders/${orderId}/rate/`, { order: orderId, rating, comment })
+      toast.success('Thanks for rating your delivery!')
+      setDone(true)
+    } catch (err) {
+      const d = err.response?.data
+      toast.error(d?.non_field_errors?.[0] || (typeof d === 'string' ? d : null) || 'Could not submit rating')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (done) return (
+    <div className="bg-green-50 border border-green-100 rounded-2xl p-5 text-sm text-green-700 font-medium">
+      ✓ Thanks — your rating helps drivers earn more orders.
+    </div>
+  )
+
+  return (
+    <div className="bg-white border border-[var(--border)] rounded-2xl p-5 md:p-6">
+      <h2 className="serif text-xl font-medium text-[var(--ink)] mb-1">Rate your delivery</h2>
+      <p className="text-xs text-[var(--muted)] mb-4">
+        How was {driverName || 'your driver'}? Ratings help good drivers get more work.
+      </p>
+      <form onSubmit={submit} className="space-y-4">
+        <div className="flex items-center gap-1">
+          {[1, 2, 3, 4, 5].map(s => (
+            <button key={s} type="button"
+              onMouseEnter={() => setHover(s)}
+              onMouseLeave={() => setHover(0)}
+              onClick={() => setRating(s)}
+              aria-label={`${s} star${s > 1 ? 's' : ''}`}
+              className="p-1 min-w-[44px] min-h-[44px] flex items-center justify-center transition-transform hover:scale-110 focus:outline-none">
+              <Star size={26}
+                className={(hover || rating) >= s
+                  ? 'fill-amber-400 text-amber-400'
+                  : 'text-[var(--border)]'} />
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={comment}
+          onChange={e => setComment(e.target.value)}
+          rows={2}
+          maxLength={500}
+          placeholder="Anything to add? (optional)"
+          className="w-full px-4 py-3 text-base md:text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors resize-none placeholder:text-[var(--muted)] placeholder:opacity-70"
+        />
+        <Button type="submit" loading={submitting} className="rounded-xl w-full sm:w-auto">
+          Submit rating
+        </Button>
+      </form>
+    </div>
+  )
+}
 
 const TRACK_STEPS = [
   { key: 'pending',    label: 'Order Placed',    icon: Package },
@@ -301,6 +369,11 @@ export default function OrderTrackingPage() {
           <p className="text-xs text-[var(--muted)] mb-6">
             Order #{order.id} · {receipt?.buyer_email || ''} · Paid {receipt?.paid_at ? new Date(receipt.paid_at).toLocaleString('en-GH') : ''}
           </p>
+          {order.status === 'delivered' && order.driver_name && (
+            <div className="mb-6">
+              <RateDriver orderId={order.id} driverName={order.driver_name} />
+            </div>
+          )}
           {receipt ? (
             <Receipt receipt={receipt} order={order} />
           ) : (

@@ -27,6 +27,83 @@ const FIT_OPTIONS = [
 
 const FIT_LABEL = { runs_small: 'Runs small', true_to_size: 'True to size', runs_large: 'Runs large' }
 
+function ReviewCard({ review, slug }) {
+  const qc = useQueryClient()
+  const [voting, setVoting] = useState(false)
+  const [voted, setVoted] = useState(!!review.has_voted_helpful)
+  const [votes, setVotes] = useState(review.helpful_votes || 0)
+
+  const vote = async () => {
+    if (voting) return
+    setVoting(true)
+    try {
+      const res = await api.voteHelpful(review.id)
+      if (typeof res.data?.helpful_votes === 'number') {
+        setVotes(res.data.helpful_votes)
+      }
+      setVoted(prev => !prev)
+      qc.invalidateQueries(['reviews', slug])
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not vote')
+    } finally {
+      setVoting(false)
+    }
+  }
+
+  return (
+    <div className="bg-[var(--off)] rounded-2xl p-6">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-[var(--ink)]">
+          {review.buyer_name}
+        </p>
+        <div className="flex items-center gap-0.5">
+          {[1, 2, 3, 4, 5].map(s => (
+            <Star key={s} size={12}
+              className={s <= review.rating
+                ? 'fill-amber-400 text-amber-400'
+                : 'text-[var(--border)]'} />
+          ))}
+        </div>
+      </div>
+      {review.title && (
+        <p className="text-sm font-medium mb-1">{review.title}</p>
+      )}
+      {review.fit && (
+        <p className="mb-2">
+          <span className="inline-block text-[11px] font-medium text-[var(--ink)] bg-white border border-[var(--border)] px-2.5 py-1 rounded-full">
+            Fit: {FIT_LABEL[review.fit] || review.fit}
+          </span>
+        </p>
+      )}
+      <p className="text-sm text-[var(--muted)] font-light leading-relaxed">
+        {review.body}
+      </p>
+      {review.images?.length > 0 && (
+        <div className="flex gap-2 flex-wrap mt-3">
+          {review.images.map(img => (
+            <SafeImage key={img.id} src={img.image_url || img.image} alt=""
+              className="w-16 h-20 rounded-lg object-cover border border-[var(--border)]" />
+          ))}
+        </div>
+      )}
+      <div className="flex items-center justify-between mt-3">
+        <p className="text-xs text-[var(--muted)]">
+          {new Date(review.created_at).toLocaleDateString('en-GH')}
+        </p>
+        <button type="button" onClick={vote} disabled={voting}
+          aria-pressed={voted}
+          className={`text-xs font-medium px-3 py-2 min-h-[44px] rounded-full border transition-colors ${
+            voted
+              ? 'bg-[var(--ink)] text-white border-[var(--ink)]'
+              : 'bg-white text-[var(--muted)] border-[var(--border)] hover:border-[var(--ink)]'
+          }`}>
+          Helpful{votes > 0 ? ` (${votes})` : ''}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function FitMeter({ summary }) {
   const small = Number(summary?.fit_runs_small || 0)
   const trueSize = Number(summary?.fit_true_to_size || 0)
@@ -85,18 +162,66 @@ function WriteReview({ productId, slug, autoOpen = false, requirePurchase = fals
     }
   }, [autoOpen])
 
+  const [photos, setPhotos] = useState([])
+  const [photoError, setPhotoError] = useState('')
+
+  const pickPhotos = (e) => {
+    setPhotoError('')
+    const files = Array.from(e.target.files || []).slice(0, 3 - photos.length)
+    const ok = []
+    for (const f of files) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) {
+        setPhotoError('Only JPG, PNG or WebP photos allowed')
+        continue
+      }
+      if (f.size > 5 * 1024 * 1024) {
+        setPhotoError('Each photo must be under 5MB')
+        continue
+      }
+      ok.push({ file: f, preview: URL.createObjectURL(f) })
+    }
+    if (photos.length + ok.length > 3) {
+      setPhotoError('Maximum 3 photos per review')
+    }
+    setPhotos(prev => [...prev, ...ok].slice(0, 3))
+    e.target.value = ''
+  }
+
+  const removePhoto = (idx) => {
+    setPhotos(prev => {
+      try { URL.revokeObjectURL(prev[idx]?.preview) } catch { /* ignore */ }
+      return prev.filter((_, i) => i !== idx)
+    })
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!rating) return toast.error('Please select a rating')
     setSubmitting(true)
     try {
-      await api.post('/reviews/create/', {
+      const res = await api.post('/reviews/create/', {
         product: productId,
         rating,
         title,
         body,
         fit,
       })
+      const reviewId = res.data?.id
+      if (reviewId && photos.length) {
+        let uploaded = 0
+        for (const p of photos) {
+          try {
+            await api.uploadReviewImage(reviewId, p.file)
+            uploaded += 1
+          } catch {
+            // one failed photo must not fail the whole review
+          }
+        }
+        if (uploaded < photos.length) {
+          toast.error('Review saved, but some photos failed to upload')
+        }
+      }
+      photos.forEach(p => { try { URL.revokeObjectURL(p.preview) } catch { /* ignore */ } })
       toast.success('Review submitted!')
       setSubmitted(true)
       qc.invalidateQueries(['reviews', slug])
@@ -224,6 +349,32 @@ function WriteReview({ productId, slug, autoOpen = false, requirePurchase = fals
             placeholder="Share your thoughts about this product..."
             className="w-full px-4 py-3 text-base md:text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors resize-none placeholder:text-[var(--muted)] placeholder:opacity-70"
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">
+            Photos{' '}
+            <span className="font-normal text-[var(--muted)] normal-case">(optional, up to 3)</span>
+          </label>
+          <input
+            type="file" accept="image/jpeg,image/png,image/webp" multiple
+            onChange={pickPhotos}
+            className="w-full px-4 py-2.5 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors"
+          />
+          {photoError && <p className="text-xs text-red-600">{photoError}</p>}
+          {photos.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {photos.map((p, i) => (
+                <div key={i} className="relative w-16 h-20 rounded-lg overflow-hidden border border-[var(--border)]">
+                  <img src={p.preview} alt="" className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => removePhoto(i)} aria-label="Remove photo"
+                    className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white text-xs rounded-full flex items-center justify-center">
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <Button type="submit" loading={submitting} size="md">
@@ -662,37 +813,7 @@ export default function ProductDetailPage() {
           {reviews?.length > 0 ? (
             <div className="grid md:grid-cols-2 gap-5">
               {reviews.map(review => (
-                <div key={review.id} className="bg-[var(--off)] rounded-2xl p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold text-[var(--ink)]">
-                      {review.buyer_name}
-                    </p>
-                    <div className="flex items-center gap-0.5">
-                      {[1, 2, 3, 4, 5].map(s => (
-                        <Star key={s} size={12}
-                          className={s <= review.rating
-                            ? 'fill-amber-400 text-amber-400'
-                            : 'text-[var(--border)]'} />
-                      ))}
-                    </div>
-                  </div>
-                  {review.title && (
-                    <p className="text-sm font-medium mb-1">{review.title}</p>
-                  )}
-                  {review.fit && (
-                    <p className="mb-2">
-                      <span className="inline-block text-[11px] font-medium text-[var(--ink)] bg-white border border-[var(--border)] px-2.5 py-1 rounded-full">
-                        Fit: {review.fit === 'runs_small' ? 'Runs small' : review.fit === 'runs_large' ? 'Runs large' : 'True to size'}
-                      </span>
-                    </p>
-                  )}
-                  <p className="text-sm text-[var(--muted)] font-light leading-relaxed">
-                    {review.body}
-                  </p>
-                  <p className="text-xs text-[var(--muted)] mt-3">
-                    {new Date(review.created_at).toLocaleDateString('en-GH')}
-                  </p>
-                </div>
+                <ReviewCard key={review.id} review={review} slug={slug} />
               ))}
             </div>
           ) : (

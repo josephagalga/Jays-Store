@@ -1,6 +1,7 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Package, ShoppingBag, Star, Trash2, AlertTriangle } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import Input from '../../components/ui/Input'
@@ -65,6 +66,19 @@ export default function BuyerProfilePage() {
             </div>
           ))}
         </div>
+
+        {/* My reviews shortcut */}
+        <Link to="/profile/reviews"
+          className="flex items-center justify-between bg-white border border-[var(--border)] rounded-2xl p-5 mb-10 hover:border-[var(--ink)] transition-colors">
+          <span className="flex items-center gap-3">
+            <Star size={20} className="text-amber-400" />
+            <span>
+              <span className="block text-sm font-semibold text-[var(--ink)]">My Reviews</span>
+              <span className="block text-xs text-[var(--muted)]">Ratings, fit feedback and photos you shared</span>
+            </span>
+          </span>
+          <span className="text-[var(--muted)]">→</span>
+        </Link>
 
         {/* Form */}
         <div className="bg-white border border-[var(--border)] rounded-2xl p-8">

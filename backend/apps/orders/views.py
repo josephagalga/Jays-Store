@@ -1125,8 +1125,8 @@ class SellerOrderListView(generics.ListAPIView):
     def get_queryset(self):
         seller = self.request.user
         if seller.role == 'admin':
-            return Order.objects.all().prefetch_related('items').select_related('buyer', 'driver').order_by('-created_at')
-        return Order.objects.filter(items__seller=seller).distinct().prefetch_related('items').select_related('buyer', 'driver').order_by('-created_at')
+            return Order.objects.all().prefetch_related('items', 'handoffs').select_related('buyer', 'driver').order_by('-created_at')
+        return Order.objects.filter(items__seller=seller).distinct().prefetch_related('items', 'handoffs').select_related('buyer', 'driver').order_by('-created_at')
 
 
 def _complete_order_if_ready(order):

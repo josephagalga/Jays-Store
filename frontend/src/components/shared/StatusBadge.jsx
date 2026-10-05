@@ -20,6 +20,8 @@ export function StatusBadge({ status, className }) {
     rejected: 'bg-rose-50 text-rose-600',
     read: 'bg-green-50 text-green-700',
     unread: 'bg-amber-50 text-amber-700',
+    visible: 'bg-green-50 text-green-700',
+    hidden: 'bg-[var(--off)] text-[var(--muted)]',
   }
 
   return (

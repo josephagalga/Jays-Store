@@ -11,7 +11,7 @@ import useAuthStore from '../../store/authStore'
 import toast from 'react-hot-toast'
 
 export default function SellerDashboardPage() {
-  const { user } = useAuthStore()
+  const { user, setUser } = useAuthStore()
   const qc = useQueryClient()
   const [payoutForm, setPayoutForm] = useState({ payout_account_number: '', payout_bank_code: '', payout_account_name: '' })
   const [showPayoutForm, setShowPayoutForm] = useState(false)
@@ -82,6 +82,34 @@ export default function SellerDashboardPage() {
       return toast.error('Fill in account number, bank/network and account name')
     }
     payoutMutation.mutate(payoutForm)
+  }
+
+  const [deliveryFee, setDeliveryFee] = useState('')
+  const deliveryMutation = useMutation({
+    mutationFn: (payload) => api.patch('/accounts/profile/seller/', payload),
+    onSuccess: (res) => {
+      qc.invalidateQueries(['seller-profile'])
+      setUser(res.data)
+      toast.success('Delivery settings saved')
+    },
+    onError: (err) => {
+      const data = err.response?.data
+      const first = data && Object.values(data)[0]
+      toast.error(Array.isArray(first) ? first[0] : 'Could not save delivery settings')
+    },
+  })
+
+  const setDeliveryMode = (mode) => {
+    deliveryMutation.mutate({ delivery_mode: mode })
+  }
+
+  const saveDeliveryFee = (e) => {
+    e.preventDefault()
+    const fee = parseFloat(deliveryFee)
+    if (Number.isNaN(fee) || fee < 0 || fee > 50) {
+      return toast.error('Enter a delivery fee between GHS 0 and 50')
+    }
+    deliveryMutation.mutate({ custom_delivery_fee: fee.toFixed(2) })
   }
 
   const subaccountActive = profile?.subaccount_status === 'active'
@@ -162,6 +190,72 @@ export default function SellerDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Delivery mode — platform drivers or self-delivery */}
+      <div className="bg-white border border-[var(--border)] rounded-2xl p-6 mb-6">
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <h2 className="serif text-xl font-medium text-[var(--ink)]">Delivery mode</h2>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            (profile?.delivery_mode || 'platform') === 'self'
+              ? 'bg-amber-50 text-amber-700'
+              : 'bg-green-50 text-green-700'
+          }`}>
+            {(profile?.delivery_mode || 'platform') === 'self' ? 'Self delivery' : 'Platform delivery'}
+          </span>
+        </div>
+        <p className="text-sm text-[var(--muted)] mb-5">
+          Platform drivers pick up from your store (tiered fee goes to the platform), or deliver
+          yourself and keep your own flat fee on every order.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {[
+            { mode: 'platform', title: 'Platform delivery', desc: 'Drivers handle pickup & drop-off. You focus on products.' },
+            { mode: 'self', title: 'Self delivery', desc: 'You deliver. Your fee below is added at checkout and settled to you.' },
+          ].map(({ mode, title, desc }) => {
+            const selected = (profile?.delivery_mode || 'platform') === mode
+            return (
+              <button key={mode} type="button" onClick={() => !deliveryMutation.isPending && setDeliveryMode(mode)}
+                disabled={deliveryMutation.isPending}
+                aria-pressed={selected}
+                className={`text-left rounded-xl border p-4 transition-all min-h-[44px] ${
+                  selected
+                    ? 'border-[var(--ink)] bg-[var(--off)]'
+                    : 'border-[var(--border)] bg-white hover:border-[var(--muted)]'
+                }`}>
+                <p className="text-sm font-semibold text-[var(--ink)] flex items-center gap-2">
+                  <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selected ? 'border-[var(--ink)]' : 'border-[var(--border)]'}`}>
+                    {selected && <span className="w-2 h-2 rounded-full bg-[var(--ink)]" />}
+                  </span>
+                  {title}
+                </p>
+                <p className="text-xs text-[var(--muted)] mt-1.5 leading-relaxed">{desc}</p>
+              </button>
+            )
+          })}
+        </div>
+        {(profile?.delivery_mode || 'platform') === 'self' && (
+          <form onSubmit={saveDeliveryFee} className="flex flex-col sm:flex-row gap-3 mt-4">
+            <div className="flex-1">
+              <label htmlFor="delivery-fee" className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider mb-1.5 block">
+                Your delivery fee per order (GHS 0–50)
+              </label>
+              <input
+                id="delivery-fee"
+                type="number" min="0" max="50" step="0.5"
+                value={deliveryFee}
+                onChange={e => setDeliveryFee(e.target.value)}
+                placeholder={parseFloat(profile?.custom_delivery_fee || 0).toFixed(2)}
+                className="w-full px-4 py-3 min-h-[48px] text-base md:text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] placeholder:text-[var(--muted)] placeholder:opacity-70"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button type="submit" loading={deliveryMutation.isPending} className="rounded-xl w-full sm:w-auto">
+                Save fee
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
 
       {/* Payout account — instant settlement target */}
       {!subaccountActive && !isLoading && (
