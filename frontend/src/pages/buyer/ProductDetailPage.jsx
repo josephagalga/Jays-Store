@@ -2,6 +2,7 @@
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Star, ShoppingBag, Heart, ChevronLeft, ChevronRight } from 'lucide-react'
+import ShareButtons from '../../components/common/ShareButtons'
 import MainLayout from '../../layouts/MainLayout'
 import SafeImage from '../../components/common/SafeImage'
 import ProductCard from '../../components/common/ProductCard'
@@ -595,6 +596,11 @@ export default function ProductDetailPage() {
                 </span>
               </div>
             </div>
+
+            <ShareButtons
+              title={`${product.name} — GHS ${parseFloat(product.effective_price || 0).toFixed(2)} on My Jay's Store`}
+              path={`/products/${product.slug}`}
+            />
 
             <div className="flex items-baseline gap-3">
               <span className="text-3xl font-bold text-[var(--ink)]">

@@ -72,7 +72,7 @@ export default function ContactPage() {
       a: 'Register as a driver, upload your Ghana Card and a selfie. Our admin team reviews and verifies within 24 hours.',
     },
     {
-      q: 'Can I sell on Jay\'s Store?',
+      q: "Can I sell on My Jay's Store?",
       a: 'Yes! Register as a seller, set up your store and start listing products immediately. No upfront cost.',
     },
     {

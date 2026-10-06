@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Store } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import ProductCard from '../../components/common/ProductCard'
+import ShareButtons from '../../components/common/ShareButtons'
 import Spinner from '../../components/ui/Spinner'
 import api from '../../services/api'
 
@@ -72,6 +73,13 @@ export default function SellerStorePage() {
             <div className="flex items-center gap-5 mt-2">
               <span className="text-xs text-[var(--muted)]">★ {parseFloat(seller.seller_average_rating || 0).toFixed(1)} rating</span>
               <span className="text-xs text-[var(--muted)]">{seller.seller_total_sales || 0} sales</span>
+            </div>
+            <div className="mt-4">
+              <ShareButtons
+                title={`${seller.store_name} on My Jay's Store`}
+                path={`/stores/${storeSlug}`}
+                label="Share store"
+              />
             </div>
           </div>
         </div>

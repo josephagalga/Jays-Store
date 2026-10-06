@@ -2,6 +2,8 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import useAuthStore from './store/authStore'
+import TestingBanner from './components/common/TestingBanner'
+import FeedbackWidget from './components/common/FeedbackWidget'
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage'
@@ -200,6 +202,8 @@ function DashboardLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-[var(--off)] flex flex-col">
+      {/* TESTING-ONLY */}
+      <TestingBanner />
       <header className="bg-white border-b border-[var(--border)] sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 h-16 flex items-center justify-between gap-6">
           <Link to="/" className="serif text-lg font-medium text-[var(--ink)] flex-shrink-0">
@@ -346,6 +350,8 @@ function DashboardLayout({ children }) {
       <main className="flex-1 min-w-0">
         {children}
       </main>
+      {/* TESTING-ONLY */}
+      <FeedbackWidget />
     </div>
   )
 }
