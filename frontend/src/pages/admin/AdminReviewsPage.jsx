@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Star, Eye, EyeOff } from 'lucide-react'
-import MainLayout from '../../layouts/MainLayout'
 import { DataTable } from '../../components/shared/DataTable'
 import { StatusBadge } from '../../components/shared/StatusBadge'
 import { adminApi } from '../../services/api'
@@ -34,13 +33,13 @@ export default function AdminReviewsPage() {
   })
 
   if (isLoading) return (
-    <MainLayout>
+    <>
       <div className="flex justify-center py-32">Loading…</div>
-    </MainLayout>
+    </>
   )
 
   return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
           <div>
@@ -102,6 +101,6 @@ export default function AdminReviewsPage() {
           emptyMessage="No reviews found"
         />
       </div>
-    </MainLayout>
+    </>
   )
 }

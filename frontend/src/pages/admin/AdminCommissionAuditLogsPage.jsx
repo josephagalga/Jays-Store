@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import MainLayout from '../../layouts/MainLayout'
 import { adminApi } from '../../services/api'
 
 export default function AdminCommissionAuditLogsPage() {
@@ -7,18 +6,20 @@ export default function AdminCommissionAuditLogsPage() {
     queryKey: ['admin-commission-audit'],
     queryFn: adminApi.getCommissionAuditLogs,
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: attempt => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   if (isLoading) return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
       </div>
-    </MainLayout>
+    </>
   )
 
   return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -51,13 +52,13 @@ export default function AdminCommissionAuditLogsPage() {
                 <tr key={log.id} className="hover:bg-[var(--off)]/50">
                   <td className="px-5 py-4 text-sm text-[var(--muted)]">{new Date(log.created_at).toLocaleString('en-GH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                   <td className="px-5 py-4">
-                    <p className="font-medium text-[var(--ink)]">{log.seller_store_name || log.seller_email}</p>
-                    <p className="text-xs text-[var(--muted)]">@{log.seller_slug}</p>
+                    <p className="font-medium text-[var(--ink)]">{log.seller_name}</p>
+                    <p className="text-xs text-[var(--muted)]">{log.seller_email}</p>
                   </td>
-                  <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.changed_by_name || log.changed_by_email}</td>
+                  <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.changed_by}</td>
                   <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.old_rate}%</td>
                   <td className="px-5 py-4 font-medium text-[var(--ink)]">{log.new_rate}%</td>
-                  <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.products_affected || 0}</td>
+                  <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.affected_products_count || 0}</td>
                   <td className="px-5 py-4 text-xs text-[var(--muted)] max-w-xs truncate">{log.note || '—'}</td>
                 </tr>
               ))}
@@ -70,6 +71,6 @@ export default function AdminCommissionAuditLogsPage() {
           </table>
         </div>
       </div>
-    </MainLayout>
+    </>
   )
 }

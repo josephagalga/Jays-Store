@@ -1952,12 +1952,12 @@ class AdminSellerEarningsView(APIView):
 
     def get(self, request):
         from django.contrib.auth import get_user_model
-        from django.db.models import Sum
+        from django.db.models import Sum, Count
         from decimal import Decimal
 
         User = get_user_model()
         sellers = User.objects.filter(role='seller').annotate(
-            total_orders=Sum('settlements__order__id'),
+            settlement_orders=Count('settlements__order', distinct=True),
             gross_revenue=Sum('settlements__gross_share'),
             total_commission=Sum('settlements__commission'),
             total_fee_slice=Sum('settlements__fee_slice'),
@@ -1971,7 +1971,7 @@ class AdminSellerEarningsView(APIView):
                 'id': s.id,
                 'store_name': s.store_name or s.email,
                 'store_slug': s.store_slug,
-                'total_orders': s.total_orders or 0,
+                'total_orders': s.settlement_orders or 0,
                 'gross_revenue': str(s.gross_revenue or Decimal('0.00')),
                 'commission': str(s.total_commission or Decimal('0.00')),
                 'delivery_share': str(s.total_delivery_share or Decimal('0.00')),

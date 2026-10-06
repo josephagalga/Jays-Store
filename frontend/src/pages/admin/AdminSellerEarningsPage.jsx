@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import MainLayout from '../../layouts/MainLayout'
 import { DataTable } from '../../components/shared/DataTable'
 import { adminApi } from '../../services/api'
 
@@ -8,33 +7,35 @@ export default function AdminSellerEarningsPage() {
     queryKey: ['admin-seller-earnings'],
     queryFn: adminApi.getSellerEarnings,
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: attempt => Math.min(1000 * 2 ** attempt, 5000),
   })
 
 
   if (isLoading) return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
       </div>
-    </MainLayout>
+    </>
   )
 
   if (error) return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="text-center py-20">
           <p className="text-red-600">Failed to load seller earnings</p>
           <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white rounded-xl">Retry</button>
         </div>
       </div>
-    </MainLayout>
+    </>
   )
 
   const topEarner = data?.top_earner
   const leastEarner = data?.least_earner
 
   return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -99,6 +100,6 @@ export default function AdminSellerEarningsPage() {
           emptyMessage="No sellers found"
         />
       </div>
-    </MainLayout>
+    </>
   )
 }

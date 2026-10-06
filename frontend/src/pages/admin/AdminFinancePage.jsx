@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import MainLayout from '../../layouts/MainLayout'
 import { DataTable, Column } from '../../components/shared/DataTable'
 import { StatCard } from '../../components/shared/StatCard'
 import { Truck, DollarSign, CreditCard, TrendingUp } from 'lucide-react'
@@ -10,6 +9,8 @@ export default function AdminFinancePage() {
     queryKey: ['admin-finance'],
     queryFn: adminApi.getFinance,
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: attempt => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const formatCurrency = (val) => `GHS ${parseFloat(val || 0).toFixed(2)}`
@@ -28,29 +29,29 @@ export default function AdminFinancePage() {
   ]
 
   if (isLoading) return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
       </div>
-    </MainLayout>
+    </>
   )
 
   if (error) return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="text-center py-20">
           <p className="text-red-600">Failed to load finance data</p>
           <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white rounded-xl">Retry</button>
         </div>
       </div>
-    </MainLayout>
+    </>
   )
 
   const totals = data?.totals || {}
   const rows = data?.rows || []
 
   return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -110,6 +111,6 @@ export default function AdminFinancePage() {
           }}
         />
       </div>
-    </MainLayout>
+    </>
   )
 }

@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import MainLayout from '../../layouts/MainLayout'
 import { StatCard } from '../../components/shared/StatCard'
 import { sellerApi } from '../../services/api'
 
@@ -23,15 +22,15 @@ export default function SellerWalletPage() {
   })
 
   if (walletLoading) return (
-    <MainLayout>
+    <>
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
       </div>
-    </MainLayout>
+    </>
   )
 
   return (
-    <MainLayout>
+    <>
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -95,6 +94,6 @@ export default function SellerWalletPage() {
           </div>
         )}
       </div>
-    </MainLayout>
+    </>
   )
 }

@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import MainLayout from '../../layouts/MainLayout'
 import { DataTable } from '../../components/shared/DataTable'
 import { adminApi } from '../../services/api'
 import toast from 'react-hot-toast'
@@ -36,15 +35,15 @@ export default function AdminCategoriesPage() {
   })
 
   if (isLoading) return (
-    <MainLayout>
+    <>
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
       </div>
-    </MainLayout>
+    </>
   )
 
   return (
-    <MainLayout>
+    <>
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -120,6 +119,6 @@ export default function AdminCategoriesPage() {
           emptyMessage="No categories yet. Click 'Add Category' to create one."
         />
       </div>
-    </MainLayout>
+    </>
   )
 }

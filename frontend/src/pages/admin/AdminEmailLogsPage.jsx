@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import MainLayout from '../../layouts/MainLayout'
 import { DataTable } from '../../components/shared/DataTable'
 import { AlertCircle, CheckCircle } from 'lucide-react'
 import { adminApi } from '../../services/api'
@@ -35,15 +34,15 @@ export default function AdminEmailLogsPage() {
   }
 
   if (isLoading) return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
       </div>
-    </MainLayout>
+    </>
   )
 
   return (
-    <MainLayout>
+    <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -90,6 +89,6 @@ export default function AdminEmailLogsPage() {
           emptyMessage="No email logs yet"
         />
       </div>
-    </MainLayout>
+    </>
   )
 }
