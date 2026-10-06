@@ -1,7 +1,16 @@
 import axios from 'axios'
 
+// Normalize the API base: VITE_API_URL is usually the bare host
+// (e.g. https://myjays-store.onrender.com) while Django serves the API
+// under /api. Append it when missing so a bare-host value can't 404
+// every request (local dev uses the '/api' proxy and is unaffected).
+const _rawBase = import.meta.env.VITE_API_URL || '/api'
+const _stripped = _rawBase.replace(/\/+$/, '')
+const API_BASE =
+  _stripped === '' || _stripped.endsWith('/api') ? _stripped || '/api' : `${_stripped}/api`
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: API_BASE,
   headers: {
     'Content-Type': 'application/json',
   },
