@@ -175,7 +175,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     # each seller's share straight to their own account; funds never sit
     # with the platform.
     # SELF-DELIVERY — seller delivers their own items and keeps a delivery fee.
-    # 'platform': Jay's Store drivers deliver (tiered fee goes to platform).
+    # 'platform': My Jay's Store drivers deliver (tiered fee goes to platform).
     # 'self': seller delivers; their flat fee is added at checkout and settled to them.
     delivery_mode = models.CharField(
         max_length=20,

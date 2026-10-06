@@ -10,12 +10,14 @@ export default function AdminUsersPage() {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const qc = useQueryClient()
 
-  const { data: users, isLoading } = useQuery({
+  const { data: users, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-users', role],
     queryFn: async () => {
-      const res = await api.get(`/accounts/admin/users/?role=${role}`)
+      const res = await api.get('/accounts/admin/users/', { params: { role } })
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const deleteMutation = useMutation({
@@ -49,6 +51,11 @@ export default function AdminUsersPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-24"><Spinner /></div>
+      ) : isError ? (
+        <div className="text-center py-24 border border-dashed border-[var(--border)] rounded-2xl">
+          <p className="text-sm text-red-600">Failed to load {role}s</p>
+          <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+        </div>
       ) : !users?.length ? (
         <div className="text-center py-24 border border-dashed border-[var(--border)] rounded-2xl">
           <Users size={40} className="mx-auto text-[var(--border)] mb-4" />
@@ -69,14 +76,14 @@ export default function AdminUsersPage() {
             <tbody className="divide-y divide-[var(--border)]">
               {users.map(user => (
                 <tr key={user.id} className="hover:bg-[var(--off)] transition-colors">
-                  <td className="px-5 py-4 text-sm font-semibold text-[var(--ink)]">{user.full_name}</td>
+                  <td className="px-5 py-4 text-sm font-semibold text-[var(--ink)]">{user.full_name || user.store_name || '—'}</td>
                   <td className="px-5 py-4 text-sm text-[var(--muted)]">{user.email}</td>
                   <td className="px-5 py-4 text-sm text-[var(--muted)]">{user.phone_number || '—'}</td>
                   <td className="px-5 py-4 text-xs text-[var(--muted)]">
-                    {new Date(user.date_joined).toLocaleDateString('en-GH')}
+                    {user.date_joined ? new Date(user.date_joined).toLocaleDateString('en-GH') : '—'}
                   </td>
                   <td className="px-5 py-4 text-xs text-[var(--muted)]">
-                    {user.last_active ? new Date(user.last_active).toLocaleDateString('en-GH') : 'Never'}
+                    {(user.last_active || user.last_login) ? new Date(user.last_active || user.last_login).toLocaleDateString('en-GH') : 'Never'}
                   </td>
                   <td className="px-5 py-4">
                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${

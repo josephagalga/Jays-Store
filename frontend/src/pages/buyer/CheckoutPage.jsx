@@ -13,6 +13,7 @@ import useCartStore from '../../store/cartStore'
 import useGuestCartStore from '../../store/guestCartStore'
 import useAuthStore from '../../store/authStore'
 import { deliveryFeeForCount, estimateProcessingFee } from '../../utils/pricing'
+import { deliveryCoverageText, DELIVERY_COVERAGE_NOTE } from '../../config/delivery'
 import toast from 'react-hot-toast'
 
 const PAY_OPTIONS = [
@@ -216,9 +217,12 @@ export default function CheckoutPage() {
     <MainLayout>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-2">Checkout</h1>
-        <p className="text-sm text-[var(--muted)] mb-10">
+        <p className="text-sm text-[var(--muted)] mb-4">
           {isBuyer ? 'Pay securely with Paystack.' : 'No account needed — pay as a guest.'}
         </p>
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 mb-10">
+          <strong>{deliveryCoverageText()}.</strong> {DELIVERY_COVERAGE_NOTE}
+        </div>
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
           <div>
             <h2 className="serif text-2xl font-medium text-[var(--ink)] mb-6">Delivery Details</h2>
@@ -293,6 +297,9 @@ export default function CheckoutPage() {
                 </label>
               </div>
               {errors.terms_accepted && <p className="text-xs text-red-500">{errors.terms_accepted.message}</p>}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 leading-relaxed">
+                <strong>{deliveryCoverageText()}.</strong> Only complete payment if your delivery address is within our coverage area.
+              </div>
               <Button type="submit" size="full" loading={isSubmitting} className="mt-4 rounded-xl">
                 Pay GHS {(total + feeEstimate).toFixed(2)} · incl. GHS {feeEstimate.toFixed(2)} fee
               </Button>
@@ -319,6 +326,7 @@ export default function CheckoutPage() {
               <div className="border-t border-[var(--border)] pt-4 space-y-2">
                 <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Subtotal</span><span>GHS {subtotal.toFixed(2)}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Delivery</span><span>GHS {delivery_fee.toFixed(2)}</span></div>
+                <p className="text-[11px] text-[var(--muted)]">Platform delivery estimate. Vendor self-delivery fees (flat per order) are added by the server at order placement — exact total confirmed on Paystack before you pay.</p>
                 <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Paystack fee (est.)</span><span>GHS {feeEstimate.toFixed(2)}</span></div>
                 <div className="flex justify-between font-bold text-base pt-2 border-t border-[var(--border)]"><span>Total</span><span>GHS {(total + feeEstimate).toFixed(2)}</span></div>
               </div>

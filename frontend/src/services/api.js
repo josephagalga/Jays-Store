@@ -120,51 +120,52 @@ api.fetchVendors = fetchVendors
 
 export const adminApi = {
   // Dashboard
-  getDashboard: () => api.get('/accounts/admin/dashboard/'),
+  getDashboard: () => api.get('/accounts/admin/dashboard/').then((r) => r.data),
 
   // Users
-  getUsers: (params) => api.get('/accounts/admin/users/', { params }),
+  getUsers: (params) => api.get('/accounts/admin/users/', { params }).then((r) => r.data),
   deleteUser: (id) => api.delete(`/accounts/admin/users/${id}/delete/`),
-  getCommissionAuditLogs: (params) => api.get('/accounts/admin/commission-audit-logs/', { params }),
+  getCommissionAuditLogs: (params) => api.get('/accounts/admin/commission-audit-logs/', { params }).then((r) => r.data),
 
   // Drivers
-  getDrivers: (params) => api.get('/accounts/admin/users/', { params: { ...params, role: 'driver' } }),
-  getDriverDetail: (id) => api.get(`/accounts/admin/drivers/${id}/`),
+  getDrivers: (params) => api.get('/accounts/admin/users/', { params: { ...params, role: 'driver' } }).then((r) => r.data),
+  getDriverDetail: (id) => api.get(`/accounts/admin/drivers/${id}/`).then((r) => r.data),
   verifyDriver: (id, status, note) => api.patch(`/accounts/admin/drivers/${id}/verify/`, { verification_status: status, verification_note: note }),
 
   // Contact messages
-  getContactMessages: (params) => api.get('/accounts/admin/contact-messages/', { params }),
+  getContactMessages: (params) => api.get('/accounts/admin/contact-messages/', { params }).then((r) => r.data),
 
   // Newsletter
-  getNewsletterSubscribers: (params) => api.get('/accounts/admin/newsletter/', { params }),
+  getNewsletterSubscribers: (params) => api.get('/accounts/admin/newsletter/', { params }).then((r) => r.data),
 
-  // Email logs
-  getEmailLogs: (params) => api.get('/orders/admin/email-logs/', { params }),
-  testEmail: (to) => api.post('/orders/admin/email-logs/test/', { to }),
+  // Email logs — orders app is mounted at /api/ (see backend config/urls.py),
+  // so these are /admin/... not /orders/admin/...
+  getEmailLogs: (params) => api.get('/admin/email-logs/', { params }).then((r) => r.data),
+  testEmail: (to) => api.post('/admin/email-logs/test/', { to }).then((r) => r.data),
 
-  // Finance
-  getFinance: () => api.get('/orders/admin/finance/'),
-  getSellerEarnings: () => api.get('/orders/admin/seller-earnings/'),
+  // Finance — same mount note as above
+  getFinance: () => api.get('/admin/finance/').then((r) => r.data),
+  getSellerEarnings: () => api.get('/admin/seller-earnings/').then((r) => r.data),
 
   // Settlements (instant payouts — history only)
-  getSettlements: (params) => api.get('/admin/settlements/', { params }),
-  getStaleOrders: () => api.get('/orders/admin/orders-stale/'),
+  getSettlements: (params) => api.get('/admin/settlements/', { params }).then((r) => r.data),
+  getStaleOrders: () => api.get('/admin/orders-stale/').then((r) => r.data),
 
   // Products
-  getProducts: (params) => api.get('/products/manage/', { params }),
+  getProducts: (params) => api.get('/products/manage/', { params }).then((r) => r.data),
   updateProduct: (id, data) => api.patch(`/products/manage/${id}/`, data),
 
   // Categories
-  getCategories: () => api.get('/products/categories/'),
+  getCategories: () => api.get('/products/categories/').then((r) => r.data),
   createCategory: (data) => api.post('/products/admin/categories/create/', data),
   updateCategory: (id, data) => api.patch(`/products/admin/categories/${id}/`, data),
   deleteCategory: (id) => api.delete(`/products/admin/categories/${id}/`),
 
   // Inventory
-  getInventory: (params) => api.get('/products/admin/inventory/', { params }),
+  getInventory: (params) => api.get('/products/admin/inventory/', { params }).then((r) => r.data),
 
   // Reviews
-  getReviews: (params) => api.get('/reviews/admin/', { params }),
+  getReviews: (params) => api.get('/reviews/admin/', { params }).then((r) => r.data),
   toggleReview: (id) => api.patch(`/reviews/admin/${id}/toggle/`, {}),
 
   // Buyer reviews
@@ -201,8 +202,8 @@ export const sellerApi = {
   getCommissionInfo: () => api.get('/accounts/seller/commission-info/'),
 
   // Wallet & settlements (instant payouts — history only, no withdrawals)
-  getWallet: () => api.get('/seller/wallet/'),
-  getSettlements: (params) => api.get('/seller/settlements/', { params }),
+  getWallet: () => api.get('/seller/wallet/').then((r) => r.data),
+  getSettlements: (params) => api.get('/seller/settlements/', { params }).then((r) => r.data),
 
   // Delivery mode
   updateDeliveryMode: (mode, fee) => api.patch('/accounts/profile/seller/', {

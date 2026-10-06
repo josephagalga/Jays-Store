@@ -1,0 +1,15 @@
+# Root safety net (backend/ and frontend/ have their own .gitignore too)
+.env
+.env.*
+!.env.example
+db.sqlite3
+db.sqlite3-journal
+*.bak
+__pycache__/
+*.py[cod]
+media/
+staticfiles/
+node_modules/
+dist/
+.DS_Store
+Thumbs.db

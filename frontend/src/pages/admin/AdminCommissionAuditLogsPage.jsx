@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { adminApi } from '../../services/api'
 
 export default function AdminCommissionAuditLogsPage() {
-  const { data: logs, isLoading, refetch } = useQuery({
+  const { data: logsData, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-commission-audit'],
     queryFn: adminApi.getCommissionAuditLogs,
     staleTime: 1000 * 60 * 5,
@@ -10,10 +10,23 @@ export default function AdminCommissionAuditLogsPage() {
     retryDelay: attempt => Math.min(1000 * 2 ** attempt, 5000),
   })
 
+  const logs = Array.isArray(logsData) ? logsData : logsData?.results || []
+
   if (isLoading) return (
     <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
+      </div>
+    </>
+  )
+
+  if (isError) return (
+    <>
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+        <div className="text-center py-20">
+          <p className="text-red-600 text-sm">Failed to load audit logs</p>
+          <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+        </div>
       </div>
     </>
   )
@@ -50,7 +63,7 @@ export default function AdminCommissionAuditLogsPage() {
             <tbody className="divide-y divide-[var(--border)]">
               {logs?.map((log) => (
                 <tr key={log.id} className="hover:bg-[var(--off)]/50">
-                  <td className="px-5 py-4 text-sm text-[var(--muted)]">{new Date(log.created_at).toLocaleString('en-GH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.created_at ? new Date(log.created_at).toLocaleString('en-GH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                   <td className="px-5 py-4">
                     <p className="font-medium text-[var(--ink)]">{log.seller_name}</p>
                     <p className="text-xs text-[var(--muted)]">{log.seller_email}</p>
@@ -58,8 +71,8 @@ export default function AdminCommissionAuditLogsPage() {
                   <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.changed_by}</td>
                   <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.old_rate}%</td>
                   <td className="px-5 py-4 font-medium text-[var(--ink)]">{log.new_rate}%</td>
-                  <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.affected_products_count || 0}</td>
-                  <td className="px-5 py-4 text-xs text-[var(--muted)] max-w-xs truncate">{log.note || '—'}</td>
+                  <td className="px-5 py-4 text-sm text-[var(--muted)]">{log.affected_products_count ?? 0}</td>
+                  <td className="px-5 py-4 text-xs text-[var(--muted)] max-w-xs truncate">{log.note || log.reason || '—'}</td>
                 </tr>
               ))}
               {(!logs || !logs.length) && (

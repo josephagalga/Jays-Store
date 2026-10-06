@@ -10,11 +10,15 @@ export default function AdminCategoriesPage() {
   const [editingCategory, setEditingCategory] = useState(null)
   const [formData, setFormData] = useState({ name: '', description: '', is_active: true })
 
-  const { data: categories, isLoading } = useQuery({
+  const { data: categoriesData, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-categories'],
     queryFn: adminApi.getCategories,
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
+
+  const categories = Array.isArray(categoriesData) ? categoriesData : categoriesData?.results || []
 
   const createMutation = useMutation({
     mutationFn: (data) => adminApi.createCategory(data),
@@ -24,7 +28,7 @@ export default function AdminCategoriesPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => adminApi.updateCategory(id, data),
-    onSuccess: () => { qc.invalidateQueries(['admin-categories']); setEditingCategory(null); toast.success('Category updated') },
+    onSuccess: () => { qc.invalidateQueries(['admin-categories']); setEditingCategory(null); setShowForm(false); setFormData({ name: '', description: '', is_active: true }); toast.success('Category updated') },
     onError: (err) => toast.error(err.response?.data?.error || 'Failed to update category'),
   })
 
@@ -38,6 +42,17 @@ export default function AdminCategoriesPage() {
     <>
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
+      </div>
+    </>
+  )
+
+  if (isError) return (
+    <>
+      <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
+        <div className="text-center py-20">
+          <p className="text-red-600 text-sm">Failed to load categories</p>
+          <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+        </div>
       </div>
     </>
   )

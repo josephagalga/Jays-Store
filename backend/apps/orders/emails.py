@@ -95,7 +95,7 @@ def send_payment_confirmation(order, otp_code=None, connection=None):
     buyer_email = _buyer_email(order)
     if not buyer_email:
         return False
-    subject = f"Jay's Store — Payment confirmed for Order #{order.id}"
+    subject = f"My Jay's Store — Payment confirmed for Order #{order.id}"
     fee = float(getattr(order, 'processing_fee', 0) or 0)
     charged = float(order.total) + fee
     # Guests track via public reference link (no account needed).
@@ -119,7 +119,7 @@ def send_payment_confirmation(order, otp_code=None, connection=None):
         + (f"Note: {order.delivery_note}\n" if order.delivery_note else '')
         + (f"\nYour delivery OTP is {otp_code}. Give it to the driver on arrival.\n" if otp_code else '')
         + f"\nTrack your order: {track_url}\n\n"
-        f"Thank you for shopping with Jay's Store!"
+        f"Thank you for shopping with My Jay's Store!"
     )
     html = (
         f"<h2>Payment confirmed — Order #{order.id}</h2>"
@@ -139,7 +139,7 @@ def send_delivery_otp(order, otp_code, connection=None):
     buyer_email = _buyer_email(order)
     if not buyer_email:
         return False
-    subject = f"Jay's Store — Your delivery OTP for Order #{order.id}"
+    subject = f"My Jay's Store — Your delivery OTP for Order #{order.id}"
     body = (
         f"Hi {order.buyer_first_name},\n\n"
         f"Your delivery OTP for Order #{order.id} is: {otp_code}\n\n"
@@ -190,7 +190,7 @@ def send_seller_sale_alert(order, connection=None):
             net = sum(float(i.seller_net_price) * i.quantity for i in items)
             delivery_fee = 0.0
         self_delivers = ((breakdown.get(str(seller.id)) or {}).get('mode')) == 'self'
-        subject = f"Jay's Store — New sale! Order #{order.id}"
+        subject = f"My Jay's Store — New sale! Order #{order.id}"
         lines = '\n'.join(
             f'- {i.product_name} ({i.size} / {i.color}) x{i.quantity}'
             for i in items
@@ -214,11 +214,11 @@ def send_seller_sale_alert(order, connection=None):
             f"Hi {seller.store_name or seller.first_name},\n\n"
             f"You have a new sale in Order #{order.id}:\n{lines}\n\n"
             + payout_note +
-            f"Payment has been received by Jay's Store and your share "
+            f"Payment has been received by My Jay's Store and your share "
             f"settles to your payout account. Track it in Seller Dashboard "
             f"under Settlements.\n\n"
             + handoff_note +
-            f"Jay's Store"
+            f"My Jay's Store"
         )
         if _send(seller.email, subject, body, kind='seller_alert', order=order,
                  connection=connection):
@@ -271,7 +271,7 @@ def send_admin_payment_alert(order, connection=None):
     # In bearer_type='account', platform keeps full commission + platform delivery.
     platform_receives = float(commission_collected) + platform_delivery
     
-    subject = f"💰 Jay's Store — Payment Received! Order #{order.id}"
+    subject = f"💰 My Jay's Store — Payment Received! Order #{order.id}"
     body = (
         f"Payment confirmed for Order #{order.id}\n\n"
         f"{'='*60}\n"
@@ -346,7 +346,7 @@ def send_stale_escalation(order, waiting_hours, connection=None):
     else:
         sellers_state = '  (no self-delivery sellers waiting — driver simply never accepted)'
     charged = float(order.total or 0) + float(order.processing_fee or 0)
-    subject = f"Jay's Store — Order #{order.id} needs a driver ({waiting_hours:.0f}h waiting)"
+    subject = f"My Jay's Store — Order #{order.id} needs a driver ({waiting_hours:.0f}h waiting)"
     body = (
         f"A paid order has been waiting for a driver for {waiting_hours:.0f} hours.\n\n"
         f"Order #{order.id} — {order.buyer_display_name} ({order.buyer_email or 'no email'})\n"
@@ -357,7 +357,7 @@ def send_stale_escalation(order, waiting_hours, connection=None):
         + f"\nSeller handoffs:\n{sellers_state}\n\n"
         f"Action: assign a driver manually or contact the buyer. "
         f"This alert fires once per order.\n\n"
-        f"Jay's Store"
+        f"My Jay's Store"
     )
     return _send(admin_email, subject, body, kind='stale_escalation', order=order,
                 connection=connection)
@@ -367,13 +367,13 @@ def send_delivered_email(order, connection=None):
     buyer_email = _buyer_email(order)
     if not buyer_email:
         return False
-    subject = f"Jay's Store — Order #{order.id} delivered"
+    subject = f"My Jay's Store — Order #{order.id} delivered"
     body = (
         f"Hi {order.buyer_first_name},\n\n"
         f"Your Order #{order.id} was delivered at "
         f"{timezone.now().strftime('%d %b %Y, %H:%M')}.\n\n"
         f"Enjoy! Please leave a review for your items in My Orders.\n\n"
-        f"Jay's Store"
+        f"My Jay's Store"
     )
     return _send(buyer_email, subject, body, kind='delivered', order=order,
                 connection=connection)

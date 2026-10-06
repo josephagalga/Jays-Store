@@ -4,13 +4,14 @@ import Spinner from '../../components/ui/Spinner'
 import api from '../../services/api'
 
 export default function AdminPayoutsPage() {
-  const { data: settlements, isLoading } = useQuery({
+  const { data: settlements, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-settlements'],
     queryFn: async () => {
       const res = await api.get('/admin/settlements/')
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
-    refetchInterval: 30000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const { data: finance } = useQuery({
@@ -19,7 +20,8 @@ export default function AdminPayoutsPage() {
       const res = await api.get('/admin/finance/')
       return res.data
     },
-    refetchInterval: 30000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const { data: emailFailures } = useQuery({
@@ -29,10 +31,19 @@ export default function AdminPayoutsPage() {
       const list = Array.isArray(res.data) ? res.data : res.data.results || []
       return list.slice(0, 5)
     },
-    refetchInterval: 30000,
+    retry: 1,
   })
 
   if (isLoading) return <div className="flex justify-center py-32"><Spinner /></div>
+
+  if (isError) return (
+    <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+      <div className="text-center py-20">
+        <p className="text-red-600 text-sm">Failed to load settlements</p>
+        <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+      </div>
+    </div>
+  )
 
   const settledTotal = (settlements || [])
     .filter(s => s.status === 'settled')
@@ -81,7 +92,7 @@ export default function AdminPayoutsPage() {
           <div className="space-y-1.5">
             {emailFailures.map(e => (
               <p key={e.id} className="text-xs text-rose-600">
-                {new Date(e.created_at).toLocaleString('en-GH')} · {e.kind} → {e.to_email} · {e.error || 'failed'}
+                {e.created_at ? new Date(e.created_at).toLocaleString('en-GH') : ''} · {e.kind || 'email'} → {e.to_email} · {e.error || 'failed'}
               </p>
             ))}
           </div>
@@ -100,9 +111,9 @@ export default function AdminPayoutsPage() {
               <div key={r.order_id} className="px-6 py-3.5 text-sm flex flex-wrap items-center justify-between gap-2">
                 <span className="font-semibold text-[var(--ink)]">Order #{r.order_id}</span>
                 <span className="text-xs text-[var(--muted)]">
-                  Charged GHS {parseFloat(r.charged).toFixed(2)} · Sellers GHS {parseFloat(r.sellers_net).toFixed(2)} ·
-                  Fee GHS {parseFloat(r.paystack_fee).toFixed(2)}{r.fee_estimated ? ' (est.)' : ''} ·{' '}
-                  <strong className="text-green-700">Mine: GHS {parseFloat(r.platform_net).toFixed(2)}</strong>
+                  Charged GHS {parseFloat(r.charged ?? 0).toFixed(2)} · Sellers GHS {parseFloat(r.sellers_net ?? 0).toFixed(2)} ·
+                  Fee GHS {parseFloat(r.paystack_fee ?? 0).toFixed(2)}{r.fee_estimated ? ' (est.)' : ''} ·{' '}
+                  <strong className="text-green-700">Mine: GHS {parseFloat(r.platform_net ?? 0).toFixed(2)}</strong>
                 </span>
               </div>
             ))}
@@ -121,14 +132,14 @@ export default function AdminPayoutsPage() {
               <div key={s.id} className="px-6 py-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm">
                   <p className="font-semibold text-[var(--ink)] flex items-center gap-2">
-                    Order #{s.order} <ArrowRight size={13} className="text-[var(--muted)]" /> {s.seller_name || s.seller_email}
+                    Order #{s.order} <ArrowRight size={13} className="text-[var(--muted)]" /> {s.seller_name || s.seller_email || `Seller #${s.seller || ''}`}
                   </p>
                   <p className="text-xs text-[var(--muted)] mt-1">
-                    Gross GHS {parseFloat(s.gross_share).toFixed(2)} · Commission GHS {parseFloat(s.commission).toFixed(2)} ·
-                    Fee slice GHS {parseFloat(s.fee_slice).toFixed(2)} · Net <strong>GHS {parseFloat(s.net_share).toFixed(2)}</strong>
+                    Gross GHS {parseFloat(s.gross_share ?? 0).toFixed(2)} · Commission GHS {parseFloat(s.commission ?? 0).toFixed(2)} ·
+                    Fee slice GHS {parseFloat(s.fee_slice ?? 0).toFixed(2)} · Net <strong>GHS {parseFloat(s.net_share ?? 0).toFixed(2)}</strong>
                   </p>
                   <p className="text-[11px] text-[var(--muted)] mt-0.5">
-                    {s.subaccount_code} · {s.paystack_reference} · {new Date(s.created_at).toLocaleString('en-GH')}
+                    {s.subaccount_code || '—'} · {s.paystack_reference || '—'} · {s.created_at ? new Date(s.created_at).toLocaleString('en-GH') : ''}
                   </p>
                 </div>
                 <span className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${

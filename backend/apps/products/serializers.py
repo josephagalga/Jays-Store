@@ -99,7 +99,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     def get_store_name(self, obj):
         seller = _seller_store(obj)
         if not seller:
-            return "Jay's Store"
+            return "My Jay's Store"
         return seller.store_name or seller.full_name
 
     def get_store_slug(self, obj):
@@ -165,7 +165,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     def get_store_name(self, obj):
         seller = _seller_store(obj)
         if not seller:
-            return "Jay's Store"
+            return "My Jay's Store"
         return seller.store_name or seller.full_name
 
     def get_store_slug(self, obj):

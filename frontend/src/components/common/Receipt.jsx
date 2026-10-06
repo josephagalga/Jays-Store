@@ -12,7 +12,7 @@ export default function Receipt({ receipt, order }) {
 
   return (
     <div id="print-receipt" className="receipt">
-      <div className="receipt-center receipt-store">JAY'S STORE</div>
+      <div className="receipt-center receipt-store">MY JAY'S STORE</div>
       <div className="receipt-center">Navrongo, Ghana · 0535668728</div>
       <div className="receipt-center">myjaysstore@gmail.com</div>
       <div className="receipt-divider" />

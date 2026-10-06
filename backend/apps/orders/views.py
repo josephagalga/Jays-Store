@@ -223,7 +223,40 @@ class PlaceOrderView(APIView):
         serializer.is_valid(raise_exception=True)
 
         cart = serializer.validated_data['cart']
-        
+
+        # STALE-CART CLEANUP: items added in an earlier session may reference
+        # products that were since deactivated (or variants that no longer
+        # belong to the product). Remove them and name them in the error, so
+        # the buyer never has to manually clear and re-add bag items.
+        cart_items = list(cart.cart_items.select_related(
+            'product', 'variant', 'product__seller', 'product__created_by'))
+        if not cart_items:
+            return Response(
+                {'error': 'Your bag is empty. Add some items before checking out.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        stale_names = []
+        for ci in cart_items:
+            if not ci.product.is_active or ci.variant.product_id != ci.product.id:
+                stale_names.append(ci.product.name)
+                ci.delete()
+        if stale_names:
+            return Response(
+                {'error': (
+                    'Some items in your bag are no longer available and were removed: '
+                    + ', '.join(sorted(set(stale_names)))
+                    + '. Please review your bag and try again.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+        short = next(
+            (ci for ci in cart_items if ci.variant.stock < ci.quantity), None)
+        if short is not None:
+            return Response(
+                {'error': (
+                    f'Only {short.variant.stock} left of "{short.product.name}". '
+                    'Please reduce the quantity.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+
         # VALIDATE ALL SELLERS HAVE ACTIVE SUBACCOUNTS
         invalid_sellers = []
         for cart_item in cart.cart_items.select_related('product__seller', 'product__created_by'):
@@ -314,21 +347,24 @@ class PlaceOrderView(APIView):
             # STOCK DEDUCTION REMOVED - happens after payment confirms in _confirm_payment()
 
         # Per-seller shares: product nets (commission already collected from buyer).
-        # Self-delivery sellers additionally receive their flat delivery fee.
         per_seller, _ = compute_order_split(
             [(s, t) for s, t in seller_lines.values()]
         )
-        delivery_shares = {}  # seller_id -> delivery GHS settled to them
-        for sid, group in priced['self_groups'].items():
-            if sid in per_seller:
-                per_seller[sid]['net'] = per_seller[sid]['net'] + group['fee']
-                delivery_shares[sid] = group['fee']
         # Platform receives: commission markup + PLATFORM delivery + platform-owned items.
         # (Self-delivery fees bypass the platform and settle to sellers.)
         admin_gross = (
             commission_collected_total + priced['platform_delivery'] + platform_direct
         )
         admin_net = allocate_fee(per_seller, admin_gross, processing_fee)
+        # Self-delivery sellers additionally receive their flat delivery fee.
+        # NOTE: this must run AFTER allocate_fee(), which is what creates the
+        # 'net' key on each entry — touching it earlier raises KeyError: 'net'
+        # and 500s checkout for every self-delivery cart.
+        delivery_shares = {}  # seller_id -> delivery GHS settled to them
+        for sid, group in priced['self_groups'].items():
+            if sid in per_seller:
+                per_seller[sid]['net'] = per_seller[sid]['net'] + group['fee']
+                delivery_shares[sid] = group['fee']
 
         # Log split breakdown for debugging and verification
         import logging
@@ -417,7 +453,7 @@ class PlaceOrderView(APIView):
             ]
             if seller_shares:
                 split = create_transaction_split(
-                    name=f'Jays Store order {order.id}',
+                    name=f'My Jays Store order {order.id}',
                     seller_shares=seller_shares,
                     bearer_share=admin_gross,  # Expected platform share (for logging/validation)
                     metadata={
@@ -596,13 +632,15 @@ class GuestPlaceOrderView(APIView):
         per_seller, _ = compute_order_split(
             [(s, t) for s, t in priced['seller_nets'].values()]
         )
-        for sid, group in priced['self_groups'].items():
-            if sid in per_seller:
-                per_seller[sid]['net'] = per_seller[sid]['net'] + group['fee']
         admin_gross = (
             commission_collected_total + priced['platform_delivery'] + platform_direct
         )
         admin_net = allocate_fee(per_seller, admin_gross, processing_fee)
+        # Self-delivery fee added AFTER allocate_fee() creates the 'net' key
+        # (see buyer path — touching it earlier 500s with KeyError: 'net').
+        for sid, group in priced['self_groups'].items():
+            if sid in per_seller:
+                per_seller[sid]['net'] = per_seller[sid]['net'] + group['fee']
         sellers_total = sum(e['net'] for e in per_seller.values())
         actual_platform_share = (total + processing_fee) - sellers_total - processing_fee
         if abs(admin_gross - actual_platform_share) > Decimal('0.10'):
@@ -629,7 +667,7 @@ class GuestPlaceOrderView(APIView):
             ]
             if seller_shares:
                 split = create_transaction_split(
-                    name=f'Jays Store order {order.id}',
+                    name=f'My Jays Store order {order.id}',
                     seller_shares=seller_shares,
                     bearer_share=admin_gross,
                     metadata={
@@ -1619,7 +1657,7 @@ class PaystackInitializeView(APIView):
                           for v in split_entries.values() if v.get('subaccount')]
                 if shares:
                     split = create_transaction_split(
-                        name=f'Jays Store order {order.id}',
+                        name=f'My Jays Store order {order.id}',
                         seller_shares=shares,
                     )
                     order.paystack_split_code = split.get('split_code', '')

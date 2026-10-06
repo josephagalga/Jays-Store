@@ -10,6 +10,7 @@ import useCartStore from '../../store/cartStore'
 import useGuestCartStore from '../../store/guestCartStore'
 import useAuthStore from '../../store/authStore'
 import { deliveryFeeForCount } from '../../utils/pricing'
+import { deliveryCoverageText } from '../../config/delivery'
 
 function QtyStepper({ quantity, onChange }) {
   return (
@@ -104,6 +105,9 @@ export default function CartPage() {
         <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">
           Shopping Bag <span className="text-[var(--muted)] font-normal">({items.length})</span>
         </h1>
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 mb-6">
+          <strong>{deliveryCoverageText()}.</strong> Please only proceed to checkout if your delivery address is within our coverage area.
+        </div>
 
         <div className="grid lg:grid-cols-3 gap-8 lg:gap-12">
           {/* Items */}

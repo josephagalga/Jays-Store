@@ -45,7 +45,7 @@ export default function LoginPage() {
       {/* Left panel */}
       <div className="hidden lg:flex flex-col justify-between bg-[var(--ink)] p-14">
         <Link to="/" className="serif text-xl font-medium text-white">
-          Jay's Store
+          My Jay's Store
         </Link>
         <div>
           <p className="text-xs font-medium text-white/30 uppercase tracking-widest mb-5">
@@ -70,7 +70,7 @@ export default function LoginPage() {
       <div className="flex items-center justify-center p-8 bg-[var(--off)]">
         <div className="w-full max-w-sm">
           <Link to="/" className="lg:hidden block serif text-xl font-medium text-[var(--ink)] mb-10">
-            Jay's Store
+            My Jay's Store
           </Link>
 
           <h2 className="serif text-3xl font-medium text-[var(--ink)] mb-1">Sign in</h2>

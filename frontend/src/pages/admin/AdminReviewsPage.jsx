@@ -10,22 +10,24 @@ export default function AdminReviewsPage() {
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('')
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['admin-reviews'],
+  const { data: reviewsData, isLoading, isError, refetch } = useQuery({
+    queryKey: ['admin-reviews', statusFilter],
     queryFn: () => adminApi.getReviews({}),
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const toggleMutation = useMutation({
     mutationFn: (id) => adminApi.toggleReview(id),
     onSuccess: (res) => {
       qc.invalidateQueries(['admin-reviews'])
-      toast.success(res.data?.message || 'Review updated')
+      toast.success(res?.data?.message || res?.message || 'Review updated')
     },
     onError: () => toast.error('Could not update review'),
   })
 
-  const reviews = Array.isArray(data) ? data : data?.results || []
+  const reviews = Array.isArray(reviewsData) ? reviewsData : reviewsData?.results || []
   const visible = reviews.filter(r => {
     if (statusFilter === 'hidden') return r.is_visible === false
     if (statusFilter === 'visible') return r.is_visible !== false
@@ -36,6 +38,15 @@ export default function AdminReviewsPage() {
     <>
       <div className="flex justify-center py-32">Loading…</div>
     </>
+  )
+
+  if (isError) return (
+    <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+      <div className="text-center py-20">
+        <p className="text-red-600 text-sm">Failed to load reviews</p>
+        <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+      </div>
+    </div>
   )
 
   return (

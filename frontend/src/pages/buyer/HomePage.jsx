@@ -170,7 +170,7 @@ function TrustBar() {
           {[
             [<Truck size={18} />, 'Fair Delivery', 'From just GHS 5'],
             [<Shield size={18} />, 'Secure Checkout', 'Your data is always safe'],
-            [<ShoppingBag size={18} />, 'Local Sellers', 'Supporting Ghanaian fashion'],
+            [<ShoppingBag size={18} />, 'Local Vendors', 'Supporting Navrongo vendors'],
           ].map(([icon, title, desc]) => (
             <div key={title} className="flex items-center gap-4 py-5 px-8">
               <div className="text-[var(--muted)]">{icon}</div>

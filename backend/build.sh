@@ -21,17 +21,18 @@ else:
     print('Superuser already exists')
 EOF
 
-python manage.py shell << 'EOF'
-from apps.products.models import Product
-# Only seed if this is a fresh deploy (no products exist yet)
-if not Product.objects.exists():
-    print('SEED_NEEDED')
-else:
-    print('SKIP_SEED')
-EOF
-
-if python manage.py shell -c "from apps.products.models import Product; exit(0 if Product.objects.exists() else 1)"; then
-  echo "Products already exist, skipping seed"
+# Demo catalog seeding — TESTING ONLY. seed_products uploads fake products
+# so testers have something to click through during soft launch.
+# NEVER runs for commercial launch: it only runs when ALLOW_SEED=True is
+# set in the environment (staging/soft-launch). The real vendor catalog is
+# the commercial catalog — a fresh commercial DB stays empty until vendors
+# list products. Test users (create_test_users) are likewise never created here.
+if [ "${ALLOW_SEED:-False}" = "True" ]; then
+  if python manage.py shell -c "from apps.products.models import Product; exit(0 if Product.objects.exists() else 1)"; then
+    echo "Products already exist, skipping seed"
+  else
+    python manage.py seed_products
+  fi
 else
-  python manage.py seed_products
+  echo "Skipping demo seed (ALLOW_SEED not set — commercial mode)"
 fi

@@ -612,24 +612,6 @@ export default function ProductDetailPage() {
               )}
             </div>
 
-            {product.commission_rate > 0 && (
-              <div className="bg-[var(--off)] rounded-xl p-4 text-xs text-[var(--muted)] space-y-1">
-                <p className="font-medium text-[var(--ink)] mb-2">Price breakdown:</p>
-                <div className="flex justify-between">
-                  <span>Seller price</span>
-                  <span>GHS {parseFloat(product.price).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Marketplace fee ({product.commission_rate}%)</span>
-                  <span>+ GHS {parseFloat(product.effective_price - product.price).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-medium text-[var(--ink)] pt-1 border-t border-[var(--border)]">
-                  <span>Total you pay</span>
-                  <span>GHS {parseFloat(product.effective_price).toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-
             {/* Seller */}
             {product.store_name && (
               <div className="flex items-center gap-3 bg-white border border-[var(--border)] rounded-xl p-4">

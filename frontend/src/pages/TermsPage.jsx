@@ -10,12 +10,12 @@ export default function TermsPage() {
         <div className="space-y-6 text-sm text-[var(--muted)] leading-relaxed">
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">1. Agreement to Terms</h2>
-            <p>By accessing and using Jay&apos;s Store, you agree to be bound by these Terms of Service. If you disagree with any part of these terms, you may not use our platform.</p>
+            <p>By accessing and using My Jay&apos;s Store, you agree to be bound by these Terms of Service. If you disagree with any part of these terms, you may not use our platform.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">2. Platform Overview</h2>
-            <p>Jay&apos;s Store is an online marketplace connecting buyers with independent sellers in Ghana. We provide the platform for transactions but are not a party to the direct sale between buyer and seller.</p>
+            <p>My Jay&apos;s Store is an online marketplace connecting buyers with independent sellers in Ghana. We provide the platform for transactions but are not a party to the direct sale between buyer and seller.</p>
           </section>
 
           <section>
@@ -27,12 +27,12 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">4. Ordering and Payment</h2>
-            <p>All prices are in Ghana Cedis (GHS). A fixed marketplace fee is added to the seller&apos;s listed price and shown before you pay: 10% on products under GHS 100, 5% on products of GHS 100 or more. Payments are processed securely through Paystack. Orders are confirmed only after successful payment.</p>
+            <p>All prices are in Ghana Cedis (GHS). The price shown on each product is the price you pay — no hidden charges. Payments are processed securely through Paystack. Orders are confirmed only after successful payment.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">5. Delivery</h2>
-            <p>Platform delivery fees: GHS 5 (1-5 items), GHS 10 (6-10 items), GHS 20 (11+ items). Sellers who deliver themselves set their own flat per-order fee, shown at checkout. Delivery within Navrongo and surrounding areas. You must provide a valid address and phone number. OTP verification is required upon delivery.</p>
+            <p>Platform delivery fees: GHS 5 (1-5 items), GHS 10 (6-10 items), GHS 20 (11+ items). Vendors who deliver themselves set their own flat per-order fee, shown at checkout. Delivery only within Navrongo and surrounding areas — more towns will be added as we grow. You must provide a valid address and phone number. OTP verification is required upon delivery.</p>
           </section>
 
           <section>
@@ -47,7 +47,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">8. Limitation of Liability</h2>
-            <p>Jay&apos;s Store is not liable for disputes between buyers and sellers beyond mediation, product quality, delivery delays beyond our control, or third-party service failures.</p>
+            <p>My Jay&apos;s Store is not liable for disputes between buyers and sellers beyond mediation, product quality, delivery delays beyond our control, or third-party service failures.</p>
           </section>
 
           <section>

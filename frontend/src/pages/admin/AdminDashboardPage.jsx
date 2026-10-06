@@ -20,10 +20,11 @@ export default function AdminDashboardPage() {
   const { data: pendingDrivers } = useQuery({
     queryKey: ['pending-drivers'],
     queryFn: async () => {
-      const res = await api.get('/accounts/admin/users/?role=driver')
+      const res = await api.get('/accounts/admin/users/', { params: { role: 'driver' } })
       const all = Array.isArray(res.data) ? res.data : res.data.results || []
       return all.filter(d => d.verification_status === 'pending')
     },
+    retry: 1,
   })
 
   const verifyMutation = useMutation({
@@ -34,15 +35,20 @@ export default function AdminDashboardPage() {
       qc.invalidateQueries(['admin-dashboard'])
       toast.success('Driver updated')
     },
+    onError: () => toast.error('Failed to update driver'),
   })
 
   const { data: staleOrders } = useQuery({
     queryKey: ['admin-stale-orders'],
     queryFn: adminApi.getStaleOrders,
     staleTime: 1000 * 60 * 5,
+    retry: 1,
   })
 
   if (isLoading) return <div className="flex justify-center py-32"><Spinner /></div>
+
+  const staleRows = staleOrders?.rows || []
+  const staleCount = staleOrders?.count ?? staleRows.length
 
   const statCards = [
     { icon: <Users size={20} />, label: 'Total Buyers', value: stats?.total_buyers || 0, color: 'text-blue-600 bg-blue-50' },
@@ -88,29 +94,29 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Needs attention — escalated driverless orders */}
-      {staleOrders?.count > 0 && (
+      {staleCount > 0 && (
         <div className="bg-rose-50/60 border border-rose-200 rounded-2xl overflow-hidden mb-6">
           <div className="px-6 py-4 border-b border-rose-200 flex items-center gap-2">
             <AlertTriangle size={16} className="text-rose-500" />
             <h2 className="serif text-xl font-medium text-[var(--ink)]">
-              Needs Attention ({staleOrders.count})
+              Needs Attention ({staleCount})
             </h2>
           </div>
           <div className="divide-y divide-rose-100">
-            {staleOrders.rows.map(order => (
+            {staleRows.map(order => (
               <div key={order.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-[var(--ink)]">
-                    Order #{order.id} · waiting {order.waiting_hours}h · GHS {parseFloat(order.charged_total).toFixed(2)}
+                    Order #{order.id} · waiting {order.waiting_hours ?? '?'}h · GHS {parseFloat(order.charged_total ?? order.total ?? 0).toFixed(2)}
                   </p>
                   <p className="text-xs text-[var(--muted)] mt-0.5 truncate">
-                    {order.buyer_name} · {order.delivery_phone} · {order.delivery_address}
+                    {order.buyer_name || order.buyer_email || '—'} · {order.delivery_phone || ''} · {order.delivery_address || ''}
                   </p>
                   <p className="text-xs text-[var(--muted)] mt-0.5">
-                    Seller handoffs: {order.handoffs_done}/{order.handoffs_total} confirmed
+                    Seller handoffs: {order.handoffs_done ?? 0}/{order.handoffs_total ?? 0} confirmed
                   </p>
                 </div>
-                <Link to={`/admin/orders?highlight=${order.id}`}
+                <Link to="/admin/orders"
                   className="flex-shrink-0 px-4 py-2 min-h-[44px] inline-flex items-center text-xs font-semibold bg-white border border-[var(--border)] rounded-xl hover:border-[var(--ink)] transition-colors">
                   Review order
                 </Link>

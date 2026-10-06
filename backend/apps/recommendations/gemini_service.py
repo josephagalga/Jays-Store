@@ -54,7 +54,7 @@ def get_product_context(queryset=None):
 
 
 def build_system_prompt():
-    return """You are a helpful and friendly fashion assistant for Jay's Store,
+    return """You are a helpful and friendly fashion assistant for My Jay's Store,
 a fashion e-commerce platform in Ghana. Your job is to help buyers find
 clothing and accessories that match their needs, budget, and style.
 

@@ -10,16 +10,20 @@ export default function AdminEmailLogsPage() {
   const [testEmail, setTestEmail] = useState('')
   const [testSending, setTestSending] = useState(false)
 
-  const { data: logs, isLoading } = useQuery({
+  const { data: logsData, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-email-logs'],
     queryFn: () => adminApi.getEmailLogs({}),
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
+
+  const logs = Array.isArray(logsData) ? logsData : logsData?.results || []
 
   const testEmailMutation = useMutation({
     mutationFn: (to) => adminApi.testEmail(to),
     onSuccess: (res) => {
-      toast.success(res.sent ? 'Test email sent successfully!' : 'Test email failed to send')
+      toast.success(res?.sent ? 'Test email sent successfully!' : 'Test email failed to send')
       qc.invalidateQueries(['admin-email-logs'])
     },
     onError: () => toast.error('Failed to send test email'),
@@ -37,6 +41,17 @@ export default function AdminEmailLogsPage() {
     <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
+      </div>
+    </>
+  )
+
+  if (isError) return (
+    <>
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+        <div className="text-center py-20">
+          <p className="text-red-600 text-sm">Failed to load email logs</p>
+          <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+        </div>
       </div>
     </>
   )
@@ -73,8 +88,8 @@ export default function AdminEmailLogsPage() {
 
         <DataTable
           columns={[
-            { key: 'created_at', label: 'Sent At', width: '160px', render: (v) => new Date(v).toLocaleString('en-GH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
-            { key: 'kind', label: 'Type', width: '160px', render: (v) => <span className="px-2 py-0.5 bg-[var(--off)] text-[var(--muted)] text-xs font-medium rounded-full capitalize">{v.replace('_', ' ')}</span> },
+            { key: 'created_at', label: 'Sent At', width: '160px', render: (v) => v ? new Date(v).toLocaleString('en-GH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—' },
+            { key: 'kind', label: 'Type', width: '160px', render: (v) => <span className="px-2 py-0.5 bg-[var(--off)] text-[var(--muted)] text-xs font-medium rounded-full capitalize">{(v || 'email').replace('_', ' ')}</span> },
             { key: 'to_email', label: 'Recipient', width: '200px', render: (v) => <p className="text-sm font-medium text-[var(--ink)]">{v}</p> },
             { key: 'subject', label: 'Subject', width: '250px', render: (v) => <p className="text-sm font-medium text-[var(--ink)] line-clamp-1 max-w-[220px]">{v || '—'}</p> },
             { key: 'ok', label: 'Status', width: '100px', render: (v) => v ? (

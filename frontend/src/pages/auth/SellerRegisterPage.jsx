@@ -74,7 +74,7 @@ export default function SellerRegisterPage() {
     <div className="min-h-screen flex">
       <div className="hidden lg:flex flex-col justify-between w-1/2 bg-[#0f0f0f] p-12">
         <Link to="/" className="text-xl font-bold tracking-tight text-white">
-          JAY'S<span className="text-[#737373] font-light">STORE</span>
+          MY JAY'S<span className="text-[#737373] font-light">STORE</span>
         </Link>
         <div>
           <h1 className="text-3xl md:text-4xl font-bold text-white leading-tight mb-4">
@@ -84,7 +84,7 @@ export default function SellerRegisterPage() {
             Sell your fashion to thousands of buyers across Ghana with zero upfront cost.
           </p>
         </div>
-        <p className="text-xs text-[#404040]">© {new Date().getFullYear()} Jay's Store</p>
+        <p className="text-xs text-[#404040]">© {new Date().getFullYear()} My Jay's Store</p>
       </div>
 
       <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">

@@ -203,7 +203,7 @@ function DashboardLayout({ children }) {
       <header className="bg-white border-b border-[var(--border)] sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 h-16 flex items-center justify-between gap-6">
           <Link to="/" className="serif text-lg font-medium text-[var(--ink)] flex-shrink-0">
-            Jay's Store
+            My Jay's Store
           </Link>
 
           <nav className="hidden md:flex items-center gap-1 flex-1">

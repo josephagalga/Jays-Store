@@ -5,29 +5,44 @@ import api from '../../services/api'
 
 export default function AdminCommissionPage() {
   // Fetch all sellers
-  const { data: users, isLoading } = useQuery({
+  const { data: usersData, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
-      const res = await api.get('/admin/users/')
-      return res.data
+      const res = await api.get('/accounts/admin/users/', { params: { role: 'seller' } })
+      return Array.isArray(res.data) ? res.data : res.data.results || []
     },
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   // Fetch commission audit logs (history of the retired per-seller rates)
-  const { data: auditLogs } = useQuery({
+  const { data: auditLogsData } = useQuery({
     queryKey: ['commission-audit-logs'],
     queryFn: async () => {
-      const res = await api.get('/admin/commission-audit-logs/')
-      return res.data || []
+      const res = await api.get('/accounts/admin/commission-audit-logs/')
+      return Array.isArray(res.data) ? res.data : res.data.results || []
     },
+    retry: 1,
   })
 
-  const sellers = users?.filter(u => u.role === 'seller') || []
+  const sellers = Array.isArray(usersData) ? usersData : []
+  const auditLogs = Array.isArray(auditLogsData) ? auditLogsData : []
 
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-96">
         <Spinner />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+        <div className="text-center py-20">
+          <p className="text-red-600 text-sm">Failed to load sellers</p>
+          <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+        </div>
       </div>
     )
   }
@@ -144,13 +159,13 @@ export default function AdminCommissionPage() {
                 {auditLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-[var(--off)]/50">
                     <td className="px-6 py-3 text-sm text-[var(--muted)]">
-                      {new Date(log.created_at).toLocaleDateString('en-US', {
+                      {log.created_at ? new Date(log.created_at).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
                         hour: '2-digit',
                         minute: '2-digit'
-                      })}
+                      }) : '—'}
                     </td>
                     <td className="px-6 py-3">
                       <p className="text-sm font-medium text-[var(--ink)]">{log.seller_name}</p>
@@ -175,10 +190,10 @@ export default function AdminCommissionPage() {
                       )}
                     </td>
                     <td className="px-6 py-3 text-center text-sm text-[var(--ink)]">
-                      {log.affected_products_count}
+                      {log.affected_products_count ?? 0}
                     </td>
                     <td className="px-6 py-3 text-sm text-[var(--muted)]">
-                      {log.reason || '-'}
+                      {log.reason || log.note || '-'}
                     </td>
                   </tr>
                 ))}

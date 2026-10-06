@@ -93,7 +93,7 @@ export default function Navbar() {
             {/* Logo */}
             <Link to="/"
               className="serif text-[22px] font-medium tracking-wide text-[var(--ink)] flex-1 text-center md:flex-none select-none">
-              Jay's Store
+              My Jay's Store
             </Link>
 
             {/* Right */}

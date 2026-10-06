@@ -60,7 +60,6 @@ export default function AdminFinancePage() {
           </div>
           <button
             onClick={() => refetch()}
-            disabled={false}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--ink)] text-white text-sm font-medium rounded-xl hover:opacity-80 transition-opacity"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -102,13 +101,6 @@ export default function AdminFinancePage() {
           data={rows}
           keyField="order_id"
           emptyMessage="No paid orders found"
-          pagination={{
-            page: 1,
-            pageSize: rows.length || 10,
-            total: rows.length,
-            totalPages: 1,
-            onPageChange: () => {},
-          }}
         />
       </div>
     </>

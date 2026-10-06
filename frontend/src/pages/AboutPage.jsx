@@ -7,7 +7,7 @@ export default function AboutPage() {
     {
       icon: <ShoppingBag size={22} />,
       title: 'Local First',
-      desc: 'We champion Ghanaian fashion designers and sellers, giving them a professional platform to reach thousands of buyers.',
+      desc: 'We champion Navrongo fashion designers and vendors, giving them a professional platform to reach thousands of buyers.',
     },
     {
       icon: <Sparkles size={22} />,
@@ -47,8 +47,8 @@ export default function AboutPage() {
             Ghana.
           </h1>
           <p className="text-base text-[var(--muted)] font-light leading-relaxed max-w-xl">
-            Jay's Store was built with one mission — to give Ghanaian fashion the
-            platform it deserves. We connect talented local sellers with style-conscious
+            My Jay's Store was built with one mission — to give Navrongo fashion the
+            platform it deserves. We connect talented local vendors with style-conscious
             buyers, powered by AI and delivered with care.
           </p>
         </div>
@@ -106,13 +106,13 @@ export default function AboutPage() {
               Our Mission
             </p>
             <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] leading-tight mb-5">
-              Building Ghana's<br />
+              Building Navrongo's<br />
               <em className="italic font-normal text-[var(--muted)]">fashion future.</em>
             </h2>
             <p className="text-sm text-[var(--muted)] font-light leading-relaxed mb-8">
               We believe fashion is more than clothing — it's culture, identity and
-              expression. Our platform exists to ensure that Ghanaian creativity
-              reaches everyone, and that every seller has the tools to build a
+              expression. Our platform exists to ensure that Navrongo creativity
+              reaches everyone, and that every vendor has the tools to build a
               sustainable business.
             </p>
             <Link to="/register/seller"
@@ -169,7 +169,7 @@ export default function AboutPage() {
           </h2>
           <p className="text-sm text-white/40 font-light mb-8 max-w-md mx-auto">
             Whether you're a buyer, seller or driver — there's a place for you
-            in the Jay's Store community.
+            in the My Jay's Store community.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Link to="/catalog"

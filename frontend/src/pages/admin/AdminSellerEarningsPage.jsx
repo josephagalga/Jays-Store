@@ -33,6 +33,7 @@ export default function AdminSellerEarningsPage() {
 
   const topEarner = data?.top_earner
   const leastEarner = data?.least_earner
+  const rows = data?.rows || []
 
   return (
     <>
@@ -65,7 +66,7 @@ export default function AdminSellerEarningsPage() {
               <p className="text-sm text-green-700 mt-1">Net: GHS {parseFloat(topEarner.net_earnings || 0).toFixed(2)} · {topEarner.total_orders} orders</p>
             </div>
           )}
-          {leastEarner && (
+          {leastEarner && leastEarner.id !== topEarner?.id && (
             <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-2">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-rose-600">
@@ -73,7 +74,7 @@ export default function AdminSellerEarningsPage() {
                   <line x1="17" y1="20" x2="29" y2="20" />
                   <polyline points="7 4 17 14.17 21 18.17" />
                 </svg>
-                <h3 className="font-semibold text-rose-900">Needs Attention</h3>
+                <h3 className="font-semibold text-rose-900">Lowest Earner</h3>
               </div>
               <p className="text-lg font-bold text-rose-900">{leastEarner.store_name}</p>
               <p className="text-sm text-rose-700 mt-1">Net: GHS {parseFloat(leastEarner.net_earnings || 0).toFixed(2)} · {leastEarner.total_orders} orders</p>
@@ -95,7 +96,7 @@ export default function AdminSellerEarningsPage() {
             { key: 'delivery_share', label: 'Delivery Share', width: '120px', render: (v) => `GHS ${parseFloat(v || 0).toFixed(2)}` },
             { key: 'net_earnings', label: 'Net Earnings', width: '140px', render: (v) => `GHS ${parseFloat(v || 0).toFixed(2)}` },
           ]}
-          data={data?.rows || []}
+          data={rows}
           keyField="id"
           emptyMessage="No sellers found"
         />

@@ -210,12 +210,17 @@ EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Jay\'s Store <no-reply@jaysstore.com>')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'My Jay\'s Store <no-reply@jaysstore.com>')
 
 # Store owner — receives a payment notification (commission + delivery fee)
 # on every confirmed order. No admin email existed before; the platform
 # was never notified of its own money.
 ADMIN_NOTIFICATION_EMAIL = os.getenv('ADMIN_NOTIFICATION_EMAIL', 'myjaysstore@gmail.com')
+
+# Delivery coverage — towns the platform currently serves.
+# Add more town names here as the company grows (frontend reads the same
+# list from frontend/src/config/delivery.js — keep the two in sync).
+SUPPORTED_DELIVERY_TOWNS = [t.strip() for t in os.getenv('SUPPORTED_DELIVERY_TOWNS', 'Navrongo').split(',') if t.strip()]
 
 # Default commission rate for new sellers (percentage)
 # Buyer-pays model: Commission is added on top of seller's listed price

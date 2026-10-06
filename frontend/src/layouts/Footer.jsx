@@ -29,9 +29,9 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="col-span-2 md:col-span-2">
-            <h2 className="serif text-2xl font-medium mb-4">Jay's Store</h2>
+            <h2 className="serif text-2xl font-medium mb-4">My Jay's Store</h2>
             <p className="text-sm text-white/45 font-light leading-relaxed max-w-xs mb-8">
-              A modern fashion marketplace celebrating Ghanaian style. Shop from local sellers, delivered to your door.
+              A modern fashion marketplace celebrating Navrongo style. Shop from Navrongo vendors, delivered to your door.
             </p>
             <div>
               <p className="text-xs text-white/30 font-medium mb-3 uppercase tracking-wider">Newsletter</p>
@@ -70,7 +70,7 @@ export default function Footer() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-8">
-          <p className="text-xs text-white/25">© {new Date().getFullYear()} Jay's Store. All rights reserved.</p>
+          <p className="text-xs text-white/25">© {new Date().getFullYear()} My Jay's Store. All rights reserved.</p>
           <p className="text-xs text-white/25">Made with care in Ghana 🇬🇭</p>
         </div>
       </div>

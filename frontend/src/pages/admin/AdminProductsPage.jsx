@@ -9,12 +9,14 @@ import toast from 'react-hot-toast'
 export default function AdminProductsPage() {
   const qc = useQueryClient()
 
-  const { data: products, isLoading } = useQuery({
+  const { data: products, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-products'],
     queryFn: async () => {
       const res = await api.get('/products/manage/')
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const toggleMutation = useMutation({
@@ -24,6 +26,7 @@ export default function AdminProductsPage() {
       qc.invalidateQueries(['admin-products'])
       toast.success('Product updated')
     },
+    onError: () => toast.error('Failed to update product'),
   })
 
   const featureMutation = useMutation({
@@ -33,9 +36,19 @@ export default function AdminProductsPage() {
       qc.invalidateQueries(['admin-products'])
       toast.success('Product updated')
     },
+    onError: () => toast.error('Failed to update product'),
   })
 
   if (isLoading) return <div className="flex justify-center py-32"><Spinner /></div>
+
+  if (isError) return (
+    <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+      <div className="text-center py-20">
+        <p className="text-red-600 text-sm">Failed to load products</p>
+        <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
@@ -82,11 +95,11 @@ export default function AdminProductsPage() {
                   {product.seller?.store_name || 'Admin'}
                 </td>
                 <td className="px-5 py-4 text-sm font-medium">
-                  GHS {parseFloat(product.price).toFixed(2)}
+                  GHS {parseFloat(product.price ?? 0).toFixed(2)}
                 </td>
-                <td className="px-5 py-4 text-sm text-[var(--muted)]">{product.total_sold}</td>
+                <td className="px-5 py-4 text-sm text-[var(--muted)]">{product.total_sold ?? 0}</td>
                 <td className="px-5 py-4 text-sm text-[var(--muted)]">
-                  ★ {parseFloat(product.average_rating).toFixed(1)}
+                  ★ {Number.isFinite(parseFloat(product.average_rating)) ? parseFloat(product.average_rating).toFixed(1) : '0.0'}
                 </td>
                 <td className="px-5 py-4">
                   <button

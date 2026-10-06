@@ -6,25 +6,39 @@ import { sellerApi } from '../../services/api'
 const money = (v) => `GHS ${parseFloat(v || 0).toFixed(2)}`
 
 export default function SellerWalletPage() {
-  const { data: wallet, isLoading: walletLoading, refetch } = useQuery({
+  const { data: wallet, isLoading: walletLoading, isError: walletError, refetch } = useQuery({
     queryKey: ['seller-wallet'],
     queryFn: sellerApi.getWallet,
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
-  const { data: settlements } = useQuery({
+  const { data: settlementsData } = useQuery({
     queryKey: ['seller-settlements'],
-    queryFn: async () => {
-      const res = await sellerApi.getSettlements({})
-      return Array.isArray(res.data) ? res.data : res.data.results || []
-    },
+    queryFn: () => sellerApi.getSettlements({}),
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
+
+  const settlements = Array.isArray(settlementsData) ? settlementsData : settlementsData?.results || []
 
   if (walletLoading) return (
     <>
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
+      </div>
+    </>
+  )
+
+  if (walletError) return (
+    <>
+      <div className="max-w-4xl mx-auto px-6 lg:px-10 py-10">
+        <div className="text-center py-20">
+          <p className="text-red-600 text-sm">Failed to load wallet</p>
+          <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+        </div>
       </div>
     </>
   )
@@ -47,9 +61,8 @@ export default function SellerWalletPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
           <StatCard label="Gross Revenue" value={money(wallet?.gross_revenue)} />
-          <StatCard label="Commission Paid" value={money(wallet?.commission_paid)} />
           <StatCard label="Net Earnings" value={money(wallet?.net_earnings)} />
           <StatCard label="Delivery Earned" value={money(wallet?.delivery_earned)} />
         </div>

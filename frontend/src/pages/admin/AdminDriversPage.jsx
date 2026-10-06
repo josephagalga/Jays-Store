@@ -13,12 +13,14 @@ export default function AdminDriversPage() {
   const [selected, setSelected] = useState(null)
   const [rejectNote, setRejectNote] = useState('')
 
-  const { data: drivers, isLoading } = useQuery({
+  const { data: drivers, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-drivers'],
     queryFn: async () => {
-      const res = await api.get('/accounts/admin/users/?role=driver')
+      const res = await api.get('/accounts/admin/users/', { params: { role: 'driver' } })
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const verifyMutation = useMutation({
@@ -30,16 +32,32 @@ export default function AdminDriversPage() {
     onSuccess: () => {
       qc.invalidateQueries(['admin-drivers'])
       setSelected(null)
+      setRejectNote('')
       toast.success('Driver status updated')
     },
+    onError: () => toast.error('Failed to update driver'),
   })
 
   if (isLoading) return <div className="flex justify-center py-32"><Spinner /></div>
+
+  if (isError) return (
+    <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+      <div className="text-center py-20">
+        <p className="text-red-600 text-sm">Failed to load drivers</p>
+        <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
       <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">Drivers</h1>
 
+      {!drivers?.length ? (
+        <div className="text-center py-20 bg-white border border-[var(--border)] rounded-2xl">
+          <p className="text-sm text-[var(--muted)]">No drivers found</p>
+        </div>
+      ) : (
       <div className="bg-white border border-[var(--border)] rounded-2xl overflow-x-auto">
         <table className="w-full min-w-[640px]">
           <thead className="bg-[var(--off)] border-b border-[var(--border)]">
@@ -91,6 +109,7 @@ export default function AdminDriversPage() {
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Driver detail modal */}
       {selected && (

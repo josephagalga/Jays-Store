@@ -8,13 +8,15 @@ export default function AdminContactMessagesPage() {
   const qc = useQueryClient()
   const [selected, setSelected] = useState(null)
 
-  const { data: messages, isLoading, refetch } = useQuery({
+  const { data: messages, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-contact-messages'],
     queryFn: async () => {
       const res = await api.get('/accounts/admin/contact-messages/')
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const readMutation = useMutation({
@@ -52,6 +54,17 @@ export default function AdminContactMessagesPage() {
     </>
   )
 
+  if (isError) return (
+    <>
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+        <div className="text-center py-20">
+          <p className="text-red-600 text-sm">Failed to load messages</p>
+          <button onClick={() => refetch()} className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl">Retry</button>
+        </div>
+      </div>
+    </>
+  )
+
   return (
     <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
@@ -82,7 +95,7 @@ export default function AdminContactMessagesPage() {
             )},
             { key: 'role', label: 'Role', width: '100px', render: (v) => <span className="px-2 py-0.5 bg-[var(--off)] text-[var(--muted)] text-xs font-medium rounded-full capitalize whitespace-nowrap">{v}</span> },
             { key: 'is_read', label: 'Status', width: '100px', render: (v) => <span className={`px-2.5 py-1 text-[10px] font-semibold rounded-full whitespace-nowrap ${v ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{v ? 'Read' : 'Unread'}</span> },
-            { key: 'created_at', label: 'Received', width: '160px', render: (v) => new Date(v).toLocaleString('en-GH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+            { key: 'created_at', label: 'Received', width: '160px', render: (v) => v ? new Date(v).toLocaleString('en-GH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—' },
             { key: 'actions', label: '', width: '130px', render: (v, row) => (
               <div className="flex items-center gap-2">
                 <button
@@ -92,7 +105,7 @@ export default function AdminContactMessagesPage() {
                   View
                 </button>
                 <button
-                  onClick={() => deleteMutation.mutate(row.id)}
+                  onClick={() => { if (window.confirm('Delete this message?')) deleteMutation.mutate(row.id) }}
                   disabled={deleteMutation.isPending}
                   className="px-3 py-2 min-h-[44px] text-xs text-rose-600 hover:text-rose-700 transition-colors disabled:opacity-50"
                 >

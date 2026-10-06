@@ -243,7 +243,7 @@ def create_transaction_split(*, name, seller_shares, bearer_share=None, metadata
     """Create a per-order flat split with validation metadata.
     
     Args:
-        name: Split name (e.g., "Jays Store order 123")
+        name: Split name (e.g., "My Jays Store order 123")
         seller_shares: [(subaccount_code, net_amount_decimal), ...]
         bearer_share: Expected platform share in GHS (for validation/logging only)
         metadata: Optional dict with split details for audit trail

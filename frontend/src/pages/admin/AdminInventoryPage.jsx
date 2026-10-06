@@ -4,22 +4,42 @@ import { StatCard } from '../../components/shared/StatCard'
 import { adminApi } from '../../services/api'
 
 export default function AdminInventoryPage() {
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['admin-inventory-stats'],
     queryFn: adminApi.getInventory,
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
-  const { data: productsData, isLoading: productsLoading } = useQuery({
+  const { data: productsData, isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useQuery({
     queryKey: ['admin-inventory-products'],
     queryFn: () => adminApi.getProducts({}),
     staleTime: 1000 * 60 * 5,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   if (statsLoading || productsLoading) return (
     <>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
         <div className="flex justify-center py-32">Loading…</div>
+      </div>
+    </>
+  )
+
+  if (statsError || productsError) return (
+    <>
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+        <div className="text-center py-20">
+          <p className="text-red-600 text-sm">Failed to load inventory</p>
+          <button
+            onClick={() => { refetchStats(); refetchProducts(); }}
+            className="mt-4 px-4 py-2 bg-[var(--ink)] text-white text-sm rounded-xl"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     </>
   )
