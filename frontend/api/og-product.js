@@ -1,19 +1,11 @@
 // GET /api/og-product?slug=<product-slug>
 //
-// Serves crawlers (WhatsApp/Facebook/X/…) item-specific Open Graph tags so
-// shared product links unfurl with the product image. Humans get the normal
-// React app shell.
+// Crawler-only preview page: returns minimal HTML with Open Graph tags so
+// shared product links unfurl with the product image on WhatsApp, Facebook,
+// X/Twitter, LinkedIn, Telegram, etc.
 //
-// NOTE: routing is intentionally NOT user-agent based (Vercel `has`
-// conditions on rewrites proved unreliable here). vercel.json sends ALL
-// /products/:slug traffic here and the handler below splits bots/humans in
-// JS, where matching is fully under our control. Search-engine crawlers
-// (Google/Bing/DuckDuckGo render JS) are deliberately treated as humans so
-// product pages stay indexable — the noindex tag below is for scrapers only.
-
-// Scrapers that read meta tags but don't run JavaScript.
-const BOT_UA =
-  /facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|pinterest|skypeuripreview|whatsapp|viber|micromessenger|kakaotalk|vkshare|redditbot|embedly|iframely|quora|applebot/i;
+// Humans never see this response — vercel.json rewrites ONLY known crawler
+// user-agents here; everyone else gets the React app.
 
 function apiBase() {
   const raw = (process.env.VITE_API_URL || process.env.API_URL || 'https://myjays-store.onrender.com')
@@ -60,20 +52,6 @@ function esc(value) {
 function trunc(value, max) {
   const s = String(value ?? '').replace(/\s+/g, ' ').trim();
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
-}
-
-async function fetchText(url) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 10000);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function fetchJson(url, timeoutMs) {
@@ -145,25 +123,6 @@ function page({ status, title, description, image, url, price }) {
 export default async function handler(req, res) {
   const slug = req.query?.slug;
   const site = siteOrigin();
-  const ua = req.headers?.['user-agent'] || '';
-
-  if (!BOT_UA.test(ua)) {
-    // Human visitor (or JS-rendering search crawler): serve the SPA shell.
-    // Asset/API URLs in it are absolute, so the app boots exactly as if
-    // index.html had been served directly. Never CDN-cache this branch:
-    // the same URL serves different bodies to bots vs humans.
-    const shell = await fetchText(`${site}/index.html`);
-    if (shell) {
-      res
-        .status(200)
-        .setHeader('Content-Type', 'text/html; charset=utf-8')
-        .setHeader('Cache-Control', 'private, no-store')
-        .send(shell);
-    } else {
-      res.status(302).setHeader('Location', '/').send('');
-    }
-    return;
-  }
 
   if (!slug || !/^[a-z0-9-]+$/i.test(slug)) {
     const { status, html } = page({
