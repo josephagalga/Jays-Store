@@ -27,6 +27,16 @@ export default function AdminDashboardPage() {
     retry: 1,
   })
 
+  const { data: pendingSellers } = useQuery({
+    queryKey: ['pending-sellers'],
+    queryFn: async () => {
+      const res = await api.get('/accounts/admin/users/', { params: { role: 'seller' } })
+      const all = Array.isArray(res.data) ? res.data : res.data.results || []
+      return all.filter(s => s.verification_status === 'pending')
+    },
+    retry: 1,
+  })
+
   const verifyMutation = useMutation({
     mutationFn: ({ id, status, note }) =>
       api.patch(`/accounts/admin/drivers/${id}/verify/`, { verification_status: status, verification_note: note || '' }),
@@ -36,6 +46,17 @@ export default function AdminDashboardPage() {
       toast.success('Driver updated')
     },
     onError: () => toast.error('Failed to update driver'),
+  })
+
+  const verifySellerMutation = useMutation({
+    mutationFn: ({ id, status, note }) =>
+      api.patch(`/accounts/admin/sellers/${id}/verify/`, { verification_status: status, verification_note: note || '' }),
+    onSuccess: () => {
+      qc.invalidateQueries(['pending-sellers'])
+      qc.invalidateQueries(['admin-dashboard'])
+      toast.success('Seller updated')
+    },
+    onError: () => toast.error('Failed to update seller'),
   })
 
   const { data: staleOrders } = useQuery({
@@ -62,6 +83,7 @@ export default function AdminDashboardPage() {
     { label: 'Active This Week', value: stats?.active_this_week || 0 },
     { label: 'Active This Month', value: stats?.active_this_month || 0 },
     { label: 'Pending Drivers', value: stats?.pending_drivers || 0 },
+    { label: 'Pending Sellers', value: stats?.pending_sellers ?? pendingSellers?.length ?? 0 },
     { label: 'Verified Drivers', value: stats?.verified_drivers || 0 },
     { label: 'Currently Delivering', value: stats?.drivers_currently_delivering || 0 },
   ]
@@ -128,7 +150,7 @@ export default function AdminDashboardPage() {
 
       {/* Pending driver verifications */}
       {pendingDrivers?.length > 0 && (
-        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
+        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden mb-6">
           <div className="px-6 py-4 border-b border-[var(--border)] flex items-center gap-2">
             <Clock size={16} className="text-amber-500" />
             <h2 className="serif text-xl font-medium text-[var(--ink)]">
@@ -150,6 +172,46 @@ export default function AdminDashboardPage() {
                   </button>
                   <button
                     onClick={() => verifyMutation.mutate({ id: driver.id, status: 'rejected', note: 'Does not meet requirements' })}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 text-rose-600 text-xs font-semibold rounded-xl hover:bg-rose-100 transition-colors">
+                    <XCircle size={13} /> Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pending seller verifications */}
+      {pendingSellers?.length > 0 && (
+        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-amber-500" />
+              <h2 className="serif text-xl font-medium text-[var(--ink)]">
+                Pending Sellers ({pendingSellers.length})
+              </h2>
+            </div>
+            <Link to="/admin/sellers"
+              className="text-xs font-semibold text-[var(--muted)] hover:text-[var(--ink)] transition-colors">
+              Review all →
+            </Link>
+          </div>
+          <div className="divide-y divide-[var(--border)]">
+            {pendingSellers.map(seller => (
+              <div key={seller.id} className="px-6 py-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--ink)]">{seller.store_name || seller.full_name}</p>
+                  <p className="text-xs text-[var(--muted)]">{seller.email} · {seller.phone_number}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => verifySellerMutation.mutate({ id: seller.id, status: 'approved' })}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-green-50 text-green-700 text-xs font-semibold rounded-xl hover:bg-green-100 transition-colors">
+                    <CheckCircle size={13} /> Approve
+                  </button>
+                  <button
+                    onClick={() => verifySellerMutation.mutate({ id: seller.id, status: 'rejected', note: 'Does not meet requirements' })}
                     className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 text-rose-600 text-xs font-semibold rounded-xl hover:bg-rose-100 transition-colors">
                     <XCircle size={13} /> Reject
                   </button>

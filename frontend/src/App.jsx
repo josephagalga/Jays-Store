@@ -45,6 +45,7 @@ import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminProductsPage from './pages/admin/AdminProductsPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
 import AdminDriversPage from './pages/admin/AdminDriversPage'
+import AdminSellersPage from './pages/admin/AdminSellersPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminPayoutsPage from './pages/admin/AdminPayoutsPage'
 import AdminCommissionPage from './pages/admin/AdminCommissionPage'
@@ -180,6 +181,7 @@ function DashboardLayout({ children }) {
         heading: 'People',
         links: [
           { label: 'Drivers', to: '/admin/drivers' },
+          { label: 'Sellers', to: '/admin/sellers' },
           { label: 'Users', to: '/admin/users' },
         ],
       },
@@ -460,6 +462,11 @@ export default function App() {
       <Route path="/admin/drivers" element={
         <PrivateRoute roles={['admin']}>
           <DashboardLayout><AdminDriversPage /></DashboardLayout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin/sellers" element={
+        <PrivateRoute roles={['admin']}>
+          <DashboardLayout><AdminSellersPage /></DashboardLayout>
         </PrivateRoute>
       } />
       <Route path="/admin/users" element={

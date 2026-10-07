@@ -16,6 +16,7 @@ from .serializers import (
     SellerProfileSerializer,
     AdminUserListSerializer,
     AdminDriverDetailSerializer,
+    AdminSellerDetailSerializer,
     AdminVerifyDriverSerializer,
     AdminDashboardSerializer,
     CustomTokenObtainPairSerializer,
@@ -210,17 +211,21 @@ class AdminDashboardView(APIView):
 
         buyers = User.objects.filter(role=User.Role.BUYER)
         drivers = User.objects.filter(role=User.Role.DRIVER)
+        sellers = User.objects.filter(role=User.Role.SELLER)
         all_users = User.objects.exclude(role=User.Role.ADMIN)
 
         stats = {
             'total_buyers': buyers.count(),
             'total_drivers': drivers.count(),
+            'total_sellers': sellers.count(),
             'active_today': all_users.filter(last_active__date=today).count(),
             'active_this_week': all_users.filter(last_active__gte=week_ago).count(),
             'active_this_month': all_users.filter(last_active__gte=month_ago).count(),
             'active_this_year': all_users.filter(last_active__gte=year_ago).count(),
             'verified_drivers': drivers.filter(verification_status='approved').count(),
             'pending_drivers': drivers.filter(verification_status='pending').count(),
+            'verified_sellers': sellers.filter(verification_status='approved').count(),
+            'pending_sellers': sellers.filter(verification_status='pending').count(),
             'drivers_currently_delivering': drivers.filter(currently_delivering=True).count(),
             'total_orders': Order.objects.count(),
             'pending_orders': Order.objects.filter(status='pending').count(),
@@ -281,6 +286,31 @@ class AdminVerifyDriverView(generics.UpdateAPIView):
         return Response({
             'message': f'Driver has been {driver.verification_status}',
             'driver': AdminDriverDetailSerializer(driver, context={'request': request}).data,
+        })
+
+
+class AdminSellerDetailView(generics.RetrieveAPIView):
+    serializer_class = AdminSellerDetailSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    queryset = User.objects.filter(role=User.Role.SELLER)
+
+
+class AdminVerifySellerView(generics.UpdateAPIView):
+    serializer_class = AdminVerifyDriverSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    queryset = User.objects.filter(role=User.Role.SELLER)
+    http_method_names = ['patch']
+
+    def update(self, request, *args, **kwargs):
+        seller = self.get_object()
+        serializer = self.get_serializer(seller, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        seller.refresh_from_db()
+
+        return Response({
+            'message': f'Seller has been {seller.verification_status}',
+            'seller': AdminSellerDetailSerializer(seller, context={'request': request}).data,
         })
 
 class AdminCommissionAuditLogView(generics.ListAPIView):

@@ -141,6 +141,11 @@ export const adminApi = {
   getDriverDetail: (id) => api.get(`/accounts/admin/drivers/${id}/`).then((r) => r.data),
   verifyDriver: (id, status, note) => api.patch(`/accounts/admin/drivers/${id}/verify/`, { verification_status: status, verification_note: note }),
 
+  // Sellers
+  getSellers: (params) => api.get('/accounts/admin/users/', { params: { ...params, role: 'seller' } }).then((r) => r.data),
+  getSellerDetail: (id) => api.get(`/accounts/admin/sellers/${id}/`).then((r) => r.data),
+  verifySeller: (id, status, note) => api.patch(`/accounts/admin/sellers/${id}/verify/`, { verification_status: status, verification_note: note }),
+
   // Contact messages
   getContactMessages: (params) => api.get('/accounts/admin/contact-messages/', { params }).then((r) => r.data),
 

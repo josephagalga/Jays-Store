@@ -329,15 +329,60 @@ class AdminVerifyDriverSerializer(serializers.ModelSerializer):
         return value
 
 
+class AdminSellerDetailSerializer(serializers.ModelSerializer):
+    full_name = serializers.ReadOnlyField()
+    ghana_card_image_url = serializers.SerializerMethodField()
+    selfie_image_url = serializers.SerializerMethodField()
+    store_logo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'full_name', 'phone_number',
+            'store_name', 'store_slug', 'store_description',
+            'store_address', 'pickup_location',
+            'store_logo', 'ghana_card_image', 'selfie_image',
+            'store_logo_url', 'ghana_card_image_url', 'selfie_image_url',
+            'verification_status', 'verification_note',
+            'is_active', 'date_joined', 'last_active',
+        ]
+
+    def _abs_url(self, f):
+        request = self.context.get('request')
+        if f and request:
+            try:
+                return request.build_absolute_uri(f.url)
+            except Exception:
+                return None
+        if f:
+            try:
+                return f.url
+            except Exception:
+                return None
+        return None
+
+    def get_ghana_card_image_url(self, obj):
+        return self._abs_url(obj.ghana_card_image)
+
+    def get_selfie_image_url(self, obj):
+        return self._abs_url(obj.selfie_image)
+
+    def get_store_logo_url(self, obj):
+        return self._abs_url(obj.store_logo)
+
+
 class AdminDashboardSerializer(serializers.Serializer):
     total_buyers = serializers.IntegerField()
     total_drivers = serializers.IntegerField()
+    total_sellers = serializers.IntegerField()
     active_today = serializers.IntegerField()
     active_this_week = serializers.IntegerField()
     active_this_month = serializers.IntegerField()
     active_this_year = serializers.IntegerField()
     verified_drivers = serializers.IntegerField()
     pending_drivers = serializers.IntegerField()
+    verified_sellers = serializers.IntegerField()
+    pending_sellers = serializers.IntegerField()
     drivers_currently_delivering = serializers.IntegerField()
     total_orders = serializers.IntegerField()
     pending_orders = serializers.IntegerField()
