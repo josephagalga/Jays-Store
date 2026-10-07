@@ -25,6 +25,22 @@ function backendOrigin() {
   return apiBase().replace(/\/api$/, '');
 }
 
+// Absolute + WhatsApp-friendly: relative backend paths are expanded, and
+// Cloudinary images are served resized (1200px, auto quality/format) because
+// WhatsApp/Facebook often refuse huge originals. Other hosts pass through.
+function previewImage(url) {
+  if (!url) return null;
+  let s = String(url);
+  if (!/^https?:\/\//i.test(s)) {
+    const origin = backendOrigin();
+    s = origin + (s.startsWith('/') ? s : `/${s}`);
+  }
+  if (s.includes('res.cloudinary.com') && s.includes('/upload/')) {
+    return s.replace('/upload/', '/upload/w_1200,q_auto,f_auto/');
+  }
+  return s;
+}
+
 function esc(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -38,26 +54,39 @@ function trunc(value, max) {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-function absolutize(url) {
-  if (!url) return null;
-  const s = String(url);
-  if (/^https?:\/\//i.test(s)) return s;
-  return backendOrigin() + (s.startsWith('/') ? s : `/${s}`);
-}
-
-async function fetchJson(url) {
+async function fetchJson(url, timeoutMs) {
   const ctrl = new AbortController();
-  // Render's free tier can cold-start for 20s+; maxDuration (vercel.json) is 30s.
-  const timer = setTimeout(() => ctrl.abort(), 20000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
-    if (!res.ok) return null;
-    return await res.json();
+    if (!res.ok) return { reached: true, data: null };
+    return { reached: true, data: await res.json() };
   } catch {
-    return null;
+    return { reached: false, data: null };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Primary backend comes from env. Known-good Render host is the safety net:
+// link previews must never die silently because of a misconfigured env var.
+// Falls back whenever the primary yields nothing (unreachable OR answered
+// 404 — a dead/suspended host answers 404 to everything, which is
+// indistinguishable from "not found" except by asking the known-good host).
+async function fetchApi(path) {
+  const bases = [apiBase()];
+  const fallback = 'https://myjays-store.onrender.com/api';
+  if (!bases[0].startsWith(fallback)) bases.push(fallback);
+  let last = { reached: false, data: null };
+  for (const base of bases) {
+    last = await fetchJson(
+      `${base}${path}`,
+      // Render's free tier can cold-start for 20s+; maxDuration (vercel.json) is 30s.
+      base === bases[0] ? 10000 : 15000
+    );
+    if (last.data) return last;
+  }
+  return last;
 }
 
 const FALLBACK_IMAGE =
@@ -87,7 +116,7 @@ function page({ status, title, description, image, url, price }) {
   }
   return {
     status,
-    html: `<!doctype html><html lang="en"><head>${tags.join('')}</head><body></body></html>`,
+    html: `<!doctype html><html lang="en"><head><!-- og-product v2 -->${tags.join('')}</head><body></body></html>`,
   };
 }
 
@@ -107,7 +136,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const product = await fetchJson(`${apiBase()}/products/${encodeURIComponent(slug)}/`);
+  const { data: product } = await fetchApi(`/products/${encodeURIComponent(slug)}/`);
 
   if (!product) {
     const { status, html } = page({
@@ -129,7 +158,7 @@ export default async function handler(req, res) {
   const primary =
     images.find((img) => img && img.is_primary && img.url) ||
     images.find((img) => img && img.url);
-  const image = absolutize(primary && primary.url) || FALLBACK_IMAGE;
+  const image = previewImage(primary && primary.url) || FALLBACK_IMAGE;
 
   const price = product.effective_price ? String(product.effective_price) : null;
   const title = price ? `${product.name} — GHS ${price}` : product.name;

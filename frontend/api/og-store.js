@@ -21,6 +21,22 @@ function siteOrigin() {
   return 'https://jays-store-steel.vercel.app';
 }
 
+// Absolute + WhatsApp-friendly: relative backend paths are expanded, and
+// Cloudinary images are served resized (1200px, auto quality/format) because
+// WhatsApp/Facebook often refuse huge originals. Other hosts pass through.
+function previewImage(url) {
+  if (!url) return null;
+  let s = String(url);
+  if (!/^https?:\/\//i.test(s)) {
+    const origin = apiBase().replace(/\/api$/, '');
+    s = origin + (s.startsWith('/') ? s : `/${s}`);
+  }
+  if (s.includes('res.cloudinary.com') && s.includes('/upload/')) {
+    return s.replace('/upload/', '/upload/w_1200,q_auto,f_auto/');
+  }
+  return s;
+}
+
 function esc(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -34,19 +50,39 @@ function trunc(value, max) {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, timeoutMs) {
   const ctrl = new AbortController();
-  // Render's free tier can cold-start for 20s+; maxDuration (vercel.json) is 30s.
-  const timer = setTimeout(() => ctrl.abort(), 20000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
-    if (!res.ok) return null;
-    return await res.json();
+    if (!res.ok) return { reached: true, data: null };
+    return { reached: true, data: await res.json() };
   } catch {
-    return null;
+    return { reached: false, data: null };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Primary backend comes from env. Known-good Render host is the safety net:
+// link previews must never die silently because of a misconfigured env var.
+// Falls back whenever the primary yields nothing (unreachable OR answered
+// 404 — a dead/suspended host answers 404 to everything, which is
+// indistinguishable from "not found" except by asking the known-good host).
+async function fetchApi(path) {
+  const bases = [apiBase()];
+  const fallback = 'https://myjays-store.onrender.com/api';
+  if (!bases[0].startsWith(fallback)) bases.push(fallback);
+  let last = { reached: false, data: null };
+  for (const base of bases) {
+    last = await fetchJson(
+      `${base}${path}`,
+      // Render's free tier can cold-start for 20s+; maxDuration (vercel.json) is 30s.
+      base === bases[0] ? 10000 : 15000
+    );
+    if (last.data) return last;
+  }
+  return last;
 }
 
 const FALLBACK_IMAGE =
@@ -55,7 +91,7 @@ const FALLBACK_IMAGE =
 function page({ status, title, description, image, url }) {
   return {
     status,
-    html: `<!doctype html><html lang="en"><head>${[
+    html: `<!doctype html><html lang="en"><head><!-- og-store v2 -->${[
       '<meta charset="utf-8">',
       '<meta name="robots" content="noindex">',
       `<title>${esc(title)}</title>`,
@@ -89,7 +125,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const store = await fetchJson(`${apiBase()}/accounts/stores/${encodeURIComponent(slug)}/`);
+  const { data: store } = await fetchApi(`/accounts/stores/${encodeURIComponent(slug)}/`);
 
   if (!store) {
     const { status, html } = page({
@@ -108,7 +144,7 @@ export default async function handler(req, res) {
   }
 
   // Vendor's profile picture first (as requested), banner as fallback.
-  const image = store.logo_url || store.banner_url || FALLBACK_IMAGE;
+  const image = previewImage(store.logo_url || store.banner_url) || FALLBACK_IMAGE;
   const description =
     trunc(store.store_description, 200) ||
     `${store.full_name || store.store_name} · ★ ${store.seller_average_rating || 0}`;
