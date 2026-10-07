@@ -122,6 +122,28 @@ export default function AdminSellersPage() {
   )
 }
 
+function KycImage({ label, src, storedPath }) {
+  const [broken, setBroken] = useState(false)
+  if (!src) return null
+  return (
+    <div>
+      <p className="text-xs text-[var(--muted)] mb-1.5">{label}</p>
+      {!broken ? (
+        <img src={src} alt={label} onError={() => setBroken(true)}
+          className="w-full aspect-video object-cover rounded-lg border border-[var(--border)]" />
+      ) : (
+        <div className="w-full rounded-lg border border-rose-200 bg-rose-50/60 p-3">
+          <p className="text-xs font-semibold text-rose-600">File on record but won't load</p>
+          {storedPath && <p className="text-[11px] text-[var(--muted)] mt-1 break-all">{String(storedPath)}</p>}
+          <p className="text-[11px] text-[var(--muted)] mt-1">
+            The upload was lost by server storage — reject with a note asking the seller to re-upload their documents.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SellerDetailModal({ seller, rejectNote, setRejectNote, onClose, onVerify, verifying }) {
   const { data: detail } = useQuery({
     queryKey: ['admin-seller', seller.id],
@@ -158,20 +180,8 @@ function SellerDetailModal({ seller, rejectNote, setRejectNote, onClose, onVerif
 
         {/* KYC images */}
         <div className="grid grid-cols-2 gap-3 mb-6">
-          {s.ghana_card_image_url && (
-            <div>
-              <p className="text-xs text-[var(--muted)] mb-1.5">Ghana Card</p>
-              <img src={s.ghana_card_image_url} alt="Ghana Card"
-                className="w-full aspect-video object-cover rounded-lg border border-[var(--border)]" />
-            </div>
-          )}
-          {s.selfie_image_url && (
-            <div>
-              <p className="text-xs text-[var(--muted)] mb-1.5">Selfie</p>
-              <img src={s.selfie_image_url} alt="Selfie"
-                className="w-full aspect-video object-cover rounded-lg border border-[var(--border)]" />
-            </div>
-          )}
+          <KycImage label="Ghana Card" src={s.ghana_card_image_url} storedPath={s.ghana_card_image} />
+          <KycImage label="Selfie" src={s.selfie_image_url} storedPath={s.selfie_image} />
           {!s.ghana_card_image_url && !s.selfie_image_url && (
             <p className="col-span-2 text-sm text-[var(--muted)] text-center py-4">
               No verification images uploaded

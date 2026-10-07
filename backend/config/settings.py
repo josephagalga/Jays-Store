@@ -188,6 +188,13 @@ else:
             'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
         },
     }
+    if not DEBUG:
+        import logging
+        logging.getLogger(__name__).warning(
+            'CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET are not all set: '
+            'uploads (KYC docs, product images, avatars) use the ephemeral '
+            'disk and will 404/disappear on redeploy. Set the env vars.'
+        )
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'

@@ -244,6 +244,8 @@ class AdminUserListView(generics.ListAPIView):
         role = self.request.query_params.get('role')
         if role == 'driver':
             return AdminDriverDetailSerializer
+        if role == 'seller':
+            return AdminSellerDetailSerializer
         return AdminUserListSerializer
 
     def get_queryset(self):
