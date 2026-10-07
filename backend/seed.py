@@ -1552,6 +1552,7 @@ for p in products_data:
         created_by=admin,
         category=cats[category_key],
         discount_price=discount_price,
+        is_demo=True,
         **p
     )
 
