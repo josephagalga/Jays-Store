@@ -14,7 +14,11 @@ export default function AdminUsersPage() {
     queryKey: ['admin-users', role],
     queryFn: async () => {
       const res = await api.get('/accounts/admin/users/', { params: { role } })
-      return Array.isArray(res.data) ? res.data : res.data.results || []
+      const all = Array.isArray(res.data) ? res.data : res.data.results || []
+      // Sellers only join this directory once approved — pending/rejected
+      // applications are reviewed on the Sellers page instead.
+      if (role === 'seller') return all.filter(u => u.verification_status === 'approved')
+      return all
     },
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
@@ -60,6 +64,9 @@ export default function AdminUsersPage() {
         <div className="text-center py-24 border border-dashed border-[var(--border)] rounded-2xl">
           <Users size={40} className="mx-auto text-[var(--border)] mb-4" />
           <p className="text-sm text-[var(--muted)]">No {role}s found</p>
+          {role === 'seller' && (
+            <p className="text-xs text-[var(--muted)] mt-2">Pending applications are reviewed on the Sellers page.</p>
+          )}
         </div>
       ) : (
         <div className="bg-white border border-[var(--border)] rounded-2xl overflow-x-auto">

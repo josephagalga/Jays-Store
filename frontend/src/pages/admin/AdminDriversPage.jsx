@@ -10,13 +10,38 @@ const STATUS_VARIANTS = { approved: 'success', pending: 'warning', rejected: 'da
 
 function KycImage({ label, src, storedPath }) {
   const [broken, setBroken] = useState(false)
+  const [open, setOpen] = useState(false)
   if (!src) return null
   return (
     <div>
       <p className="text-xs text-[var(--muted)] mb-1.5">{label}</p>
       {!broken ? (
-        <img src={src} alt={label} onError={() => setBroken(true)}
-          className="w-full aspect-video object-cover rounded-lg border border-[var(--border)]" />
+        <>
+          <button type="button" onClick={() => setOpen(true)} title="Click to view full size"
+            className="block w-full cursor-zoom-in group">
+            <img src={src} alt={label} onError={() => setBroken(true)}
+              className="w-full aspect-video object-cover rounded-lg border border-[var(--border)] group-hover:border-[var(--ink)] transition-colors" />
+            <span className="block text-[11px] text-[var(--muted)] mt-1 group-hover:text-[var(--ink)] transition-colors">
+              Click to enlarge
+            </span>
+          </button>
+          {open && (
+            <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setOpen(false)}>
+              <figure className="max-w-4xl w-full" onClick={e => e.stopPropagation()}>
+                <img src={src} alt={label}
+                  className="w-full max-h-[85vh] object-contain rounded-xl bg-black" />
+                <figcaption className="flex items-center justify-between mt-3">
+                  <span className="text-sm text-white/80">{label}</span>
+                  <button type="button" onClick={() => setOpen(false)}
+                    className="px-4 py-2 text-sm font-medium text-black bg-white rounded-xl hover:bg-gray-200 transition-colors">
+                    Close
+                  </button>
+                </figcaption>
+              </figure>
+            </div>
+          )}
+        </>
       ) : (
         <div className="w-full rounded-lg border border-rose-200 bg-rose-50/60 p-3">
           <p className="text-xs font-semibold text-rose-600">File on record but won't load</p>
