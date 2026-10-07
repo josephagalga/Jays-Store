@@ -47,6 +47,17 @@ function useRecentlyViewed(enabled) {
   })
 }
 
+function useCollectionPreview() {
+  return useQuery({
+    queryKey: ['collection-preview'],
+    queryFn: async () => {
+      const res = await api.get('/products/', { params: { page_size: 12 } })
+      return Array.isArray(res.data) ? res.data.slice(0, 12) : res.data.results || []
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+}
+
 // ── Reveal hook ──────────────────────────────────────────────
 
 function useReveal() {
@@ -261,6 +272,10 @@ function Categories({ categories }) {
 function Featured({ products, isLoading }) {
   const [ref, visible] = useReveal()
 
+  // Empty rail hides itself — the collection grid below carries the page
+  // until real vendors list featured stock.
+  if (!isLoading && !products?.length) return null
+
   return (
     <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-10 reveal ${visible ? 'visible' : ''}`}>
       <div className="flex items-end justify-between mb-10">
@@ -274,11 +289,46 @@ function Featured({ products, isLoading }) {
 
       {isLoading ? (
         <ProductGridSkeleton count={4} />
-      ) : !products?.length ? (
-        <div className="text-center py-20 rounded-2xl bg-[var(--off)]">
-          <ShoppingBag size={32} className="mx-auto text-[var(--border)] mb-3" />
-          <p className="text-sm text-[var(--muted)]">No products yet — check back soon</p>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-10">
+          {products.map((product, i) => (
+            <ProductCard key={product.id} product={product} index={i} />
+          ))}
         </div>
+      )}
+    </section>
+  )
+}
+
+// ── Shop the collection ─────────────────────────────────────────
+// Scrollable grid of the live catalog (real vendor stock first, demo
+// showcase after). Gives the landing page a full shelf even before vendors
+// list featured items.
+
+function CollectionGrid() {
+  const [ref, visible] = useReveal()
+  const { data: products, isLoading } = useCollectionPreview()
+
+  if (!isLoading && !products?.length) return null
+
+  return (
+    <section ref={ref} className={`max-w-7xl mx-auto px-6 lg:px-10 py-10 reveal ${visible ? 'visible' : ''}`}>
+      <div className="flex items-end justify-between mb-10">
+        <div>
+          <h2 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">Shop the collection</h2>
+          <p className="text-sm text-[var(--muted)] mt-2">
+            Vendor drops first — demo showcase pieces are marked display-only.
+          </p>
+        </div>
+        <Link to="/catalog"
+          className="flex items-center gap-1.5 text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors group min-h-[44px] flex-shrink-0">
+          View All
+          <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+        </Link>
+      </div>
+
+      {isLoading ? (
+        <ProductGridSkeleton count={8} />
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-10">
           {products.map((product, i) => (
@@ -512,6 +562,7 @@ export default function HomePage() {
       <Featured products={featured} isLoading={featuredLoading} />
       <RecentlyViewed />
       <SliderBanner products={featured} />
+      <CollectionGrid />
       <BrowseAllBand />
       <AIBanner />
       <JoinSection />
