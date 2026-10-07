@@ -103,6 +103,43 @@ export default function SellerDashboardPage() {
     deliveryMutation.mutate({ delivery_mode: mode })
   }
 
+  const absMedia = (path) => {
+    if (!path) return null
+    const s = String(path)
+    if (/^https?:\/\//i.test(s)) return s
+    const origin = (api.defaults.baseURL || '').replace(/\/api$/, '')
+    return `${origin}${s.startsWith('/') ? s : `/${s}`}`
+  }
+
+  const brandingMutation = useMutation({
+    mutationFn: (formData) => api.patch('/accounts/profile/seller/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+    onSuccess: (res) => {
+      qc.invalidateQueries(['seller-profile'])
+      setUser(res.data)
+      toast.success('Store profile saved')
+    },
+    onError: (err) => {
+      const data = err.response?.data
+      const first = data && Object.values(data)[0]
+      toast.error(Array.isArray(first) ? first[0] : 'Could not save store profile')
+    },
+  })
+
+  const saveBranding = (e) => {
+    e.preventDefault()
+    const form = new FormData(e.target)
+    const payload = new FormData()
+    // Only send images the seller actually picked — untouched ones stay as-is.
+    for (const key of ['store_logo', 'store_banner']) {
+      const file = form.get(key)
+      if (file instanceof File && file.size > 0) payload.append(key, file)
+    }
+    if ([...payload.keys()].length === 0) return toast.error('Choose a profile picture or banner first')
+    brandingMutation.mutate(payload)
+  }
+
   const linksMutation = useMutation({
     mutationFn: (payload) => api.patch('/accounts/profile/seller/', payload),
     onSuccess: (res) => {
@@ -177,6 +214,42 @@ export default function SellerDashboardPage() {
             <p className="text-xs text-[var(--muted)] mt-1">{label}</p>
           </div>
         ))}
+      </div>
+
+      {/* Store profile — logo + banner (existing sellers update here) */}
+      <div className="bg-white border border-[var(--border)] rounded-2xl p-6 mb-6">
+        <h2 className="serif text-xl font-medium text-[var(--ink)] mb-1">Store profile</h2>
+        <p className="text-sm text-[var(--muted)] mb-5">
+          Your profile picture and banner show on your public store page. Pick a file only for
+          what you want to change — anything you leave empty stays as it is.
+        </p>
+        <form onSubmit={saveBranding} className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider mb-1.5">
+              Profile picture
+            </p>
+            <div className="w-20 h-20 rounded-2xl overflow-hidden bg-[var(--off)] border border-[var(--border)] mb-2">
+              <SafeImage src={absMedia(profile?.store_logo)} alt="Store profile picture" className="w-full h-full object-cover" />
+            </div>
+            <input name="store_logo" type="file" accept="image/*"
+              className="w-full px-4 py-2.5 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider mb-1.5">
+              Banner image
+            </p>
+            <div className="h-20 rounded-2xl overflow-hidden bg-[var(--off)] border border-[var(--border)] mb-2">
+              <SafeImage src={absMedia(profile?.store_banner)} alt="Store banner" className="w-full h-full object-cover" />
+            </div>
+            <input name="store_banner" type="file" accept="image/*"
+              className="w-full px-4 py-2.5 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors" />
+          </div>
+          <div className="sm:col-span-2">
+            <Button type="submit" loading={brandingMutation.isPending} className="rounded-xl w-full sm:w-auto">
+              Save profile pictures
+            </Button>
+          </div>
+        </form>
       </div>
 
       {/* Commission Info Widget — fixed 10/5 tiers */}
