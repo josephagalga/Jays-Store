@@ -13,12 +13,20 @@ class UpdateLastActiveMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
 
-        # Only update for authenticated users
-        if hasattr(request, 'user') and request.user.is_authenticated:
-            # Use update() instead of save() to avoid triggering
-            # the full model save — much faster for every request
-            type(request.user).objects.filter(pk=request.user.pk).update(
-                last_active=timezone.now()
-            )
+        # Only update for authenticated users.
+        # NOTE: request.user is a SimpleLazyObject proxy, so never use
+        # type(request.user) here — it returns SimpleLazyObject which has
+        # no .objects manager and 500s every authenticated request.
+        # Use get_user_model() instead, and never let analytics break
+        # the request.
+        try:
+            user = getattr(request, 'user', None)
+            if user is not None and user.is_authenticated:
+                from django.contrib.auth import get_user_model
+                get_user_model().objects.filter(pk=user.pk).update(
+                    last_active=timezone.now()
+                )
+        except Exception:
+            pass
 
         return response

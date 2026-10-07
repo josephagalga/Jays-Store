@@ -14,6 +14,15 @@ ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.
 if 'testserver' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('testserver')
 
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        'CSRF_TRUSTED_ORIGINS',
+        'https://jays-store-steel.vercel.app,https://*.onrender.com',
+    ).split(',')
+    if o.strip()
+]
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -136,6 +145,10 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CORS_ALLOW_CREDENTIALS = True
 
+# ============================================================
+# STATIC & MEDIA FILES
+# ============================================================
+
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
@@ -146,6 +159,9 @@ CLOUDINARY_STORAGE = {
     'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
+
+LOGIN_REDIRECT_URL = '/django-admin/'
+LOGOUT_REDIRECT_URL = '/django-admin/login/'
 
 USE_CLOUDINARY = all([
     os.getenv('CLOUDINARY_CLOUD_NAME'),
