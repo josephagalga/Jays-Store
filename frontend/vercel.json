@@ -1,6 +1,13 @@
 {
   "rewrites": [
     {
+      "source": "/share/p/:slug",
+      "destination": "/api/og-product?slug=:slug&share=1"
+    },
+    {
+      "source": "/share/s/:slug",
+      "destination": "/api/og-store?slug=:slug&share=1"
+    },    {
       "source": "/products/:slug",
       "has": [
         {

@@ -9,7 +9,16 @@ import toast from 'react-hot-toast'
 export default function ShareButtons({ title = "Check this out", path = '/', label = 'Share' }) {
   const [copied, setCopied] = useState(false)
 
-  const url = `${window.location.origin}${path}`
+  // Route shares through preview links: crawlers get item-specific Open
+  // Graph tags (photo unfurls), humans are redirected to the real page.
+  const previewPath = (() => {
+    let m = path.match(/^\/products\/([^/?#]+)/)
+    if (m) return `/share/p/${m[1]}`
+    m = path.match(/^\/stores\/([^/?#]+)/)
+    if (m) return `/share/s/${m[1]}`
+    return path
+  })()
+  const url = `${window.location.origin}${previewPath}`
   const text = `${title} — ${url}`
   const whatsappHref = `https://wa.me/?text=${encodeURIComponent(text)}`
   const canNativeShare = typeof navigator !== 'undefined' && !!navigator.share

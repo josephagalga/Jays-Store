@@ -125,6 +125,7 @@ export default function SellerRegisterPage() {
               <input type="file" accept="image/*" className="w-full px-4 py-2.5 text-sm rounded-lg border border-[#e5e5e5] outline-none focus:border-[#0f0f0f] transition-colors"
                 {...register('store_logo')} />
               {errors.store_logo && <p className="text-xs text-red-600">{errors.store_logo.message}</p>}
+              {!errors.store_logo && <p className="text-xs text-[#737373]">Square looks best (e.g. 800 × 800 px).</p>}
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -132,6 +133,7 @@ export default function SellerRegisterPage() {
               <input type="file" accept="image/*" className="w-full px-4 py-2.5 text-sm rounded-lg border border-[#e5e5e5] outline-none focus:border-[#0f0f0f] transition-colors"
                 {...register('store_banner')} />
               {errors.store_banner && <p className="text-xs text-red-600">{errors.store_banner.message}</p>}
+              {!errors.store_banner && <p className="text-xs text-[#737373]">Wide banner works best (e.g. 1600 × 400 px).</p>}
             </div>
 
             <div className="flex flex-col gap-1.5">

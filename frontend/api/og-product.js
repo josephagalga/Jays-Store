@@ -1,11 +1,14 @@
 // GET /api/og-product?slug=<product-slug>
 //
-// Crawler-only preview page: returns minimal HTML with Open Graph tags so
-// shared product links unfurl with the product image on WhatsApp, Facebook,
-// X/Twitter, LinkedIn, Telegram, etc.
+// Preview page: crawlers get item-specific Open Graph tags (product image
+// unfurls on WhatsApp/Facebook/X); humans following a /share/ link are
+// redirected to the real product page (see `share` below).
 //
-// Humans never see this response — vercel.json rewrites ONLY known crawler
-// user-agents here; everyone else gets the React app.
+
+// Scrapers that read meta tags but don't run JavaScript. Used only to tell
+// humans (who followed a /share/ link) apart from crawlers.
+const BOT_UA =
+  /facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|pinterest|skypeuripreview|whatsapp|viber|micromessenger|kakaotalk|vkshare|redditbot|embedly|iframely|quora|applebot/i;
 
 function apiBase() {
   const raw = (process.env.VITE_API_URL || process.env.API_URL || 'https://myjays-store.onrender.com')
@@ -123,6 +126,13 @@ function page({ status, title, description, image, url, price }) {
 export default async function handler(req, res) {
   const slug = req.query?.slug;
   const site = siteOrigin();
+
+  // Preview-link visits by humans bounce straight to the real product page
+  // (crawlers ignore the redirect and read the tags below instead).
+  if (req.query?.share && !BOT_UA.test(req.headers?.['user-agent'] || '')) {
+    res.status(302).setHeader('Location', `${site}/products/${encodeURIComponent(slug || '')}`).send('');
+    return;
+  }
 
   if (!slug || !/^[a-z0-9-]+$/i.test(slug)) {
     const { status, html } = page({
