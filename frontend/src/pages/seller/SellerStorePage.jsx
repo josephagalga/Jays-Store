@@ -1,11 +1,26 @@
 ﻿import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Store } from 'lucide-react'
+import { Store, MessageCircle } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
 import ProductCard from '../../components/common/ProductCard'
 import ShareButtons from '../../components/common/ShareButtons'
 import Spinner from '../../components/ui/Spinner'
 import api from '../../services/api'
+
+function toWhatsAppLink(number) {
+  const digits = String(number || '').replace(/\D/g, '')
+  if (!digits) return null
+  // Ghana mobile like 0244123456 → international 233244123456
+  const intl = digits.length === 10 && digits.startsWith('0') ? `233${digits.slice(1)}` : digits
+  return `https://wa.me/${intl}`
+}
+
+const SOCIALS = [
+  { key: 'tiktok_url', label: 'TikTok' },
+  { key: 'facebook_url', label: 'Facebook' },
+  { key: 'instagram_url', label: 'Instagram' },
+  { key: 'youtube_url', label: 'YouTube' },
+]
 
 export default function SellerStorePage() {
   const { storeSlug } = useParams()
@@ -74,6 +89,22 @@ export default function SellerStorePage() {
               <span className="text-xs text-[var(--muted)]">★ {parseFloat(seller.seller_average_rating || 0).toFixed(1)} rating</span>
               <span className="text-xs text-[var(--muted)]">{seller.seller_total_sales || 0} sales</span>
             </div>
+            {(toWhatsAppLink(seller.whatsapp_number) || SOCIALS.some(s => seller[s.key])) && (
+              <div className="flex flex-wrap items-center gap-2 mt-4">
+                {toWhatsAppLink(seller.whatsapp_number) && (
+                  <a href={toWhatsAppLink(seller.whatsapp_number)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[40px] text-xs font-semibold text-white bg-green-600 rounded-xl hover:bg-green-700 transition-colors">
+                    <MessageCircle size={14} /> Chat on WhatsApp
+                  </a>
+                )}
+                {SOCIALS.filter(s => seller[s.key]).map(s => (
+                  <a key={s.key} href={seller[s.key]} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center px-3.5 py-2 min-h-[40px] text-xs font-semibold text-[var(--ink)] bg-white border border-[var(--border)] rounded-xl hover:border-[var(--ink)] transition-colors">
+                    {s.label}
+                  </a>
+                ))}
+              </div>
+            )}
             <div className="mt-4">
               <ShareButtons
                 title={`${seller.store_name} on My Jay's Store`}

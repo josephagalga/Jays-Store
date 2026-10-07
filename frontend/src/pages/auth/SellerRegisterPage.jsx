@@ -16,6 +16,8 @@ const schema = z.object({
   phone_number: z.string().min(10, 'Enter a valid phone number'),
   store_name: z.string().min(2, 'Store name is required'),
   store_description: z.string().optional(),
+  store_logo: z.instanceof(FileList).refine(files => files?.length === 1, 'Store profile picture is required'),
+  store_banner: z.instanceof(FileList).refine(files => files?.length === 1, 'Store banner image is required'),
   ghana_card_image: z.instanceof(FileList).refine(files => files?.length === 1, 'Ghana card image is required'),
   selfie_image: z.instanceof(FileList).refine(files => files?.length === 1, 'Selfie image is required'),
   password: z.string().min(8, 'Min. 8 characters'),
@@ -44,6 +46,8 @@ export default function SellerRegisterPage() {
       formData.append('phone_number', data.phone_number)
       formData.append('store_name', data.store_name)
       formData.append('store_description', data.store_description || '')
+      formData.append('store_logo', data.store_logo[0])
+      formData.append('store_banner', data.store_banner[0])
       formData.append('ghana_card_image', data.ghana_card_image[0])
       formData.append('selfie_image', data.selfie_image[0])
       formData.append('password', data.password)
@@ -114,6 +118,20 @@ export default function SellerRegisterPage() {
             
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
               ℹ️ We verify all sellers before listing. Upload your Ghana Card and a selfie.
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-[#0f0f0f]">Store profile picture</label>
+              <input type="file" accept="image/*" className="w-full px-4 py-2.5 text-sm rounded-lg border border-[#e5e5e5] outline-none focus:border-[#0f0f0f] transition-colors"
+                {...register('store_logo')} />
+              {errors.store_logo && <p className="text-xs text-red-600">{errors.store_logo.message}</p>}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-[#0f0f0f]">Store banner image</label>
+              <input type="file" accept="image/*" className="w-full px-4 py-2.5 text-sm rounded-lg border border-[#e5e5e5] outline-none focus:border-[#0f0f0f] transition-colors"
+                {...register('store_banner')} />
+              {errors.store_banner && <p className="text-xs text-red-600">{errors.store_banner.message}</p>}
             </div>
 
             <div className="flex flex-col gap-1.5">

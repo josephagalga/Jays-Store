@@ -1,8 +1,39 @@
 {
   "rewrites": [
     {
+      "source": "/products/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": {
+            "re": "(?i)(facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|pinterestbot|skypeuripreview|whatsapp|viber|micromessenger|kakaotalk|vkshare|redditbot|embedly|iframely)"
+          }
+        }
+      ],
+      "destination": "/api/og-product?slug=:slug"
+    },
+    {
+      "source": "/stores/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": {
+            "re": "(?i)(facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|pinterestbot|skypeuripreview|whatsapp|viber|micromessenger|kakaotalk|vkshare|redditbot|embedly|iframely)"
+          }
+        }
+      ],
+      "destination": "/api/og-store?slug=:slug"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 30
+    }
+  }
 }

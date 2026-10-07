@@ -189,18 +189,36 @@ function SellerDetailModal({ seller, rejectNote, setRejectNote, onClose, onVerif
         <div className="space-y-3 mb-6">
           {[
             ['Phone', s.phone_number],
+            ['WhatsApp', s.whatsapp_number],
             ['Store address', s.store_address],
             ['Pickup location', s.pickup_location],
             ['Status', s.verification_status],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between gap-4 text-sm">
               <span className="text-[var(--muted)] flex-shrink-0">{label}</span>
-              <span className="font-medium text-right">{value || '—'}</span>
+              <span className="font-medium text-right break-all">{value || '—'}</span>
             </div>
           ))}
+          {['tiktok_url', 'facebook_url', 'instagram_url', 'youtube_url'].some(k => s[k]) && (
+            <div className="flex justify-between gap-4 text-sm">
+              <span className="text-[var(--muted)] flex-shrink-0">Socials</span>
+              <span className="font-medium text-right">
+                {['tiktok_url', 'facebook_url', 'instagram_url', 'youtube_url']
+                  .filter(k => s[k])
+                  .map(k => k.replace('_url', ''))
+                  .join(' · ')}
+              </span>
+            </div>
+          )}
           {s.store_description && (
             <p className="text-sm text-[var(--muted)] pt-1">{s.store_description}</p>
           )}
+        </div>
+
+        {/* Store branding */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <KycImage label="Store profile picture" src={s.store_logo_url} storedPath={s.store_logo} />
+          <KycImage label="Store banner" src={s.store_banner_url} storedPath={s.store_banner} />
         </div>
 
         {/* KYC images */}

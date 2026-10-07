@@ -155,6 +155,15 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     pickup_location = models.CharField(max_length=200, blank=True, null=True)
     # ↑ Human-readable pickup location e.g. "Shop 5, Mallam"
 
+    # Store social & contact links — shown on the public store page so
+    # buyers can watch product videos and chat with the seller.
+    whatsapp_number = models.CharField(max_length=20, blank=True, default='')
+    # ↑ Chat number, e.g. "0244123456" — storefront links it as wa.me/233244123456
+    tiktok_url = models.URLField(max_length=300, blank=True, default='')
+    facebook_url = models.URLField(max_length=300, blank=True, default='')
+    instagram_url = models.URLField(max_length=300, blank=True, default='')
+    youtube_url = models.URLField(max_length=300, blank=True, default='')
+
     # Seller analytics
     seller_total_sales = models.PositiveIntegerField(default=0)
     # ↑ Total number of items sold across all their products

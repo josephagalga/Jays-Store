@@ -1130,10 +1130,12 @@ class StorePageView(APIView):
             'verified': vendor.verification_status == 'approved',
             'delivery_mode': vendor.delivery_mode,
             'social_links': {
-                'facebook': getattr(vendor, 'facebook_url', None) or None,
-                'instagram': getattr(vendor, 'instagram_url', None) or None,
-                'twitter': getattr(vendor, 'twitter_url', None) or None,
+                'facebook': vendor.facebook_url or None,
+                'instagram': vendor.instagram_url or None,
+                'tiktok': vendor.tiktok_url or None,
+                'youtube': vendor.youtube_url or None,
             },
+            'whatsapp_number': vendor.whatsapp_number or None,
             'products': ProductListSerializer(products, many=True, context={'request': request}).data,
         }
         return Response(data)

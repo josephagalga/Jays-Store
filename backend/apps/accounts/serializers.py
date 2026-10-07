@@ -80,7 +80,8 @@ class SellerRegistrationSerializer(serializers.ModelSerializer):
         fields = [
             'email', 'first_name', 'last_name',
             'phone_number', 'store_name', 'store_description',
-            'store_logo', 'ghana_card_image', 'selfie_image',
+            'store_logo', 'store_banner',
+            'ghana_card_image', 'selfie_image',
             'password', 'confirm_password',
         ]
 
@@ -89,6 +90,10 @@ class SellerRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
         if not data.get('store_name'):
             raise serializers.ValidationError({'store_name': 'Store name is required'})
+        if not data.get('store_logo'):
+            raise serializers.ValidationError({'store_logo': 'Store profile picture is required'})
+        if not data.get('store_banner'):
+            raise serializers.ValidationError({'store_banner': 'Store banner image is required'})
         if not data.get('ghana_card_image'):
             raise serializers.ValidationError({'ghana_card_image': 'Ghana card image is required for verification'})
         if not data.get('selfie_image'):
@@ -162,6 +167,12 @@ class BuyerProfileSerializer(serializers.ModelSerializer):
 class SellerProfileSerializer(serializers.ModelSerializer):
     """Owner view — includes payout fields (never expose publicly)."""
     full_name = serializers.ReadOnlyField()
+    # CharFields (not URLFields) so pasted links without a scheme can be
+    # normalized in validate() instead of hard-failing field validation.
+    tiktok_url = serializers.CharField(max_length=300, allow_blank=True, default='')
+    facebook_url = serializers.CharField(max_length=300, allow_blank=True, default='')
+    instagram_url = serializers.CharField(max_length=300, allow_blank=True, default='')
+    youtube_url = serializers.CharField(max_length=300, allow_blank=True, default='')
     class Meta:
         model = User
         fields = [
@@ -170,6 +181,8 @@ class SellerProfileSerializer(serializers.ModelSerializer):
             'store_name', 'store_description', 'store_logo',
             'store_banner', 'store_slug', 'store_address',
             'pickup_location',
+            'whatsapp_number', 'tiktok_url', 'facebook_url',
+            'instagram_url', 'youtube_url',
             'delivery_mode', 'custom_delivery_fee',
             'payout_account_number', 'payout_bank_code', 'payout_account_name',
             'paystack_subaccount_code', 'subaccount_status', 'subaccount_note',
@@ -186,9 +199,28 @@ class SellerProfileSerializer(serializers.ModelSerializer):
             'seller_total_ratings', 'date_joined', 'last_active',
         ]
 
+    def validate(self, data):
+        from django.core.validators import URLValidator
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        # Forgive pasted links without a scheme ("tiktok.com/@shop").
+        for field in ('tiktok_url', 'facebook_url', 'instagram_url', 'youtube_url'):
+            value = (data.get(field) or '').strip()
+            if value:
+                if '://' not in value:
+                    value = 'https://' + value
+                try:
+                    URLValidator()(value)
+                except DjangoValidationError:
+                    raise serializers.ValidationError({field: 'Enter a valid URL.'})
+                data[field] = value
+        if 'whatsapp_number' in data and data['whatsapp_number']:
+            data['whatsapp_number'] = data['whatsapp_number'].strip()
+        return data
+
 
 class SellerPublicSerializer(serializers.ModelSerializer):
-    """Public storefront — no payout/bank/contact internals, ever."""
+    """Public storefront — no payout/bank internals, ever.
+    WhatsApp + social links are seller-chosen public contact channels."""
     full_name = serializers.ReadOnlyField()
     logo_url = serializers.SerializerMethodField()
     banner_url = serializers.SerializerMethodField()
@@ -199,6 +231,8 @@ class SellerPublicSerializer(serializers.ModelSerializer):
             'id', 'full_name', 'store_name', 'store_slug', 'store_description',
             'store_address', 'pickup_location', 'is_verified',
             'logo_url', 'banner_url',
+            'whatsapp_number', 'tiktok_url', 'facebook_url',
+            'instagram_url', 'youtube_url',
             'seller_total_sales', 'seller_average_rating', 'seller_total_ratings',
         ]
 
@@ -334,6 +368,7 @@ class AdminSellerDetailSerializer(serializers.ModelSerializer):
     ghana_card_image_url = serializers.SerializerMethodField()
     selfie_image_url = serializers.SerializerMethodField()
     store_logo_url = serializers.SerializerMethodField()
+    store_banner_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -341,8 +376,12 @@ class AdminSellerDetailSerializer(serializers.ModelSerializer):
             'id', 'email', 'full_name', 'phone_number',
             'store_name', 'store_slug', 'store_description',
             'store_address', 'pickup_location',
-            'store_logo', 'ghana_card_image', 'selfie_image',
-            'store_logo_url', 'ghana_card_image_url', 'selfie_image_url',
+            'store_logo', 'store_banner',
+            'ghana_card_image', 'selfie_image',
+            'store_logo_url', 'store_banner_url',
+            'ghana_card_image_url', 'selfie_image_url',
+            'whatsapp_number', 'tiktok_url', 'facebook_url',
+            'instagram_url', 'youtube_url',
             'verification_status', 'verification_note',
             'is_active', 'date_joined', 'last_active',
         ]
@@ -369,6 +408,9 @@ class AdminSellerDetailSerializer(serializers.ModelSerializer):
 
     def get_store_logo_url(self, obj):
         return self._abs_url(obj.store_logo)
+
+    def get_store_banner_url(self, obj):
+        return self._abs_url(obj.store_banner)
 
 
 class AdminDashboardSerializer(serializers.Serializer):

@@ -103,6 +103,32 @@ export default function SellerDashboardPage() {
     deliveryMutation.mutate({ delivery_mode: mode })
   }
 
+  const linksMutation = useMutation({
+    mutationFn: (payload) => api.patch('/accounts/profile/seller/', payload),
+    onSuccess: (res) => {
+      qc.invalidateQueries(['seller-profile'])
+      setUser(res.data)
+      toast.success('Store links saved')
+    },
+    onError: (err) => {
+      const data = err.response?.data
+      const first = data && Object.values(data)[0]
+      toast.error(Array.isArray(first) ? first[0] : 'Could not save store links')
+    },
+  })
+
+  const saveLinks = (e) => {
+    e.preventDefault()
+    const form = new FormData(e.target)
+    linksMutation.mutate({
+      whatsapp_number: (form.get('whatsapp_number') || '').toString().trim(),
+      tiktok_url: (form.get('tiktok_url') || '').toString().trim(),
+      facebook_url: (form.get('facebook_url') || '').toString().trim(),
+      instagram_url: (form.get('instagram_url') || '').toString().trim(),
+      youtube_url: (form.get('youtube_url') || '').toString().trim(),
+    })
+  }
+
   const saveDeliveryFee = (e) => {
     e.preventDefault()
     const fee = parseFloat(deliveryFee)
@@ -255,6 +281,56 @@ export default function SellerDashboardPage() {
             </div>
           </form>
         )}
+      </div>
+
+      {/* Store links & contact — shown on your public store page */}
+      <div className="bg-white border border-[var(--border)] rounded-2xl p-6 mb-6">
+        <h2 className="serif text-xl font-medium text-[var(--ink)] mb-1">Store links &amp; contact</h2>
+        <p className="text-sm text-[var(--muted)] mb-5">
+          Add your social pages so buyers can watch your product videos, plus a WhatsApp
+          number they can chat with you on. All optional — only filled ones show on your store.
+        </p>
+        <form onSubmit={saveLinks} key={profile?.id || 'loading'} className="grid sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-1">
+            <label htmlFor="link-whatsapp" className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider mb-1.5 block">
+              WhatsApp number
+            </label>
+            <input
+              id="link-whatsapp"
+              name="whatsapp_number"
+              type="tel"
+              defaultValue={profile?.whatsapp_number || ''}
+              placeholder="e.g. 0244123456"
+              className="w-full px-4 py-3 min-h-[48px] text-base md:text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] placeholder:text-[var(--muted)] placeholder:opacity-70"
+            />
+          </div>
+          {[
+            { name: 'tiktok_url', label: 'TikTok link', placeholder: 'https://tiktok.com/@yourstore', value: profile?.tiktok_url },
+            { name: 'facebook_url', label: 'Facebook link', placeholder: 'https://facebook.com/yourstore', value: profile?.facebook_url },
+            { name: 'instagram_url', label: 'Instagram link', placeholder: 'https://instagram.com/yourstore', value: profile?.instagram_url },
+            { name: 'youtube_url', label: 'YouTube link', placeholder: 'https://youtube.com/@yourstore', value: profile?.youtube_url },
+          ].map(({ name, label, placeholder, value }) => (
+            <div key={name} className="sm:col-span-1">
+              <label htmlFor={`link-${name}`} className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider mb-1.5 block">
+                {label}
+              </label>
+              <input
+                id={`link-${name}`}
+                name={name}
+                type="url"
+                inputMode="url"
+                defaultValue={value || ''}
+                placeholder={placeholder}
+                className="w-full px-4 py-3 min-h-[48px] text-base md:text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] placeholder:text-[var(--muted)] placeholder:opacity-70"
+              />
+            </div>
+          ))}
+          <div className="sm:col-span-2">
+            <Button type="submit" loading={linksMutation.isPending} className="rounded-xl w-full sm:w-auto">
+              Save links
+            </Button>
+          </div>
+        </form>
       </div>
 
       {/* Payout account — instant settlement target */}
