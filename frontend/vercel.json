@@ -2,24 +2,10 @@
   "rewrites": [
     {
       "source": "/products/:slug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(facebookexternalhit|FacebookExternalHit|Facebot|Twitterbot|LinkedInBot|Slackbot|TelegramBot|Discordbot|Pinterest|SkypeUriPreview|WhatsApp|Viber|MicroMessenger|micromessenger|KakaoTalk|vkShare|redditbot|Embedly|IFramely|Quora|Applebot|Googlebot|bingbot|DuckDuckBot)"
-        }
-      ],
       "destination": "/api/og-product?slug=:slug"
     },
     {
       "source": "/stores/:slug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(facebookexternalhit|FacebookExternalHit|Facebot|Twitterbot|LinkedInBot|Slackbot|TelegramBot|Discordbot|Pinterest|SkypeUriPreview|WhatsApp|Viber|MicroMessenger|micromessenger|KakaoTalk|vkShare|redditbot|Embedly|IFramely|Quora|Applebot|Googlebot|bingbot|DuckDuckBot)"
-        }
-      ],
       "destination": "/api/og-store?slug=:slug"
     },
     {
