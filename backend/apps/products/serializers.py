@@ -88,7 +88,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             'price', 'discount_price', 'effective_price', 'discount_percentage',
             'category_name', 'subcategory_name',
             'average_rating', 'total_ratings', 'total_sold',
-            'primary_image', 'is_featured', 'variants',
+            'primary_image', 'is_featured', 'is_demo', 'variants',
             'store_name', 'store_slug', 'store_verified', 'store_logo_url',
         ]
 
@@ -154,7 +154,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'store_name', 'store_slug', 'store_verified', 'store_logo_url',
             'category', 'subcategory', 'tags',
             'average_rating', 'total_ratings', 'total_sold',
-            'images', 'variants', 'is_featured', 'is_active',
+            'images', 'variants', 'is_featured', 'is_demo', 'is_active',
             'created_at', 'updated_at',
         ]
 

@@ -7,19 +7,31 @@ python manage.py migrate
 
 python manage.py collectstatic --noinput
 
-python manage.py shell << 'EOF'
+ADMIN_EMAIL="${ADMIN_EMAIL:-admin@jaysstore.com}"
+if [ -z "${ADMIN_PASSWORD:-}" ]; then
+  echo "ADMIN_PASSWORD not set — skipping admin creation (set it in the environment to create/reset the admin)."
+else
+  ADMIN_FIRST_NAME="${ADMIN_FIRST_NAME:-Jay}" ADMIN_LAST_NAME="${ADMIN_LAST_NAME:-Admin}" ADMIN_EMAIL="$ADMIN_EMAIL" ADMIN_PASSWORD="$ADMIN_PASSWORD" python manage.py shell << 'EOF'
+import os
 from apps.accounts.models import CustomUser
-if not CustomUser.objects.filter(email='admin@jaysstore.com').exists():
+email = os.environ['ADMIN_EMAIL']
+user = CustomUser.objects.filter(email=email).first()
+if user is None:
     CustomUser.objects.create_superuser(
-        email='admin@jaysstore.com',
-        password='Admin1234!',
-        first_name='Jay',
-        last_name='Admin'
+        email=email,
+        password=os.environ['ADMIN_PASSWORD'],
+        first_name=os.environ.get('ADMIN_FIRST_NAME', 'Jay'),
+        last_name=os.environ.get('ADMIN_LAST_NAME', 'Admin'),
     )
     print('Superuser created')
 else:
-    print('Superuser already exists')
+    user.set_password(os.environ['ADMIN_PASSWORD'])
+    user.is_active = True
+    user.is_staff = True
+    user.save()
+    print('Superuser password reset')
 EOF
+fi
 
 # Demo catalog seeding — TESTING ONLY. seed_products uploads fake products
 # so testers have something to click through during soft launch.

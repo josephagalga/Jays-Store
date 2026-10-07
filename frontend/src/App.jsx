@@ -2,14 +2,16 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import useAuthStore from './store/authStore'
-import TestingBanner from './components/common/TestingBanner'
-import FeedbackWidget from './components/common/FeedbackWidget'
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage'
 import BuyerRegisterPage from './pages/auth/BuyerRegisterPage'
 import DriverRegisterPage from './pages/auth/DriverRegisterPage'
 import SellerRegisterPage from './pages/auth/SellerRegisterPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
+import ResetPasswordPage from './pages/auth/ResetPasswordPage'
+import ChangePasswordPage from './pages/auth/ChangePasswordPage'
+import MainLayout from './layouts/MainLayout'
 
 // Buyer pages
 import HomePage from './pages/buyer/HomePage'
@@ -128,6 +130,12 @@ function PublicOnlyRoute({ children }) {
   return children
 }
 
+function ChangePasswordRoute() {
+  const { user } = useAuthStore()
+  if (!user || user.role === 'buyer') return <MainLayout><ChangePasswordPage /></MainLayout>
+  return <DashboardLayout><ChangePasswordPage /></DashboardLayout>
+}
+
 // ── Dashboard layout ──────────────────────────────────────────
 
 function DashboardLayout({ children }) {
@@ -204,8 +212,6 @@ function DashboardLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-[var(--off)] flex flex-col">
-      {/* TESTING-ONLY */}
-      <TestingBanner />
       <header className="bg-white border-b border-[var(--border)] sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 h-16 flex items-center justify-between gap-6">
           <Link to="/" className="serif text-lg font-medium text-[var(--ink)] flex-shrink-0">
@@ -289,6 +295,10 @@ function DashboardLayout({ children }) {
               className="hidden md:block text-sm font-medium text-rose-500 hover:text-rose-600 transition-colors">
               Sign out
             </button>
+            <Link to="/change-password"
+              className="hidden md:block text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors">
+              Change password
+            </Link>
             <button
               onClick={() => setMobileNavOpen(v => !v)}
               aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
@@ -340,6 +350,10 @@ function DashboardLayout({ children }) {
                 </div>
               )
             })}
+            <Link to="/change-password" onClick={() => setMobileNavOpen(false)}
+              className="px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">
+              Change password
+            </Link>
             <button
               onClick={handleLogout}
               className="text-left px-3 py-2.5 text-sm font-medium text-rose-500 rounded-lg hover:bg-rose-50 transition-colors">
@@ -352,8 +366,6 @@ function DashboardLayout({ children }) {
       <main className="flex-1 min-w-0">
         {children}
       </main>
-      {/* TESTING-ONLY */}
-      <FeedbackWidget />
     </div>
   )
 }
@@ -368,6 +380,13 @@ export default function App() {
       <Route path="/register" element={<PublicOnlyRoute><BuyerRegisterPage /></PublicOnlyRoute>} />
       <Route path="/register/driver" element={<PublicOnlyRoute><DriverRegisterPage /></PublicOnlyRoute>} />
       <Route path="/register/seller" element={<PublicOnlyRoute><SellerRegisterPage /></PublicOnlyRoute>} />
+      <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPasswordPage /></PublicOnlyRoute>} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/change-password" element={
+        <PrivateRoute>
+          <ChangePasswordRoute />
+        </PrivateRoute>
+      } />
 
       {/* General pages */}
       <Route path="/about" element={<AboutPage />} />

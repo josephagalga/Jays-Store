@@ -57,6 +57,16 @@ class ProductListView(generics.ListAPIView):
     ordering_fields = ['price', 'average_rating', 'total_sold', 'created_at']
     ordering = ['-created_at']
 
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        # Commercial rule: real vendor products always rank above demo
+        # showcase items. Buyer sorts (price, rating, …) still apply —
+        # within each group (real first, demo last).
+        order = [o for o in (queryset.query.order_by or ()) if str(o).lstrip('-+') != 'is_demo']
+        if not order:
+            order = ['-created_at']
+        return queryset.order_by('is_demo', *order)
+
     def get_queryset(self):
         # Public catalog: active products from verified sellers (or platform items).
         # Products from pending/rejected sellers stay hidden until approval.
@@ -91,8 +101,9 @@ class FeaturedProductsView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
+        # Featured rail sells real stock: demo showcase items are excluded.
         return Product.objects.filter(
-            is_active=True, is_featured=True
+            is_active=True, is_featured=True, is_demo=False
         ).exclude(
             seller__verification_status__in=['pending', 'rejected']
         ).exclude(

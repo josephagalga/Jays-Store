@@ -108,14 +108,21 @@ class VoteReviewHelpfulView(APIView):
 
         if created:
             # New vote — increment count
-            review.helpful_votes += 1
-            review.save()
+            from django.db.models import F
+            Review.objects.filter(pk=review.pk).update(
+                helpful_votes=F('helpful_votes') + 1)
+            review.refresh_from_db()
             return Response({'message': 'Marked as helpful', 'helpful_votes': review.helpful_votes})
         else:
             # Already voted — remove the vote (toggle off)
             vote.delete()
-            review.helpful_votes = max(0, review.helpful_votes - 1)
-            review.save()
+            from django.db.models import F
+            Review.objects.filter(pk=review.pk).update(
+                helpful_votes=F('helpful_votes') - 1)
+            review.refresh_from_db()
+            if review.helpful_votes < 0:
+                review.helpful_votes = 0
+                review.save(update_fields=['helpful_votes'])
             return Response({'message': 'Vote removed', 'helpful_votes': review.helpful_votes})
 
 
@@ -150,6 +157,7 @@ class AdminToggleReviewVisibilityView(APIView):
 
         review.is_visible = not review.is_visible
         review.save()
+        review.product.recalc_rating()
         return Response({
             'message': f'Review {"visible" if review.is_visible else "hidden"}',
             'is_visible': review.is_visible,

@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
 from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Settlement, PLATFORM_COMMISSION_RATE, DeliveryOTPLog
+from apps.accounts.models import CustomUser
 from .otp_utils import generate_otp, hash_otp, verify_otp, get_otp_expiry, encrypt_otp
 from .emails import (
     send_payment_confirmation,
@@ -47,7 +48,7 @@ from .serializers import (
 from apps.core.permissions import IsBuyer, IsDriver, IsAdmin, IsAdminOrSeller, IsSeller
 from apps.products.models import Product
 from decimal import Decimal
-from django.db.models import Sum
+from django.db.models import Sum, F
 
 
 def get_seller_wallet(seller):
@@ -239,6 +240,20 @@ class PlaceOrderView(APIView):
             if not ci.product.is_active or ci.variant.product_id != ci.product.id:
                 stale_names.append(ci.product.name)
                 ci.delete()
+        demo_names = []
+        for ci in cart_items:
+            if ci.product.is_demo:
+                demo_names.append(ci.product.name)
+                ci.delete()
+        if demo_names:
+            return Response(
+                {'error': (
+                    'Some items in your bag are display-only showcase pieces '
+                    'and cannot be purchased: '
+                    + ', '.join(sorted(set(demo_names)))
+                    + '. They were removed — please review your bag and try again.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
         if stale_names:
             return Response(
                 {'error': (
@@ -398,8 +413,8 @@ class PlaceOrderView(APIView):
             is_locked=False,
         )
 
-        request.user.total_orders += 1
-        request.user.save()
+        CustomUser.objects.filter(pk=request.user.pk).update(
+            total_orders=F('total_orders') + 1)
 
         # CART CLEARING MOVED - happens after successful payment init (below)
 
@@ -535,6 +550,10 @@ def _resolve_guest_lines(items):
                 {'error': f"Product #{entry.get('product_id')} is no longer available."},
                 status=status.HTTP_400_BAD_REQUEST)
         seller = product.seller or product.created_by
+        if product.is_demo:
+            return None, Response(
+                {'error': f'"{product.name}" is a display-only showcase item and cannot be purchased.'},
+                status=status.HTTP_400_BAD_REQUEST)
         if seller and getattr(seller, 'verification_status', 'approved') in ('pending', 'rejected'):
             return None, Response(
                 {'error': f'"{product.name}" is not available right now.'},
@@ -842,16 +861,17 @@ class CancelOrderView(APIView):
         if order.payment_status == 'paid':
             for item in order.items.select_related('variant'):
                 if item.variant:
-                    item.variant.stock += item.quantity
-                    item.variant.save(update_fields=['stock'])
+                    from apps.products.models import ProductVariant
+                    ProductVariant.objects.filter(pk=item.variant.pk).update(
+                        stock=F('stock') + item.quantity)
 
         order.status = 'cancelled'
         order.save()
         # No settlements exist for unpaid orders in new flow
         # (settlements created only after payment confirms)
 
-        request.user.cancelled_orders += 1
-        request.user.save()
+        CustomUser.objects.filter(pk=request.user.pk).update(
+            cancelled_orders=F('cancelled_orders') + 1)
 
         return Response({'message': 'Order cancelled successfully'})
 
@@ -979,25 +999,30 @@ class DriverUpdateOrderStatusView(APIView):
             send_delivered_email(order)
 
             driver = request.user
-            driver.total_deliveries += 1
-            driver.successful_deliveries += 1
-            driver.currently_delivering = False
-            driver.save()
+            CustomUser.objects.filter(pk=driver.pk).update(
+                total_deliveries=F('total_deliveries') + 1,
+                successful_deliveries=F('successful_deliveries') + 1,
+                currently_delivering=False,
+            )
 
-            # Update buyer stats
-            order.buyer.completed_orders += 1
-            order.buyer.total_spent += order.total
-            order.buyer.save()
+            # Update buyer stats (guest orders have no buyer — skip, don't 500)
+            if order.buyer is not None:
+                CustomUser.objects.filter(pk=order.buyer.pk).update(
+                    completed_orders=F('completed_orders') + 1,
+                    total_spent=F('total_spent') + order.total,
+                )
 
             # Update product and seller stats per item
+            from apps.products.models import Product
             for item in order.items.select_related('product', 'seller'):
                 if item.product:
-                    item.product.total_sold += item.quantity
-                    item.product.save()
+                    Product.objects.filter(pk=item.product.pk).update(
+                        total_sold=F('total_sold') + item.quantity)
                 if item.seller:
-                    item.seller.seller_total_sales += item.quantity
-                    item.seller.seller_total_revenue += item.total_price
-                    item.seller.save()
+                    CustomUser.objects.filter(pk=item.seller.pk).update(
+                        seller_total_sales=F('seller_total_sales') + item.quantity,
+                        seller_total_revenue=F('seller_total_revenue') + item.total_price,
+                    )
 
         data = OrderSerializer(order).data
         # Never leak the COD PIN to the driver app.
@@ -1247,10 +1272,13 @@ class VerifyDeliveryOTPView(APIView):
             order.save()
             return Response({'message': 'OTP verified successfully', 'verified': True})
         else:
-            otp_log.attempts += 1
+            from .models import DeliveryOTPLog
+            DeliveryOTPLog.objects.filter(pk=otp_log.pk).update(
+                attempts=F('attempts') + 1)
+            otp_log.refresh_from_db()
             if otp_log.attempts >= 3:
                 otp_log.is_locked = True
-            otp_log.save()
+                otp_log.save(update_fields=['is_locked'])
             
             if otp_log.is_locked:
                 return Response(
@@ -1309,10 +1337,13 @@ class SellerConfirmHandoffView(APIView):
                 status=status.HTTP_400_BAD_REQUEST)
 
         if not verify_otp(code, otp_log.otp_hash):
-            otp_log.attempts += 1
+            from .models import DeliveryOTPLog
+            DeliveryOTPLog.objects.filter(pk=otp_log.pk).update(
+                attempts=F('attempts') + 1)
+            otp_log.refresh_from_db()
             if otp_log.attempts >= 3:
                 otp_log.is_locked = True
-            otp_log.save()
+                otp_log.save(update_fields=['is_locked'])
             if otp_log.is_locked:
                 return Response(
                     {'error': 'OTP verification locked after 3 failed attempts. Contact support.'},
@@ -1352,18 +1383,20 @@ def _confirm_payment(order):
     import logging
     logger = logging.getLogger(__name__)
     
-    # STEP 1: DEDUCT STOCK (payment confirmed)
+    # STEP 1: DEDUCT STOCK (payment confirmed). Atomic guarded decrement:
+    # only deducts when enough stock remains, so concurrent confirmations
+    # can never drive stock negative or lose updates.
     for item in order.items.select_related('variant'):
         if item.variant:
-            variant = item.variant
-            if variant.stock >= item.quantity:
-                variant.stock -= item.quantity
-                variant.save(update_fields=['stock'])
-            else:
+            from apps.products.models import ProductVariant
+            updated = ProductVariant.objects.filter(
+                pk=item.variant.pk, stock__gte=item.quantity
+            ).update(stock=F('stock') - item.quantity)
+            if not updated:
                 # Edge case: stock sold out between order placement and payment
                 logger.warning(
-                    f'Stock shortage for variant {variant.id} in order {order.id}: '
-                    f'needed {item.quantity}, available {variant.stock}'
+                    f'Stock shortage for variant {item.variant.pk} in order {order.id}: '
+                    f'needed {item.quantity} (insufficient stock at confirm time)'
                 )
                 # Still process payment (money already collected)
                 # Admin handles fulfillment manually

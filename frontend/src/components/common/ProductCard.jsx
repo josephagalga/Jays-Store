@@ -64,6 +64,13 @@ export default function ProductCard({ product, index = 0 }) {
             </span>
           )}
 
+          {/* Demo showcase items are display-only */}
+          {product.is_demo && (
+            <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-black/70 text-white text-[10px] font-semibold rounded-full">
+              Display only
+            </span>
+          )}
+
           {/* Wishlist — always visible on touch, scales on hover for desktop */}
           <button onClick={e => { e.preventDefault(); e.stopPropagation(); toggleWishlist(product) }}
             aria-label={wished ? 'Remove from wishlist' : 'Add to wishlist'}
@@ -71,8 +78,9 @@ export default function ProductCard({ product, index = 0 }) {
             <Heart size={15} className={wished ? 'fill-rose-500 text-rose-500' : 'text-[var(--muted)]'} />
           </button>
 
-          {/* Quick add — buyers use the server bag, guests use the local bag */}
-          {(isBuyer || !user) && (
+          {/* Quick add — buyers use the server bag, guests use the local bag.
+              Demo showcase items cannot be purchased. */}
+          {(isBuyer || !user) && !product.is_demo && (
             <div className="absolute bottom-3 left-3 right-3 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
               <button onClick={handleQuickAdd} disabled={isLoading}
                 className="w-full bg-white/95 backdrop-blur-sm text-[var(--ink)] text-xs font-semibold py-2.5 rounded-lg hover:bg-white transition-colors shadow-sm">

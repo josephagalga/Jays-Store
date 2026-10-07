@@ -13,7 +13,11 @@ class IsBuyer(BasePermission):
 
 class IsSeller(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'seller'
+        return (
+            request.user.is_authenticated and
+            request.user.role == 'seller' and
+            request.user.is_verified
+        )
 
 
 class IsDriver(BasePermission):
@@ -27,10 +31,12 @@ class IsDriver(BasePermission):
 
 class IsAdminOrSeller(BasePermission):
     def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated and
-            request.user.role in ['admin', 'seller']
-        )
+        user = request.user
+        if not user.is_authenticated:
+            return False
+        if user.role == 'admin':
+            return True
+        return user.role == 'seller' and user.is_verified
 
 
 class IsProductOwner(BasePermission):

@@ -26,13 +26,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
         user = self.user
-        # Link guest orders placed with this email before they had an account.
-        try:
-            from apps.orders.models import Order
-            Order.objects.filter(
-                buyer__isnull=True, guest_email__iexact=user.email).update(buyer=user)
-        except Exception:
-            pass
         if user.role in ('driver', 'seller') and not user.is_verified:
             if user.verification_status == 'pending':
                 raise serializers.ValidationError(
@@ -42,6 +35,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 raise serializers.ValidationError(
                     f'Your application was rejected. Reason: {user.verification_note or "Does not meet requirements."}'
                 )
+        # Link guest orders placed with this email before they had an account.
+        # Runs AFTER the verification gate so a blocked login never mutates data.
+        try:
+            from apps.orders.models import Order
+            Order.objects.filter(
+                buyer__isnull=True, guest_email__iexact=user.email).update(buyer=user)
+        except Exception:
+            pass
         return data
 
 
@@ -140,6 +141,37 @@ class DriverRegistrationSerializer(serializers.ModelSerializer):
             verification_status='pending',
             **validated_data
         )
+
+
+# ============================================================
+# PASSWORD RESET / CHANGE
+# ============================================================
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data['password'] != data['confirm_password']:
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
+        return data
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data['password'] != data['confirm_password']:
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
+        return data
 
 
 # ============================================================
@@ -457,7 +489,7 @@ class VendorListSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'full_name', 'store_name', 'store_slug', 'store_description',
-            'store_address', 'pickup_location', 'phone_number',
+            'store_address', 'pickup_location',
             'logo_url', 'banner_url', 'is_verified',
             'seller_total_sales', 'seller_average_rating', 'seller_total_ratings',
             'product_count',

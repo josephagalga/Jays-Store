@@ -8,6 +8,14 @@ urlpatterns = [
     path('register/driver/', views.DriverRegistrationView.as_view(), name='driver-register'),
     path('guest-claim/', views.GuestClaimView.as_view(), name='guest-claim'),
 
+    # Password reset / change
+    path('password/reset-request/', views.PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('password/reset-confirm/', views.PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    path('password/change/', views.PasswordChangeView.as_view(), name='password-change'),
+
+    # Own buyer account (GET/PATCH/DELETE own profile incl. soft-delete)
+    path('me/', views.BuyerProfileView.as_view(), name='my-profile'),
+
     # Profiles
     path('profile/buyer/', views.BuyerProfileView.as_view(), name='buyer-profile'),
     path('profile/seller/', views.SellerProfileView.as_view(), name='seller-profile'),

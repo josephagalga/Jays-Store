@@ -108,6 +108,12 @@ export default function LoginPage() {
             </Button>
           </form>
 
+          <p className="text-sm text-center mt-4">
+            <Link to="/forgot-password" className="text-[var(--muted)] hover:text-[var(--ink)] hover:underline">
+              Forgot password?
+            </Link>
+          </p>
+
           <div className="mt-8 pt-8 border-t border-[var(--border)] flex gap-3">
             <Link to="/register/seller"
               className="flex-1 py-2.5 text-sm font-medium text-center border border-[var(--border)] rounded-xl bg-white hover:border-[var(--ink)] transition-colors text-[var(--muted)] hover:text-[var(--ink)]">

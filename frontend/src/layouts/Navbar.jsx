@@ -148,6 +148,7 @@ export default function Navbar() {
                         <Link to="/wishlist" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">My Wishlist</Link>
                         <Link to="/orders" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">My Orders</Link>
                         <Link to="/assistant" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">AI Stylist</Link>
+                        <Link to="/change-password" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">Change password</Link>
                         <Link to="/about" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">About</Link>
                         <Link to="/contact" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">Contact</Link>
                       </>}
@@ -205,6 +206,7 @@ export default function Navbar() {
                     ['My Wishlist', '/wishlist'],
                     ['My Orders', '/orders'],
                     ['AI Stylist', '/assistant'],
+                    ['Change password', '/change-password'],
                   ].map(([label, to]) => (
                     <Link key={to} to={to} onClick={() => setMenuOpen(false)}
                       className="block px-3 py-2.5 text-sm font-medium text-[var(--ink)] rounded-lg hover:bg-[var(--off)] transition-colors">

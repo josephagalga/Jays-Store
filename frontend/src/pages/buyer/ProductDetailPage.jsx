@@ -730,8 +730,16 @@ export default function ProductDetailPage() {
               </div>
             )}
 
-            {/* Add to bag — guests shop with a local bag, no account needed */}
-            {isBuyer || !user ? (
+            {/* Add to bag — guests shop with a local bag, no account needed.
+                Demo showcase items are display-only and cannot be purchased. */}
+            {product.is_demo ? (
+              <div className="bg-[var(--off)] border border-[var(--border)] rounded-xl px-4 py-3.5 text-center">
+                <p className="text-sm font-semibold text-[var(--ink)]">Display only</p>
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  This showcase piece isn't for sale — browse vendor stores for buyable items.
+                </p>
+              </div>
+            ) : (isBuyer || !user ? (
               <div className="flex gap-3">
                 <Button
                   size="full"
@@ -749,8 +757,8 @@ export default function ProductDetailPage() {
                   <Heart size={16} className={isWishlisted(product.id) ? 'fill-rose-500 text-rose-500' : 'text-[var(--muted)]'} />
                 </button>
               </div>
-            ) : null}
-            {!user && (
+            ) : null)}
+            {!user && !product.is_demo && (
               <p className="text-xs text-[var(--muted)]">
                 No account needed — <Link to="/login" className="underline text-[var(--ink)]">sign in</Link> anytime to sync your bag across devices.
               </p>
@@ -829,8 +837,8 @@ export default function ProductDetailPage() {
         )}
       </div>
 
-      {/* Sticky mobile buy bar — price + Add to Bag always in thumb reach */}
-      {(isBuyer || !user) && (
+      {/* Sticky mobile buy bar — hidden for display-only demo items */}
+      {(isBuyer || !user) && !product.is_demo && (
         <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-[var(--border)] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-3">
             <div className="min-w-0">

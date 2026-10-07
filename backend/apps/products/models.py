@@ -110,6 +110,10 @@ class Product(models.Model):
     is_featured = models.BooleanField(default=False)
     # ↑ Featured products appear on the homepage
 
+    is_demo = models.BooleanField(default=False, db_index=True)
+    # ↑ Demo/showcase catalog (seeded): visible everywhere but NEVER buyable.
+    #   Real vendor uploads always have is_demo=False.
+
     # Analytics
     total_sold = models.PositiveIntegerField(default=0)
     # ↑ Incremented each time an order for this product completes
@@ -238,6 +242,15 @@ class Product(models.Model):
         self.average_rating = (
             (self.average_rating * (self.total_ratings - 1)) + new_rating
         ) / self.total_ratings
+        self.save(update_fields=['average_rating', 'total_ratings'])
+
+    def recalc_rating(self):
+        """Recompute stats from visible reviews (use after hide/show/delete)."""
+        from django.db.models import Avg, Count
+        agg = self.reviews.filter(is_visible=True).aggregate(
+            avg=Avg('rating'), count=Count('id'))
+        self.average_rating = agg['avg'] or 0
+        self.total_ratings = agg['count'] or 0
         self.save(update_fields=['average_rating', 'total_ratings'])
 
 

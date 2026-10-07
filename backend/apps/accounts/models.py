@@ -277,10 +277,19 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             self.verification_status = 'approved'
         if self.role == self.Role.SELLER:
             self.is_verified = self.verification_status == 'approved'
-            # Auto generate store slug from store name if not set
+            # Auto generate store slug from store name if not set.
+            # Dedup loop mirrors product slugs — a second "Kente Co." must
+            # not 500 on the unique constraint.
             if self.store_name and not self.store_slug:
                 from django.utils.text import slugify
-                self.store_slug = slugify(self.store_name)
+                base = slugify(self.store_name) or f'store-{self.pk or "new"}'
+                slug = base
+                counter = 1
+                Model = type(self)
+                while Model.objects.filter(store_slug=slug).exclude(pk=self.pk).exists():
+                    slug = f'{base}-{counter}'
+                    counter += 1
+                self.store_slug = slug
         if self.role == self.Role.DRIVER:
             self.is_verified = self.verification_status == 'approved'
         super().save(*args, **kwargs)

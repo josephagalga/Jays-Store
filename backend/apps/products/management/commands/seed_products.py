@@ -598,6 +598,7 @@ class Command(BaseCommand):
                 created_by=admin,
                 category=cats[category_key],
                 discount_price=discount_price,
+                is_demo=True,
                 **p
             )
 

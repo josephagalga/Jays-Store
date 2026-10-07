@@ -113,8 +113,9 @@ class TrackProductViewView(APIView):
             product=product
         )
         if not created:
-            view.view_count += 1
-            view.save()
+            from django.db.models import F
+            ProductView.objects.filter(pk=view.pk).update(
+                view_count=F('view_count') + 1)
 
         return Response({'message': 'View tracked'})
 

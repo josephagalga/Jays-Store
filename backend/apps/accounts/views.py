@@ -18,6 +18,9 @@ from .serializers import (
     AdminDriverDetailSerializer,
     AdminSellerDetailSerializer,
     AdminVerifyDriverSerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordChangeSerializer,
     AdminDashboardSerializer,
     CustomTokenObtainPairSerializer,
     ContactMessageSerializer,
@@ -138,6 +141,87 @@ class GuestClaimView(APIView):
             'tokens': tokens,
             'orders_linked': count,
         }, status=status.HTTP_201_CREATED)
+
+
+# ============================================================
+# PASSWORD RESET / CHANGE
+# ============================================================
+
+class PasswordResetRequestView(APIView):
+    """Email a reset link. Always 200 — never reveal whether the email exists."""
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'password'
+
+    def post(self, request):
+        from django.conf import settings
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+        from apps.orders.emails import _send
+
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email'].strip().lower()
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if user is not None:
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            reset_url = (
+                f"{getattr(settings, 'FRONTEND_URL', '').rstrip('/')}"
+                f"/reset-password?uid={uid}&token={token}"
+            )
+            _send(
+                user.email,
+                "Reset your My Jay's Store password",
+                f"Hi {user.first_name},\n\n"
+                f"Reset your password here (valid 24 hours):\n{reset_url}\n\n"
+                f"If you didn't ask for this, ignore this email.",
+                kind='password_reset',
+            )
+        return Response({
+            'message': 'If an account exists for this email, a reset link is on its way.',
+        })
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'password'
+
+    def post(self, request):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_str
+        from django.utils.http import urlsafe_base64_decode
+
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            pk = force_str(urlsafe_base64_decode(serializer.validated_data['uid']))
+            user = User.objects.get(pk=pk, is_active=True)
+        except (User.DoesNotExist, ValueError, TypeError):
+            user = None
+        if user is None or not default_token_generator.check_token(
+                user, serializer.validated_data['token']):
+            return Response(
+                {'error': 'This reset link is invalid or expired. Request a new one.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(serializer.validated_data['password'])
+        user.save(update_fields=['password'])
+        return Response({'message': 'Password reset. Sign in with your new password.'})
+
+
+class PasswordChangeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PasswordChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not request.user.check_password(serializer.validated_data['current_password']):
+            return Response(
+                {'error': 'Current password is incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        request.user.set_password(serializer.validated_data['password'])
+        request.user.save(update_fields=['password'])
+        return Response({'message': 'Password changed.'})
 
 
 # ============================================================

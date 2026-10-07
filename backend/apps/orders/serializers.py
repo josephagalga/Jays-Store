@@ -45,7 +45,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     size = serializers.CharField(source='variant.size', read_only=True)
     color = serializers.CharField(source='variant.color', read_only=True)
     unit_price = serializers.DecimalField(
-        source='product.effective_price',
+        source='product.display_price',
         max_digits=10,
         decimal_places=2,
         read_only=True
@@ -110,6 +110,11 @@ class AddToCartSerializer(serializers.Serializer):
             product = Product.objects.get(id=data['product_id'], is_active=True)
         except Product.DoesNotExist:
             raise serializers.ValidationError({'product_id': 'Product not found'})
+
+        # Demo showcase items are display-only and can never be bought
+        if product.is_demo:
+            raise serializers.ValidationError(
+                {'product_id': 'This is a display-only showcase item and cannot be purchased.'})
 
         # Make sure variant exists and belongs to this product
         try:
