@@ -36,7 +36,8 @@ function trunc(value, max) {
 
 async function fetchJson(url) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
+  // Render's free tier can cold-start for 20s+; maxDuration (vercel.json) is 30s.
+  const timer = setTimeout(() => ctrl.abort(), 20000);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
     if (!res.ok) return null;

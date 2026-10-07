@@ -6,9 +6,7 @@
         {
           "type": "header",
           "key": "user-agent",
-          "value": {
-            "re": "(?i)(facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|pinterestbot|skypeuripreview|whatsapp|viber|micromessenger|kakaotalk|vkshare|redditbot|embedly|iframely)"
-          }
+          "value": "(facebookexternalhit|FacebookExternalHit|Facebot|Twitterbot|LinkedInBot|Slackbot|TelegramBot|Discordbot|Pinterest|SkypeUriPreview|WhatsApp|Viber|MicroMessenger|micromessenger|KakaoTalk|vkShare|redditbot|Embedly|IFramely|Quora|Applebot|Googlebot|bingbot|DuckDuckBot)"
         }
       ],
       "destination": "/api/og-product?slug=:slug"
@@ -19,9 +17,7 @@
         {
           "type": "header",
           "key": "user-agent",
-          "value": {
-            "re": "(?i)(facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|pinterestbot|skypeuripreview|whatsapp|viber|micromessenger|kakaotalk|vkshare|redditbot|embedly|iframely)"
-          }
+          "value": "(facebookexternalhit|FacebookExternalHit|Facebot|Twitterbot|LinkedInBot|Slackbot|TelegramBot|Discordbot|Pinterest|SkypeUriPreview|WhatsApp|Viber|MicroMessenger|micromessenger|KakaoTalk|vkShare|redditbot|Embedly|IFramely|Quora|Applebot|Googlebot|bingbot|DuckDuckBot)"
         }
       ],
       "destination": "/api/og-store?slug=:slug"
