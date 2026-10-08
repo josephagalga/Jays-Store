@@ -198,6 +198,27 @@ export default function CheckoutPage() {
       }
     } catch (err) {
       const d = err.response?.data
+      // 502 = order was created UNPAID but Paystack init failed. Recover via
+      // the tracking page (retry lives there) instead of stranding the buyer.
+      if (err.response?.status === 502 && (d?.reference || d?.id)) {
+        const reason = d?.payment_init_failed || d?.message || 'Payment could not start.'
+        toast.error(`Order saved but payment could not start (${reason}). Retry below.`, { duration: 8000 })
+        if (!isBuyer && d?.reference) {
+          try {
+            const raw = localStorage.getItem('jays-guest-orders')
+            const list = raw ? JSON.parse(raw) : []
+            const next = [{ reference: d.reference, guest_email: '',
+              // eslint-disable-next-line react-hooks/purity -- event handler, not render
+              createdAt: Date.now() },
+              ...list.filter(e => e?.reference !== d.reference)].slice(0, 10)
+            localStorage.setItem('jays-guest-orders', JSON.stringify(next))
+          } catch { /* ignore */ }
+          navigate(`/track/${d.reference}`)
+        } else if (isBuyer && d?.id) {
+          navigate(`/orders/${d.id}/track`)
+        }
+        return
+      }
       const msg = typeof d === 'string' ? d
         : d?.non_field_errors?.[0] || d?.detail || d?.delivery_address?.[0]
           || d?.guest_email?.[0] || d?.items?.[0] || d?.error || 'Failed to place order'

@@ -506,24 +506,29 @@ class PlaceOrderView(APIView):
 
         # Create the Paystack split + initialize the buyer charge.
         # (No vendor shares → plain charge, platform keeps everything.)
+        # Split-create and initialize are labeled separately so a 502 names
+        # the exact failing step instead of a generic Paystack error.
         try:
             seller_shares = [
                 (e['seller'].paystack_subaccount_code, e['net'])
                 for e in per_seller.values()
             ]
             if seller_shares:
-                split = create_transaction_split(
-                    name=f'My Jays Store order {order.id}',
-                    seller_shares=seller_shares,
-                    bearer_share=admin_gross,  # Expected platform share (for logging/validation)
-                    metadata={
-                        'order_id': order.id,
-                        'commission': float(commission_collected_total),
-                        'delivery_fee': float(delivery_fee),
-                        'platform_items': float(platform_direct),
-                        'expected_platform_total': float(admin_gross),
-                    }
-                )
+                try:
+                    split = create_transaction_split(
+                        name=f'My Jays Store order {order.id}',
+                        seller_shares=seller_shares,
+                        bearer_share=admin_gross,  # Expected platform share (for logging/validation)
+                        metadata={
+                            'order_id': order.id,
+                            'commission': float(commission_collected_total),
+                            'delivery_fee': float(delivery_fee),
+                            'platform_items': float(platform_direct),
+                            'expected_platform_total': float(admin_gross),
+                        }
+                    )
+                except Exception as exc:
+                    raise RuntimeError(f'paystack split create failed: {exc}')
                 order.paystack_split_code = split.get('split_code', '')
                 order.save(update_fields=['paystack_split_code'])
 
@@ -531,34 +536,38 @@ class PlaceOrderView(APIView):
             callback_base = (getattr(settings, 'FRONTEND_URL', '') or '').strip()
             callback_url = callback_base.rstrip('/') + f'/orders/{order.id}/track' if callback_base else None
             channels = serializer.validated_data.get('channels') or None
-            if order.paystack_split_code:
-                init = initialize_split_transaction(
-                    email=request.user.email,
-                    gross_total=total + processing_fee,
-                    reference=reference,
-                    split_code=order.paystack_split_code,
-                    order_id=order.id,
-                    callback_url=callback_url,
-                    channels=channels,
-                )
-            else:
-                init = initialize_plain_transaction(
-                    email=request.user.email,
-                    gross_total=total + processing_fee,
-                    reference=reference,
-                    order_id=order.id,
-                    callback_url=callback_url,
-                    channels=channels,
-                )
+            try:
+                if order.paystack_split_code:
+                    init = initialize_split_transaction(
+                        email=request.user.email,
+                        gross_total=total + processing_fee,
+                        reference=reference,
+                        split_code=order.paystack_split_code,
+                        order_id=order.id,
+                        callback_url=callback_url,
+                        channels=channels,
+                    )
+                else:
+                    init = initialize_plain_transaction(
+                        email=request.user.email,
+                        gross_total=total + processing_fee,
+                        reference=reference,
+                        order_id=order.id,
+                        callback_url=callback_url,
+                        channels=channels,
+                    )
+            except Exception as exc:
+                raise RuntimeError(f'paystack initialize failed: {exc}')
             order.paystack_reference = init.get('reference', reference)
             order.save(update_fields=['paystack_reference'])
-            
+
             # CART CLEARED ONLY AFTER SUCCESSFUL PAYMENT INIT
             cart.cart_items.all().delete()
-            
+
         except Exception as exc:
             # Order stays UNPAID — buyer retries from My Orders → Pay Now.
             # Cart is PRESERVED on failure so buyer can retry
+            logger.exception(f'Buyer order {order.id} payment init failed')
             response_data = OrderSerializer(order, context={'request': request}).data
             response_data['payment_init_failed'] = str(exc)
             response_data['message'] = 'Order created but payment failed to start. Cart preserved - retry from My Orders.'
@@ -731,20 +740,24 @@ class GuestPlaceOrderView(APIView):
                 (e['seller'].paystack_subaccount_code, e['net'])
                 for e in per_seller.values()
             ]
+            split_code = ''
             if seller_shares:
-                split = create_transaction_split(
-                    name=f'My Jays Store order {order.id}',
-                    seller_shares=seller_shares,
-                    bearer_share=admin_gross,
-                    metadata={
-                        'order_id': order.id,
-                        'commission': float(commission_collected_total),
-                        'delivery_fee': float(delivery_fee),
-                        'platform_items': float(platform_direct),
-                        'expected_platform_total': float(admin_gross),
-                        'guest': True,
-                    }
-                )
+                try:
+                    split = create_transaction_split(
+                        name=f'My Jays Store order {order.id}',
+                        seller_shares=seller_shares,
+                        bearer_share=admin_gross,
+                        metadata={
+                            'order_id': order.id,
+                            'commission': float(commission_collected_total),
+                            'delivery_fee': float(delivery_fee),
+                            'platform_items': float(platform_direct),
+                            'expected_platform_total': float(admin_gross),
+                            'guest': True,
+                        }
+                    )
+                except Exception as exc:
+                    raise RuntimeError(f'paystack split create failed: {exc}')
                 order.paystack_split_code = split.get('split_code', '')
                 order.save(update_fields=['paystack_split_code'])
 
@@ -759,14 +772,18 @@ class GuestPlaceOrderView(APIView):
                 callback_url=callback_url,
                 channels=channels,
             )
-            if order.paystack_split_code:
-                init = initialize_split_transaction(
-                    split_code=order.paystack_split_code, **init_kwargs)
-            else:
-                init = initialize_plain_transaction(**init_kwargs)
+            try:
+                if order.paystack_split_code:
+                    init = initialize_split_transaction(
+                        split_code=order.paystack_split_code, **init_kwargs)
+                else:
+                    init = initialize_plain_transaction(**init_kwargs)
+            except Exception as exc:
+                raise RuntimeError(f'paystack initialize failed: {exc}')
             order.paystack_reference = init.get('reference', reference)
             order.save(update_fields=['paystack_reference'])
         except Exception as exc:
+            logger.exception(f'Guest order {order.id} payment init failed')
             response_data = GuestOrderResponseSerializer(order).data
             response_data['payment_init_failed'] = str(exc)
             response_data['message'] = 'Order saved but payment could not start. Retry from your tracking link.'

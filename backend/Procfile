@@ -1,1 +1,1 @@
-web: gunicorn config.wsgi:application
+web: gunicorn config.wsgi:application --timeout 90 --graceful-timeout 30
