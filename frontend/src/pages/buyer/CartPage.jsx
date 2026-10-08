@@ -1,11 +1,13 @@
 ﻿import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Trash2, ShoppingBag, ArrowRight } from 'lucide-react'
 import MainLayout from
 '../../layouts/MainLayout'
 import SafeImage from '../../components/common/SafeImage'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
+import api from '../../services/api'
 import useCartStore from '../../store/cartStore'
 import useGuestCartStore from '../../store/guestCartStore'
 import useAuthStore from '../../store/authStore'
@@ -75,6 +77,30 @@ export default function CartPage() {
     else removeGuestItem(row.id)
   }
 
+  const subtotal = items.reduce((n, i) => n + i.lineTotal, 0)
+  const itemCount = items.reduce((n, i) => n + Number(i.quantity || 0), 0)
+  const delivery = deliveryFeeForCount(itemCount)
+
+  // Exact server quote (same pricing as checkout: per-vendor self-delivery
+  // fees included). Falls back to the platform estimate until it loads.
+  // NOTE: hooks must stay above the early returns below.
+  const quoteBody = isBuyer
+    ? {}
+    : { items: guestItems.map(i => ({ product_id: i.product_id, variant_id: i.variant_id, quantity: i.quantity })) }
+  const quoteKey = isBuyer
+    ? ['bag-quote', 'buyer', itemCount, subtotal]
+    : ['bag-quote', 'guest', JSON.stringify(quoteBody.items)]
+  const { data: quote } = useQuery({
+    queryKey: quoteKey,
+    queryFn: async () => {
+      const res = await api.post('/orders/quote/', quoteBody)
+      return res.data
+    },
+    retry: 1,
+    staleTime: 1000 * 30,
+  })
+  const total = quote ? parseFloat(quote.total || 0) : subtotal + delivery
+
   if (isBuyer && !cart) return (
     <MainLayout>
       <div className="flex justify-center py-32"><Spinner /></div>
@@ -93,11 +119,6 @@ export default function CartPage() {
       </div>
     </MainLayout>
   )
-
-  const subtotal = items.reduce((n, i) => n + i.lineTotal, 0)
-  const itemCount = items.reduce((n, i) => n + Number(i.quantity || 0), 0)
-  const delivery = deliveryFeeForCount(itemCount)
-  const total = subtotal + delivery
 
   return (
     <MainLayout>
@@ -166,17 +187,33 @@ export default function CartPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--muted)]">Delivery</span>
                   <span className="font-medium">
-                    {delivery === 0 ? (
+                    {quote ? (
+                      `GHS ${parseFloat(quote.delivery_fee || 0).toFixed(2)}`
+                    ) : delivery === 0 ? (
                       <span className="text-green-600">Free</span>
                     ) : (
                       `GHS ${delivery.toFixed(2)}`
                     )}
                   </span>
                 </div>
-                {delivery > 0 && (
-                  <p className="text-xs text-[var(--muted)]">
-                    GHS 5 for 1–5 items · GHS 10 for 6–10 items · GHS 20 for 11+ items
-                  </p>
+                {quote ? (
+                  <>
+                    {(quote.self_groups || []).map(g => (
+                      <div key={g.store} className="flex justify-between text-xs">
+                        <span className="text-[var(--muted)]">{g.store} delivery</span>
+                        <span className="font-medium">GHS {parseFloat(g.fee).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <p className="text-xs text-[var(--muted)]">
+                      Exact delivery as set by each vendor.
+                    </p>
+                  </>
+                ) : (
+                  delivery > 0 && (
+                    <p className="text-xs text-[var(--muted)]">
+                      GHS 5 for 1–5 items · GHS 10 for 6–10 items · GHS 20 for 11+ items
+                    </p>
+                  )
                 )}
                 <div className="border-t border-[var(--border)] pt-3 flex justify-between">
                   <span className="font-semibold text-[var(--ink)]">Total</span>
