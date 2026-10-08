@@ -215,8 +215,8 @@ def send_seller_sale_alert(order, connection=None):
             f"You have a new sale in Order #{order.id}:\n{lines}\n\n"
             + payout_note +
             f"Payment has been received by My Jay's Store and your share "
-            f"settles to your payout account. Track it in Seller Dashboard "
-            f"under Settlements.\n\n"
+            f"settles to your MoMo usually the next working day. Track it in "
+            f"Seller Dashboard under Settlements.\n\n"
             + handoff_note +
             f"My Jay's Store"
         )
@@ -257,7 +257,7 @@ def send_admin_payment_alert(order, connection=None):
                 else (s.seller.email if s.seller else 'platform item'))
         lines.append(
             f'  - {name}: GHS {float(s.net_share):.2f} '
-            f'(subaccount: {s.subaccount_code[:20]}...) [{s.status}]'
+            f'(subaccount: {(s.subaccount_code or "")[:20]}...) [{s.status}]'
         )
         sellers_total += s.net_share
     

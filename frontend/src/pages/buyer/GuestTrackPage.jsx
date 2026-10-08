@@ -210,6 +210,10 @@ export default function GuestTrackPage() {
 
         {/* Items */}
         <div className="bg-[var(--off)] rounded-2xl p-6 space-y-4 mb-6">
+          <div className="flex items-center justify-between">
+            <h2 className="serif text-xl font-medium text-[var(--ink)]">Receipt</h2>
+            <span className="text-[11px] text-[var(--muted)]">Ref: {reference}</span>
+          </div>
           {(order.items || []).map((item, i) => (
             <div key={i} className="flex items-center gap-4">
               <div className="flex-1 min-w-0">
@@ -230,6 +234,28 @@ export default function GuestTrackPage() {
             </div>
           </div>
         </div>
+
+        {/* Delivery OTP — shown on-page while the order is active */}
+        {order.delivery_otp && order.status !== 'delivered' && order.status !== 'cancelled' && (
+          <div className="bg-white border-2 border-dashed border-[var(--ink)] rounded-2xl p-5 mb-6 text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[var(--muted)] mb-1">
+              Your delivery OTP
+            </p>
+            <p className="text-3xl font-bold tracking-[0.3em] text-[var(--ink)]">
+              {order.delivery_otp}
+            </p>
+            <p className="text-xs text-[var(--muted)] mt-2">
+              Give this 4-digit code to your driver on arrival. It was also emailed to you.
+            </p>
+          </div>
+        )}
+        {!order.delivery_otp && order.status !== 'delivered' && order.status !== 'cancelled' && order.payment_status === 'paid' && (
+          <div className="bg-white border border-[var(--border)] rounded-2xl p-5 mb-6 text-center">
+            <p className="text-sm text-[var(--muted)]">
+              Give the driver your 4-digit delivery OTP on arrival (check your email).
+            </p>
+          </div>
+        )}
 
         {/* Claim account */}
         {order.is_guest_order && (

@@ -1416,20 +1416,9 @@ class SellerConfirmHandoffView(APIView):
         })
 
 
-def _confirm_payment(order):
-    """First-paid actions: deduct stock, create settlements, send emails.
-
-    Order matters: 
-    1. Deduct stock (payment confirmed, inventory committed)
-    2. Create settlement records (for reporting/audit)
-    3. Send emails (admin → sellers → buyer)
-    
-    Each send never raises (see emails.py). Shared SMTP connection prevents
-    Gmail from dropping rapid back-to-back sends.
-    """
-    import logging
-    logger = logging.getLogger(__name__)
-    
+def _confirm_payment_inventory(order, logger):
+    """Stock, settlements, handoffs + platform-share log. May raise —
+    callers must catch so notifications still go out."""
     # STEP 1: DEDUCT STOCK (payment confirmed). Atomic guarded decrement:
     # only deducts when enough stock remains, so concurrent confirmations
     # can never drive stock negative or lose updates.
@@ -1447,7 +1436,7 @@ def _confirm_payment(order):
                 )
                 # Still process payment (money already collected)
                 # Admin handles fulfillment manually
-    
+
     # STEP 2: CREATE SETTLEMENT RECORDS (for paid orders only)
     # Recalculate seller shares from order items. Self-delivery sellers also
     # receive their flat delivery fee (snapshotted at placement).
@@ -1516,7 +1505,31 @@ def _confirm_payment(order):
         f'Verify in Paystack: https://dashboard.paystack.com/#/settlements | '
         f'Split code: {order.paystack_split_code}'
     )
+
+
+def _confirm_payment(order):
+    """First-paid actions: deduct stock, create settlements, send emails.
+
+    Order matters: 
+    1. Deduct stock (payment confirmed, inventory committed)
+    2. Create settlement records (for reporting/audit)
+    3. Send emails (admin → sellers → buyer)
     
+    Each send never raises (see emails.py). Shared SMTP connection prevents
+    Gmail from dropping rapid back-to-back sends.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Stock + settlements must never take the emails down with them: a
+    # failure here used to 500 the whole confirmation AND permanently skip
+    # every email (retries see "already paid" and skip again). Each step is
+    # guarded so notifications always go out for money actually collected.
+    try:
+        _confirm_payment_inventory(order, logger)
+    except Exception:
+        logger.exception(f'Stock/settlement step failed for order {order.id} — continuing to emails')
+
     # STEP 3: SEND EMAILS (admin → sellers → buyer)
     from django.core.mail import get_connection
     try:
@@ -1525,12 +1538,23 @@ def _confirm_payment(order):
     except Exception:
         connection = None
     
+    # Each notification is isolated: one failing email (bad data, bad
+    # address) must never skip the others.
     try:
         send_admin_payment_alert(order, connection=connection)
-        send_seller_sale_alert(order, connection=connection)
+    except Exception:
+        logger.exception(f'Admin alert failed for order {order.id}')
 
-        # OTP is stored hashed (verify) + encrypted (owner display) — generate
-        # a fresh code here, persist, and email the plaintext once.
+    try:
+        send_seller_sale_alert(order, connection=connection)
+    except Exception:
+        logger.exception(f'Seller alert failed for order {order.id}')
+
+    # OTP is stored hashed (verify) + encrypted (owner display) — generate
+    # a fresh code here, persist, and email the plaintext once.
+    # Isolated: OTP bookkeeping must never skip the buyer confirmation.
+    otp = None
+    try:
         from .otp_utils import generate_otp as _gen_otp, hash_otp as _hash_otp, get_otp_expiry as _otp_expiry, encrypt_otp as _enc_otp
         otp_log = getattr(order, 'otp_log', None)
         otp = _gen_otp()
@@ -1543,22 +1567,28 @@ def _confirm_payment(order):
             otp_log.is_verified = False
             otp_log.verified_at = None
             otp_log.save(update_fields=['otp_hash', 'otp_encrypted', 'otp_expires_at', 'attempts', 'is_locked', 'is_verified', 'verified_at'])
+    except Exception:
+        logger.exception(f'OTP setup failed for order {order.id} — confirming without OTP')
+        otp = None
 
-        # Send payment confirmation with OTP included
+    # Send payment confirmation with OTP included
+    try:
         buyer_ok = send_payment_confirmation(order, otp_code=otp, connection=connection)
-        
-        # Don't send separate OTP email - it's already in payment confirmation above
-        # (Removed duplicate notify_buyer_of_otp call to avoid confusion)
-        
-        if not buyer_ok:
-            logger.error(f'Payment confirmation email failed for order {order.id} buyer {order.buyer_email}')
-            # Don't raise - payment already processed, just log the email failure
-    finally:
-        try:
-            if connection is not None:
-                connection.close()
-        except Exception:
-            pass
+    except Exception:
+        logger.exception(f'Payment confirmation blew up for order {order.id}')
+        buyer_ok = False
+
+    # Don't send separate OTP email - it's already in payment confirmation above
+    # (Removed duplicate notify_buyer_of_otp call to avoid confusion)
+
+    if not buyer_ok:
+        logger.error(f'Payment confirmation email failed for order {order.id} buyer {order.buyer_email}')
+        # Don't raise - payment already processed, just log the email failure
+    try:
+        if connection is not None:
+            connection.close()
+    except Exception:
+        pass
 
 
 class PaystackWebhookView(APIView):
@@ -1659,9 +1689,16 @@ class PaystackWebhookView(APIView):
                         pass
                     order.save()
                 
-                # Email sending after transaction commits (outside lock)
+                # Email sending after transaction commits (outside lock).
+                # _confirm_payment guards its own internals, but a failure
+                # here must still never turn a collected payment into a 500
+                # (which would also permanently skip the emails on retry).
                 if first_time_paid:
-                    _confirm_payment(order)
+                    try:
+                        _confirm_payment(order)
+                    except Exception:
+                        logger.exception(
+                            f'_confirm_payment failed for order {order.id} — payment stands')
                 
                 return Response({'message': 'Payment verified and order marked as paid'})
 
@@ -1882,9 +1919,15 @@ class PaystackVerifyView(APIView):
                 pass
             order.save()
         
-        # Email sending after transaction commits (outside lock)
+        # Email sending after transaction commits (outside lock).
+        # Never let notification errors fail a collected payment.
         if first_time_paid:
-            _confirm_payment(order)
+            try:
+                _confirm_payment(order)
+            except Exception:
+                import logging as _logging
+                _logging.getLogger(__name__).exception(
+                    f'_confirm_payment failed for order {order.id} — payment stands')
 
         return Response({'paid': True, 'order_id': order.id, 'message': 'Payment confirmed'})
 
