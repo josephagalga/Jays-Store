@@ -1508,51 +1508,34 @@ def _confirm_payment_inventory(order, logger):
 
 
 def _confirm_payment(order):
-    """First-paid actions: deduct stock, create settlements, send emails.
+    """First-paid actions: deduct stock, create settlements, OTP + notifications.
 
-    Order matters: 
+    Order matters:
     1. Deduct stock (payment confirmed, inventory committed)
     2. Create settlement records (for reporting/audit)
-    3. Send emails (admin → sellers → buyer)
-    
-    Each send never raises (see emails.py). Shared SMTP connection prevents
-    Gmail from dropping rapid back-to-back sends.
+    3. Generate delivery OTP (shown in the on-site inbox, not only email)
+    4. Optional order emails (admin → sellers → buyer), gated by
+       NOTIFY_ORDER_EMAIL_ENABLED — the on-site inbox is primary.
+
+    No step raises (not even BaseException), so a mail outage can never
+    kill the gunicorn worker or skip the inbox data.
     """
     import logging
     logger = logging.getLogger(__name__)
 
-    # Stock + settlements must never take the emails down with them: a
+    # Stock + settlements must never take the rest down with them: a
     # failure here used to 500 the whole confirmation AND permanently skip
-    # every email (retries see "already paid" and skip again). Each step is
-    # guarded so notifications always go out for money actually collected.
+    # every notification (retries see "already paid" and skip again). Each
+    # step is guarded so the inbox always reflects money actually collected.
     try:
         _confirm_payment_inventory(order, logger)
-    except Exception:
-        logger.exception(f'Stock/settlement step failed for order {order.id} — continuing to emails')
-
-    # STEP 3: SEND EMAILS (admin → sellers → buyer)
-    from django.core.mail import get_connection
-    try:
-        connection = get_connection()
-        connection.open()
-    except Exception:
-        connection = None
-    
-    # Each notification is isolated: one failing email (bad data, bad
-    # address) must never skip the others.
-    try:
-        send_admin_payment_alert(order, connection=connection)
-    except Exception:
-        logger.exception(f'Admin alert failed for order {order.id}')
-
-    try:
-        send_seller_sale_alert(order, connection=connection)
-    except Exception:
-        logger.exception(f'Seller alert failed for order {order.id}')
+    except BaseException:  # noqa: BLE001 — inventory failure must not skip OTP/inbox
+        logger.exception(f'Stock/settlement step failed for order {order.id} — continuing')
 
     # OTP is stored hashed (verify) + encrypted (owner display) — generate
-    # a fresh code here, persist, and email the plaintext once.
-    # Isolated: OTP bookkeeping must never skip the buyer confirmation.
+    # a fresh code here and persist. The inbox renders it via the order
+    # serializers; email (when enabled) carries the plaintext once.
+    # Isolated: OTP bookkeeping must never skip confirmation.
     otp = None
     try:
         from .otp_utils import generate_otp as _gen_otp, hash_otp as _hash_otp, get_otp_expiry as _otp_expiry, encrypt_otp as _enc_otp
@@ -1567,14 +1550,35 @@ def _confirm_payment(order):
             otp_log.is_verified = False
             otp_log.verified_at = None
             otp_log.save(update_fields=['otp_hash', 'otp_encrypted', 'otp_expires_at', 'attempts', 'is_locked', 'is_verified', 'verified_at'])
-    except Exception:
+    except BaseException:  # noqa: BLE001
         logger.exception(f'OTP setup failed for order {order.id} — confirming without OTP')
         otp = None
 
+    # STEP 4: OPTIONAL ORDER EMAILS (admin → sellers → buyer).
+    # The on-site inbox is primary; email is opt-in via
+    # NOTIFY_ORDER_EMAIL_ENABLED (account-security mail always sends).
+    # Sends go over HTTPS (Gmail API backend); no shared SMTP connection,
+    # which is what used to hang on hosts that block port 587.
+    from django.conf import settings as _dj_settings
+    if not getattr(_dj_settings, 'NOTIFY_ORDER_EMAIL_ENABLED', False):
+        logger.info(f'Order {order.id} confirmed — order emails disabled (on-site inbox is primary)')
+        return
+    # Each notification is isolated: one failing email (bad data, bad
+    # address, missing OAuth token) must never skip the others.
+    try:
+        send_admin_payment_alert(order)
+    except BaseException:  # noqa: BLE001 — even SystemExit must not skip sellers/buyer
+        logger.exception(f'Admin alert failed for order {order.id}')
+
+    try:
+        send_seller_sale_alert(order)
+    except BaseException:  # noqa: BLE001
+        logger.exception(f'Seller alert failed for order {order.id}')
+
     # Send payment confirmation with OTP included
     try:
-        buyer_ok = send_payment_confirmation(order, otp_code=otp, connection=connection)
-    except Exception:
+        buyer_ok = send_payment_confirmation(order, otp_code=otp)
+    except BaseException:  # noqa: BLE001 — even SystemExit must not break confirmation
         logger.exception(f'Payment confirmation blew up for order {order.id}')
         buyer_ok = False
 
@@ -1584,11 +1588,6 @@ def _confirm_payment(order):
     if not buyer_ok:
         logger.error(f'Payment confirmation email failed for order {order.id} buyer {order.buyer_email}')
         # Don't raise - payment already processed, just log the email failure
-    try:
-        if connection is not None:
-            connection.close()
-    except Exception:
-        pass
 
 
 class PaystackWebhookView(APIView):
@@ -2057,6 +2056,7 @@ class AdminTestEmailView(APIView):
 
     def post(self, request):
         from .emails import _send
+        from .models import EmailLog as EmailLogModel
         admin_email = (getattr(settings, 'ADMIN_NOTIFICATION_EMAIL', '') or '').strip()
         to = (request.data.get('to') or admin_email).strip()
         if not to:
@@ -2064,7 +2064,12 @@ class AdminTestEmailView(APIView):
         ok = _send(to, "Jay's Store — test email",
                    "If you received this, outbound email is working.",
                    kind='admin_test', order=None)
-        return Response({'sent': ok, 'to': to})
+        # Surface the recorded outcome so the UI can show WHY it failed
+        # instead of a generic toast.
+        row = EmailLogModel.objects.filter(
+            to_email=to, kind='admin_test').order_by('-created_at').first()
+        return Response({'sent': ok, 'to': to,
+                         'error': (row.error if row and not ok else '')})
 
 
 class AdminFinanceView(APIView):

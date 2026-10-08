@@ -1,11 +1,10 @@
 """Email helpers: payment confirmations, delivery OTP and receipts.
 
-All sends are wrapped so a mail failure never breaks checkout/delivery.
-In local dev EMAIL_BACKEND defaults to console, so messages print to the
-Django terminal instead of sending real mail.
+Sends go over HTTPS (Gmail API backend) so they work on hosts that block
+outbound SMTP. In local dev EMAIL_BACKEND defaults to console, so messages
+print to the Django terminal instead of sending real mail.
 """
 import logging
-import time
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -14,20 +13,34 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def _gmail_configured():
+    """True when Gmail API OAuth credentials are present."""
+    return bool((getattr(settings, 'GMAIL_API_REFRESH_TOKEN', '') or '').strip()
+                and (getattr(settings, 'GMAIL_API_CLIENT_ID', '') or '').strip()
+                and (getattr(settings, 'GMAIL_API_CLIENT_SECRET', '') or '').strip())
+
+
 def _send(to_email, subject, message, html_message=None, kind='', order=None,
           connection=None, _retried=False):
     """Send one email and RECORD the outcome in EmailLog.
 
-    Failures never raise (checkout/delivery must not break), but they are
-    now impossible to miss: full stack trace in server logs + a row the
-    admin can inspect at GET /admin/email-logs/.
+    Failures never raise (checkout/delivery must not break) — not even
+    gunicorn's SystemExit/BaseException — but they are now impossible to
+    miss: full stack trace in server logs + a row the admin can inspect
+    at GET /admin/email-logs/.
 
-    Gmail's SMTP intermittently drops rapid back-to-back sends
-    ("Connection unexpectedly closed"), so on a first failure we retry
-    once with a fresh connection after a short pause.
+    No in-request sleep/retry: the HTTPS call fails fast and retries
+    happen via the buyer/admin resend endpoints, so a mail outage can
+    never push the request past the gunicorn timeout.
     """
     if not to_email:
         _log_email(to_email or '', subject, kind, order, False, 'no recipient address')
+        return False
+    if 'gmailapi' in (getattr(settings, 'EMAIL_BACKEND', '') or '').lower() \
+            and not _gmail_configured():
+        _log_email(to_email, subject, kind, order, False,
+                   'GMAIL_API_REFRESH_TOKEN missing — complete Google OAuth setup, then resend')
+        logger.error('Email "%s" to %s skipped: Gmail API credentials missing', subject, to_email)
         return False
     try:
         send_mail(
@@ -37,27 +50,15 @@ def _send(to_email, subject, message, html_message=None, kind='', order=None,
             recipient_list=[to_email],
             html_message=html_message,
             fail_silently=False,
-            connection=connection,
         )
         _log_email(to_email, subject, kind, order, True, '')
         return True
-    except Exception as exc:  # never break checkout because of mail
-        if not _retried:
-            logger.warning('Email "%s" to %s failed (%s) — retrying once',
-                           subject, to_email, exc)
-            try:
-                if connection is not None:
-                    try:
-                        connection.close()
-                    except Exception:
-                        pass
-                time.sleep(2)
-                return _send(to_email, subject, message, html_message,
-                             kind, order, connection=None, _retried=True)
-            except Exception:
-                pass
+    except BaseException as exc:  # noqa: BLE001 — even SystemExit must not kill checkout
         logger.exception('Email "%s" to %s failed', subject, to_email)
-        _log_email(to_email, subject, kind, order, False, str(exc)[:500])
+        err = getattr(exc, 'message', None) or str(exc) or repr(exc)
+        if 'invalid_grant' in err or 'refresh' in err.lower():
+            err = f'{err[:400]} — Google OAuth token expired/revoked: re-run OAuth setup, update GMAIL_API_REFRESH_TOKEN, then resend'
+        _log_email(to_email, subject, kind, order, False, err[:500])
         return False
 
 

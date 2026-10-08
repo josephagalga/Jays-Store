@@ -24,6 +24,7 @@ import OrderTrackingPage from './pages/buyer/OrderTrackingPage'
 import BuyerOrderReceiptPage from './pages/buyer/BuyerOrderReceiptPage'
 import MyReviewsPage from './pages/buyer/MyReviewsPage'
 import GuestTrackPage from './pages/buyer/GuestTrackPage'
+import GuestOrdersPage from './pages/buyer/GuestOrdersPage'
 import VendorsPage from './pages/buyer/VendorsPage'
 import AIChatPage from './pages/buyer/AIChatPage'
 import BuyerProfilePage from './pages/buyer/BuyerProfilePage'
@@ -408,6 +409,7 @@ export default function App() {
       <Route path="/cart" element={<CartPage />} />
       <Route path="/checkout" element={<CheckoutPage />} />
       <Route path="/track/:reference" element={<GuestTrackPage />} />
+      <Route path="/track-saved" element={<GuestOrdersPage />} />
 
       {/* Protected buyer */}
       <Route path="/orders" element={<PrivateRoute roles={['buyer']}><OrdersPage /></PrivateRoute>} />

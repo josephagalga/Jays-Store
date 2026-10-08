@@ -66,6 +66,18 @@ export default function AdminDashboardPage() {
     retry: 1,
   })
 
+  // Inbox: latest paid orders (replaces the per-order admin payment email).
+  const { data: latestPaid } = useQuery({
+    queryKey: ['admin-latest-paid'],
+    queryFn: async () => {
+      const res = await api.get('/admin/orders/', { params: { payment_status: 'paid', page_size: 5 } })
+      const rows = Array.isArray(res.data) ? res.data : res.data.results || res.data.rows || []
+      return rows.filter(o => o?.payment_status === 'paid').slice(0, 5)
+    },
+    staleTime: 1000 * 60,
+    retry: 1,
+  })
+
   if (isLoading) return <div className="flex justify-center py-32"><Spinner /></div>
 
   const staleRows = staleOrders?.rows || []
@@ -114,6 +126,33 @@ export default function AdminDashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Inbox — latest paid orders (replaces the admin payment email) */}
+      {latestPaid?.length > 0 && (
+        <div className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between">
+            <h2 className="serif text-xl font-medium text-[var(--ink)]">
+              Latest Payments
+            </h2>
+            <Link to="/admin/orders"
+              className="text-xs font-semibold text-[var(--ink)] hover:text-[var(--muted)] transition-colors">
+              All orders →
+            </Link>
+          </div>
+          <div className="divide-y divide-[var(--border)]">
+            {latestPaid.map(order => (
+              <div key={order.id} className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <p className="text-sm text-[var(--ink)]">
+                  <span className="font-semibold">Order #{order.id}</span>
+                  {' · '}GHS {parseFloat(order.charged_total ?? order.total ?? 0).toFixed(2)}
+                  {' · '}{order.buyer_name || order.buyer_email || order.guest_email || '—'}
+                </p>
+                <span className="text-xs text-green-600 font-medium flex-shrink-0">✓ Paid</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Needs attention — escalated driverless orders */}
       {staleCount > 0 && (

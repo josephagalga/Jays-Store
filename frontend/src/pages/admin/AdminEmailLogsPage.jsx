@@ -23,10 +23,16 @@ export default function AdminEmailLogsPage() {
   const testEmailMutation = useMutation({
     mutationFn: (to) => adminApi.testEmail(to),
     onSuccess: (res) => {
-      toast.success(res?.sent ? 'Test email sent successfully!' : 'Test email failed to send')
+      if (res?.sent) {
+        toast.success('Test email sent successfully!')
+      } else {
+        toast.error(res?.error ? `Test email failed: ${res.error}` : 'Test email failed to send', { duration: 8000 })
+      }
       qc.invalidateQueries(['admin-email-logs'])
     },
-    onError: () => toast.error('Failed to send test email'),
+    onError: (err) => toast.error(
+      err.response?.data?.error || 'Test email request failed (server unreachable?)',
+      { duration: 8000 }),
   })
 
   const sendTestEmail = () => {

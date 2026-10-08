@@ -37,6 +37,42 @@ export default function GuestTrackPage() {
   const [verifying, setVerifying] = useState(false)
   const [retryEmail, setRetryEmail] = useState('')
   const [retrying, setRetrying] = useState(false)
+  const [fromCache, setFromCache] = useState(false)
+
+  // Browser-persisted guest snapshot so refresh/tab-close never loses the
+  // receipt + OTP. Server remains source of truth; cache is fallback only.
+  const readGuestCache = (ref) => {
+    try {
+      const raw = localStorage.getItem('jays-guest-orders')
+      const list = raw ? JSON.parse(raw) : []
+      return list.find(e => e?.reference === ref) || null
+    } catch { return null }
+  }
+  const writeGuestCache = (ref, data) => {
+    try {
+      const raw = localStorage.getItem('jays-guest-orders')
+      const list = raw ? JSON.parse(raw) : []
+      const snapshot = {
+        reference: ref,
+        guest_email: data?.guest_email || data?.buyer_email || '',
+        delivery_otp: data?.delivery_otp || null,
+        otp_expires_at: data?.otp_expires_at || null,
+        items: data?.items || [],
+        subtotal: data?.subtotal,
+        delivery_fee: data?.delivery_fee,
+        processing_fee: data?.processing_fee,
+        total: data?.total,
+        charged_total: data?.charged_total,
+        payment_status: data?.payment_status,
+        status: data?.status,
+        id: data?.id,
+        is_guest_order: true,
+        updatedAt: Date.now(),
+      }
+      const next = [snapshot, ...list.filter(e => e?.reference !== ref)].slice(0, 10)
+      localStorage.setItem('jays-guest-orders', JSON.stringify(next))
+    } catch { /* ignore */ }
+  }
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(claimSchema),
@@ -71,13 +107,28 @@ export default function GuestTrackPage() {
         const data = await fetchTrack(reference)
         if (!cancelled) {
           setOrder(data)
+          setFromCache(false)
+          writeGuestCache(reference, data)
           try {
             const saved = sessionStorage.getItem('guest-track-email')
             if (saved) setRetryEmail(saved)
+            else if (data?.guest_email) setRetryEmail(data.guest_email)
           } catch { /* ignore */ }
         }
       } catch {
-        if (!cancelled) toast.error('Order not found. Check your tracking link.')
+        if (!cancelled) {
+          // Server lookup failed (stale reference after retry, offline, etc):
+          // fall back to the browser snapshot so receipt + OTP survive refresh.
+          const cached = readGuestCache(reference)
+          if (cached?.payment_status === 'paid' || cached?.delivery_otp) {
+            setOrder(cached)
+            setFromCache(true)
+            if (cached.guest_email) setRetryEmail(cached.guest_email)
+            toast('Showing your saved receipt — reconnect to refresh live status.')
+          } else {
+            toast.error('Order not found. Check your tracking link.')
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -98,7 +149,22 @@ export default function GuestTrackPage() {
         toast.success('Order already paid')
         const data = await fetchTrack(reference)
         setOrder(data)
+        setFromCache(false)
+        writeGuestCache(reference, data)
       } else if (res.data?.authorization_url) {
+        // Retry mints a NEW paystack reference server-side; move the browser
+        // to it now so refresh/bookmarks never point at the dead old link.
+        const nextRef = res.data?.reference || res.data?.new_reference
+        if (nextRef && nextRef !== reference) {
+          try {
+            const raw = localStorage.getItem('jays-guest-orders')
+            const list = raw ? JSON.parse(raw) : []
+            const next = [{ reference: nextRef, guest_email: retryEmail.trim(), createdAt: Date.now() },
+              ...list.filter(e => e?.reference !== nextRef && e?.reference !== reference)].slice(0, 10)
+            localStorage.setItem('jays-guest-orders', JSON.stringify(next))
+          } catch { /* ignore */ }
+          navigate(`/track/${nextRef}`, { replace: true })
+        }
         window.location.assign(res.data.authorization_url)
       }
     } catch (err) {
@@ -160,6 +226,12 @@ export default function GuestTrackPage() {
           {isPaid ? 'Payment confirmed' : order.status === 'cancelled' ? 'Order cancelled' : 'Complete your payment'}
         </h1>
 
+        {fromCache && order && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6 text-xs text-blue-800">
+            Showing your saved receipt from this browser (offline copy). Reconnect and reopen your tracking link for live status.
+          </div>
+        )}
+
         {isPaid && (
           <div className="bg-green-50 border border-green-100 rounded-2xl p-5 mb-6 text-sm text-green-800">
             <p className="font-semibold flex items-center gap-2 mb-1">
@@ -167,7 +239,7 @@ export default function GuestTrackPage() {
             </p>
             <p className="flex items-start gap-1.5 text-xs mt-1">
               <Mail size={12} className="mt-0.5 flex-shrink-0" />
-              Your delivery OTP and receipt were emailed to you. Give the OTP to your driver on arrival.
+              Your delivery OTP and receipt are shown below. Give the OTP to your driver on arrival.
             </p>
           </div>
         )}
@@ -245,14 +317,14 @@ export default function GuestTrackPage() {
               {order.delivery_otp}
             </p>
             <p className="text-xs text-[var(--muted)] mt-2">
-              Give this 4-digit code to your driver on arrival. It was also emailed to you.
+              Give this 4-digit code to your driver on arrival. It is saved here on this page.
             </p>
           </div>
         )}
         {!order.delivery_otp && order.status !== 'delivered' && order.status !== 'cancelled' && order.payment_status === 'paid' && (
           <div className="bg-white border border-[var(--border)] rounded-2xl p-5 mb-6 text-center">
             <p className="text-sm text-[var(--muted)]">
-              Give the driver your 4-digit delivery OTP on arrival (check your email).
+              Give the driver your 4-digit delivery OTP on arrival (shown above once ready).
             </p>
           </div>
         )}

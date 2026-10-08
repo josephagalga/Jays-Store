@@ -120,9 +120,9 @@ export default function OrderTrackingPage() {
         // fallback: receipt endpoint exists, resend may not — re-verify instead
         await api.get(`/orders/${id}/receipt/`)
       })
-      toast.success('Confirmation email re-sent!')
+      toast.success('Copy sent — check your inbox!')
     } catch {
-      toast.success('Receipt is shown below — check your inbox for the confirmation email.')
+      toast.success('Receipt is shown below — your inbox on this page always has it.')
     } finally {
       setResending(false)
     }
@@ -268,11 +268,11 @@ export default function OrderTrackingPage() {
               <div className="text-sm">
                 <p className="font-semibold text-green-800">Payment confirmed</p>
                 <p className="text-green-700 text-xs mt-0.5 flex items-center gap-1">
-                  <Mail size={11} /> Receipt sent to your email. Buyer receipt #{order.id} below.
+                  <Mail size={11} /> Your receipt #{order.id} is below — this page is your inbox, no email needed.
                 </p>
                 <button onClick={resendConfirmation} disabled={resending}
                   className="text-xs font-semibold text-green-800 underline underline-offset-2 mt-1 disabled:opacity-50">
-                  {resending ? 'Sending…' : 'Re-send confirmation email'}
+                  {resending ? 'Sending…' : 'Email me a copy (optional)'}
                 </button>
               </div>
             </div>
@@ -345,7 +345,7 @@ export default function OrderTrackingPage() {
           )}
           {!order.delivery_otp && order.status !== 'delivered' && order.status !== 'cancelled' && order.payment_status === 'paid' && (
             <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-800 text-sm font-medium">
-              Give the driver your 4-digit delivery OTP on arrival (check your email).
+              Give the driver your 4-digit delivery OTP on arrival (shown here).
             </div>
           )}
           {order.payment_method === 'paystack' && order.payment_status === 'unpaid' && order.status !== 'cancelled' && (

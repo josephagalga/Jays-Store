@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Package, Truck, CheckCircle } from 'lucide-react'
+import { Package, Truck, CheckCircle, BellRing } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
 import Button from '../../components/ui/Button'
 import api from '../../services/api'
@@ -66,12 +66,55 @@ export default function SellerOrdersPage() {
     refetchInterval: 30000,
   })
 
+  // Inbox: paid orders needing your handoff pin first; anything paid since
+  // the last visit gets a NEW SALE badge. Seen-marker is per-browser.
+  const [seenAt, setSeenAt] = useState(() => {
+    try { return parseInt(localStorage.getItem('jays-inbox-seen-seller') || '0', 10) || 0 }
+    catch { return 0 }
+  })
+  useEffect(() => {
+    if (!orders?.length) return
+    const t = setTimeout(() => {
+      try { localStorage.setItem('jays-inbox-seen-seller', String(Date.now())) } catch { /* ignore */ }
+      setSeenAt(Date.now())
+    }, 5000)
+    return () => clearTimeout(t)
+  }, [orders?.length])
+
+  const needsAction = (o) =>
+    o.payment_status === 'paid' && o.my_handoff === 'pending' &&
+    o.status !== 'cancelled' && o.status !== 'delivered'
+  const actionCount = useMemo(() => (orders || []).filter(needsAction).length, [orders])
+  const sorted = useMemo(() => {
+    const rank = (o) => {
+      if (needsAction(o)) return 0
+      if (o.payment_status === 'paid') return 1
+      return 2
+    }
+    return [...(orders || [])].sort((a, b) =>
+      rank(a) - rank(b) || new Date(b.created_at) - new Date(a.created_at))
+  }, [orders])
+  const isNewSale = (o) => {
+    if (o.payment_status !== 'paid') return false
+    try { return new Date(o.created_at).getTime() > seenAt } catch { return false }
+  }
+
   if (isLoading) return <div className="flex justify-center py-32"><Spinner /></div>
 
   return (
     <div className="max-w-5xl mx-auto px-6 lg:px-10 py-10">
       <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-2">My Orders</h1>
-      <p className="text-sm text-[var(--muted)] mb-10">Track deliveries for your products, including driver info.</p>
+      <p className="text-sm text-[var(--muted)] mb-6">Track deliveries for your products, including driver info. New sales land here — no email needed.</p>
+
+      {actionCount > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 mb-6 flex items-center gap-3">
+          <BellRing size={18} className="text-amber-600 flex-shrink-0" />
+          <p className="text-sm text-amber-800">
+            <span className="font-bold">{actionCount} order{actionCount === 1 ? '' : 's'} need{actionCount === 1 ? 's' : ''} your handoff</span>
+            {' '}— ask the buyer for their delivery code below. Payouts land in your wallet.
+          </p>
+        </div>
+      )}
 
       {!orders?.length ? (
         <div className="text-center py-24 border border-dashed border-[var(--border)] rounded-2xl">
@@ -80,12 +123,19 @@ export default function SellerOrdersPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {orders.map(order => (
+          {sorted.map(order => (
             <div key={order.id} className="bg-white border border-[var(--border)] rounded-2xl p-6">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-[var(--muted)]">Order #{order.id}</span>
-                <span className="text-xs font-medium capitalize px-2.5 py-1 bg-[var(--off)] rounded-full">
-                  {STATUS_LABEL[order.status] || order.status}
+                <span className="flex items-center gap-2">
+                  {isNewSale(order) && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-green-600 text-white rounded-full">
+                      New sale
+                    </span>
+                  )}
+                  <span className="text-xs font-medium capitalize px-2.5 py-1 bg-[var(--off)] rounded-full">
+                    {STATUS_LABEL[order.status] || order.status}
+                  </span>
                 </span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">

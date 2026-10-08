@@ -5,6 +5,7 @@ import useAuthStore from '../store/authStore'
 import useCartStore from '../store/cartStore'
 import useGuestCartStore from '../store/guestCartStore'
 import useWishlistStore from '../store/wishlistStore'
+import NotificationBell from './NotificationBell'
 
 export default function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false)
@@ -98,6 +99,7 @@ export default function Navbar() {
 
             {/* Right */}
             <div className="flex items-center gap-0.5 flex-1 justify-end">
+              <NotificationBell />
               <button
                 onClick={() => setSearchOpen(true)}
                 className="w-9 h-9 flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">

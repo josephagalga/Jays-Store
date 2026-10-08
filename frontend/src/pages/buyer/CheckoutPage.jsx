@@ -72,6 +72,7 @@ export default function CheckoutPage() {
   const [placed, setPlaced] = useState(false)
   const [orderId, setOrderId] = useState(null)
   const [charge, setCharge] = useState(null)
+  const [trackRef, setTrackRef] = useState(null)
   const [payOption, setPayOption] = useState('momo')
 
   const isBuyer = user?.role === 'buyer'
@@ -128,6 +129,7 @@ export default function CheckoutPage() {
 
   const goToPay = (url, order) => {
     setOrderId(order.id ?? order.order_id)
+    if (order.reference) setTrackRef(order.reference)
     clearCartSafe()
     if (url) {
       setCharge({
@@ -174,7 +176,17 @@ export default function CheckoutPage() {
         const order = res.data
         if (order.authorization_url) {
           if (order.reference) {
-            try { sessionStorage.setItem('guest-track-email', data.guest_email) } catch { /* ignore */ }
+            try {
+              sessionStorage.setItem('guest-track-email', data.guest_email)
+              // Persisted guest order index (survives refresh/tab close) so the
+              // buyer can always get back to receipt + OTP from this browser.
+              const raw = localStorage.getItem('jays-guest-orders')
+              const list = raw ? JSON.parse(raw) : []
+              // eslint-disable-next-line react-hooks/purity -- event handler, not render
+              const entry = { reference: order.reference, guest_email: data.guest_email, createdAt: Date.now() }
+              const next = [entry, ...list.filter(e => e?.reference !== order.reference)].slice(0, 10)
+              localStorage.setItem('jays-guest-orders', JSON.stringify(next))
+            } catch { /* ignore */ }
           }
           goToPay(order.authorization_url, order)
         } else if (order.payment_init_failed) {
@@ -210,8 +222,30 @@ export default function CheckoutPage() {
           </div>
         )}
         <p className="text-[var(--muted)] text-sm leading-relaxed mb-4">
-          Your delivery OTP and receipt will be emailed to you once payment confirms.
+          Your delivery OTP and receipt will appear on your tracking page once payment confirms — no email needed.
         </p>
+        {(!isBuyer && trackRef) && (
+          <div className="bg-[var(--off)] border border-[var(--border)] rounded-xl px-4 py-3 mb-4 text-sm">
+            <p className="text-[var(--muted)] text-xs mb-1">Save your tracking link (your receipt + OTP live here):</p>
+            <button
+              onClick={() => {
+                const link = `${window.location.origin}/track/${trackRef}`
+                try {
+                  navigator.clipboard.writeText(link)
+                  toast.success('Tracking link copied — save it!')
+                } catch {
+                  toast(link)
+                }
+              }}
+              className="font-semibold text-[var(--ink)] break-all hover:underline"
+            >
+              {`/track/${trackRef}`} — tap to copy
+            </button>
+            <div className="flex gap-3 justify-center mt-3">
+              <Button variant="secondary" onClick={() => navigate(`/track/${trackRef}`)}>Open tracking page</Button>
+            </div>
+          </div>
+        )}
         <div className="flex gap-3 justify-center">
           {charge?.authorization_url && (
             <Button onClick={() => window.location.assign(charge.authorization_url)}>Pay Now</Button>

@@ -1,5 +1,5 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Package, Clock, CheckCircle, XCircle, Truck, Star, Eye } from 'lucide-react'
 import MainLayout from '../../layouts/MainLayout'
@@ -30,7 +30,39 @@ export default function OrdersPage() {
       const res = await api.get('/orders/')
       return Array.isArray(res.data) ? res.data : res.data.results || []
     },
+    refetchInterval: 30000,
   })
+
+  // Inbox semantics without a new model: orders needing action (paid with a
+  // live OTP, then other paid, then unpaid) pin to the top; anything created
+  // since the last visit gets a NEW badge. Seen-marker is per-browser.
+  const [seenAt, setSeenAt] = useState(() => {
+    try { return parseInt(localStorage.getItem('jays-inbox-seen-buyer') || '0', 10) || 0 }
+    catch { return 0 }
+  })
+  useEffect(() => {
+    if (!orders?.length) return
+    const t = setTimeout(() => {
+      try { localStorage.setItem('jays-inbox-seen-buyer', String(Date.now())) } catch { /* ignore */ }
+      setSeenAt(Date.now())
+    }, 5000)
+    return () => clearTimeout(t)
+  }, [orders?.length])
+
+  const sorted = useMemo(() => {
+    const rank = (o) => {
+      const liveOtp = !!o.delivery_otp && ['pending', 'accepted', 'picked_up'].includes(o.status)
+      if (liveOtp) return 0
+      if (o.payment_status === 'paid') return 1
+      if (o.payment_status !== 'paid' && o.status !== 'cancelled') return 2
+      return 3
+    }
+    return [...(orders || [])].sort((a, b) =>
+      rank(a) - rank(b) || new Date(b.created_at) - new Date(a.created_at))
+  }, [orders])
+  const isNew = (o) => {
+    try { return new Date(o.created_at).getTime() > seenAt } catch { return false }
+  }
 
   const cancelMutation = useMutation({
     mutationFn: (id) => api.post(`/orders/${id}/cancel/`),
@@ -83,7 +115,7 @@ export default function OrdersPage() {
         <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-10">My Orders</h1>
 
         <div className="space-y-5">
-          {orders.map(order => {
+          {sorted.map(order => {
             const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending
             const isDelivered = order.status === 'delivered'
             const isPending = order.status === 'pending'
@@ -100,6 +132,11 @@ export default function OrdersPage() {
                     <p className="text-xs font-medium text-[var(--muted)]">
                       Order #{order.id}
                     </p>
+                    {isNew(order) && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-[var(--ink)] text-white rounded-full">
+                        New
+                      </span>
+                    )}
                     <span className="text-[var(--border)]">·</span>
                     <p className="text-xs text-[var(--muted)]">
                       {new Date(order.created_at).toLocaleDateString('en-GH', {
@@ -171,7 +208,7 @@ export default function OrdersPage() {
                   <div className="mx-6 mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Delivery OTP</span>
                     <span className="text-xl font-bold tracking-[0.3em] text-amber-900">{order.delivery_otp}</span>
-                    <span className="text-xs text-amber-700">Give this code to your driver on arrival. Also sent to your email.</span>
+                    <span className="text-xs text-amber-700">Give this code to your driver on arrival. It lives here in your orders.</span>
                   </div>
                 )}
 
@@ -194,7 +231,7 @@ export default function OrdersPage() {
                       )}
                     </span>
                     {order.payment_status === 'paid' && order.status !== 'cancelled' && (
-                      <span className="text-xs text-green-600 font-medium">✓ Paid — receipt emailed</span>
+                      <span className="text-xs text-green-600 font-medium">✓ Paid — receipt & OTP here</span>
                     )}
                     {isUnpaid && order.status !== 'cancelled' && (
                       <button

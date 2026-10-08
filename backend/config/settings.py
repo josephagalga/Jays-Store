@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
+    'gmailapi_backend',
     'apps.accounts',
     'apps.products',
     'apps.orders',
@@ -142,7 +143,7 @@ CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         'CORS_ALLOWED_ORIGINS',
-        'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,https://jays-store-steel.vercel.app',
+        'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,https://jays-store-steel.vercel.app,https://myjays-store.vercel.app',
     ).split(',')
     if origin.strip()
 ]
@@ -223,19 +224,40 @@ PAYSTACK_GH_FEE_CAP = os.getenv('PAYSTACK_GH_FEE_CAP', '10.00')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
 # Email — payment confirmations, OTP + receipts to buyers, sales alerts to sellers.
-# Defaults to console backend for local dev so emails never crash checkout.
-# Set EMAIL_BACKEND=smtp + host/user/password in production (.env) to send real mail.
-EMAIL_BACKEND = os.getenv(
-    'EMAIL_BACKEND',
-    'django.core.mail.backends.smtp.EmailBackend'
-    if os.getenv('EMAIL_HOST_USER') else
-    'django.core.mail.backends.console.EmailBackend',
-)
+# Sends go over HTTPS via the Gmail API backend (works on hosts like Render
+# free tier that block outbound SMTP ports 25/465/587). When the Gmail API
+# credentials below are set, EMAIL_BACKEND uses Gmail; otherwise local dev
+# falls back to the console backend so checkout never hangs.
+# Setup: Google Cloud project -> enable Gmail API -> OAuth client (Desktop)
+# with scope https://www.googleapis.com/auth/gmail.send -> generate a
+# refresh token -> set the three GMAIL_API_* vars. No custom domain needed;
+# mail sends from the authenticated Gmail account (EMAIL_HOST_USER).
+if os.getenv('GMAIL_API_REFRESH_TOKEN'):
+    EMAIL_BACKEND = 'gmailapi_backend.mail.GmailBackend'
+else:
+    EMAIL_BACKEND = os.getenv(
+        'EMAIL_BACKEND',
+        'django.core.mail.backends.smtp.EmailBackend'
+        if os.getenv('EMAIL_HOST_USER') else
+        'django.core.mail.backends.console.EmailBackend',
+    )
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+GMAIL_API_CLIENT_ID = os.getenv('GMAIL_API_CLIENT_ID', '')
+GMAIL_API_CLIENT_SECRET = os.getenv('GMAIL_API_CLIENT_SECRET', '')
+GMAIL_API_REFRESH_TOKEN = os.getenv('GMAIL_API_REFRESH_TOKEN', '')
+# Order alerts now live in the on-site inbox (buyer orders / seller orders /
+# admin attention) instead of email. Account-security mail (password reset)
+# still sends. Set NOTIFY_ORDER_EMAIL_ENABLED=True to also email order
+# confirmations (requires the Gmail API credentials above).
+NOTIFY_ORDER_EMAIL_ENABLED = os.getenv('NOTIFY_ORDER_EMAIL_ENABLED', 'False') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+# Fail fast (not gunicorn-timeout slow) when SMTP hangs: a hung send must
+# surface as a logged EmailLog row, never as a dead connection that browsers
+# misreport as a CORS error.
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '10'))
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'My Jay\'s Store <no-reply@jaysstore.com>')
 
 # Store owner — receives a payment notification (commission + delivery fee)
