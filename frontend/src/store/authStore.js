@@ -87,7 +87,17 @@ const useAuthStore = create(
 
       setUser: (user) => set({ user, isAuthenticated: true }),
 
-      logout: () => {
+      logout: async () => {
+        // Best-effort server blacklist so the refresh token dies too.
+        // Local cleanup always runs, even offline.
+        const refresh = localStorage.getItem('refresh_token')
+        if (refresh) {
+          try {
+            await api.post('/auth/logout/', { refresh })
+          } catch {
+            /* ignore — local cleanup below is what matters */
+          }
+        }
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         set({ user: null, isAuthenticated: false })

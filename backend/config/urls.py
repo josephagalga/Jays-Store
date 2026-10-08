@@ -3,7 +3,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
-from apps.accounts.views import CustomLoginView
+from apps.accounts.views import CustomLoginView, LogoutView
 
 urlpatterns = [
     path('django-admin/', admin.site.urls),
@@ -11,6 +11,7 @@ urlpatterns = [
     # Auth
     path('api/auth/login/', CustomLoginView.as_view(), name='login'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
+    path('api/auth/logout/', LogoutView.as_view(), name='logout'),
 
     # Apps
     path('api/accounts/', include('apps.accounts.urls')),

@@ -1,12 +1,14 @@
 from django.db import models
 from django.conf import settings
+from apps.core.validators import validate_image_file_size
 
 
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
     description = models.TextField(blank=True)
-    image = models.ImageField(upload_to='categories/', blank=True, null=True)
+    image = models.ImageField(upload_to='categories/', blank=True, null=True,
+                              validators=[validate_image_file_size])
     external_url = models.URLField(blank=True)
     # ↑ Store external image URLs like Unsplash directly
     is_active = models.BooleanField(default=True)
@@ -270,7 +272,8 @@ class ProductVariant(models.Model):
     color = models.CharField(max_length=50)
     color_hex = models.CharField(max_length=7, blank=True)
     # ↑ e.g. "#FFFFFF" — used to render a color swatch on the frontend
-    image = models.ImageField(upload_to='variants/', blank=True, null=True)
+    image = models.ImageField(upload_to='variants/', blank=True, null=True,
+                              validators=[validate_image_file_size])
     # ↑ Optional per-variant image (e.g. photo of the Red colourway).
     #   Falls back to the product's primary image when empty.
     stock = models.PositiveIntegerField(default=0)
@@ -304,7 +307,8 @@ class ProductImage(models.Model):
         on_delete=models.CASCADE,
         related_name='images'
     )
-    image = models.ImageField(upload_to='products/', blank=True, null=True)
+    image = models.ImageField(upload_to='products/', blank=True, null=True,
+                              validators=[validate_image_file_size])
     external_url = models.URLField(blank=True)
     # ↑ Store external image URLs like Unsplash directly
     is_primary = models.BooleanField(default=False)

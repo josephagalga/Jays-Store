@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from apps.core.validators import validate_image_file_size
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 
@@ -38,7 +39,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=50)
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.BUYER)
     phone_number = models.CharField(max_length=20, blank=True)
-    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True,
+                                 validators=[validate_image_file_size])
 
     # ============================================================
     # ACCOUNT STATUS
@@ -53,10 +55,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     vehicle_type = models.CharField(max_length=50, blank=True)
     # ↑ e.g. "Motorcycle", "Car"
 
-    ghana_card_image = models.ImageField(upload_to='ghana_cards/', blank=True, null=True)
+    ghana_card_image = models.ImageField(upload_to='ghana_cards/', blank=True, null=True,
+                                           validators=[validate_image_file_size])
     # ↑ Photo of physical Ghana card uploaded during registration
 
-    selfie_image = models.ImageField(upload_to='selfies/', blank=True, null=True)
+    selfie_image = models.ImageField(upload_to='selfies/', blank=True, null=True,
+                                       validators=[validate_image_file_size])
     # ↑ Admin compares this with Ghana card to verify identity
 
     verification_status = models.CharField(
@@ -140,10 +144,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     store_description = models.TextField(blank=True)
     # ↑ A short bio/description shown on their store page
 
-    store_logo = models.ImageField(upload_to='store_logos/', blank=True, null=True)
+    store_logo = models.ImageField(upload_to='store_logos/', blank=True, null=True,
+                                     validators=[validate_image_file_size])
     # ↑ The store's logo image
 
-    store_banner = models.ImageField(upload_to='store_banners/', blank=True, null=True)
+    store_banner = models.ImageField(upload_to='store_banners/', blank=True, null=True,
+                                       validators=[validate_image_file_size])
     # ↑ A wide banner image shown at the top of their store page
 
     store_slug = models.SlugField(max_length=100, unique=True, blank=True, null=True)

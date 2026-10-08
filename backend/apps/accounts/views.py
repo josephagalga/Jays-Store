@@ -38,6 +38,25 @@ User = get_user_model()
 
 class CustomLoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+
+class LogoutView(APIView):
+    """Blacklist the refresh token so it can't mint new access tokens.
+
+    Always 200 (even for missing/invalid tokens) — logout must never leak
+    whether a token was valid, and local cleanup happens client-side anyway.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = (request.data.get('refresh') or '').strip()
+        if refresh:
+            try:
+                RefreshToken(refresh).blacklist()
+            except Exception:
+                pass
+        return Response({'message': 'Logged out.'})
     throttle_scope = 'login'
 
 

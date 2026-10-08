@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from apps.core.validators import validate_image_file_size
 from apps.products.models import Product
 
 
@@ -75,7 +76,8 @@ class ReviewImage(models.Model):
         on_delete=models.CASCADE,
         related_name='images'
     )
-    image = models.ImageField(upload_to='review_images/')
+    image = models.ImageField(upload_to='review_images/',
+                              validators=[validate_image_file_size])
     order = models.PositiveIntegerField(default=0)
 
     class Meta:
