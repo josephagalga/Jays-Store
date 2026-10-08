@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
+import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ShoppingBag, CheckCircle, ShieldCheck, Truck, RotateCcw, Smartphone, CreditCard, Layers } from 'lucide-react'
@@ -101,8 +102,27 @@ export default function CheckoutPage() {
 
   const itemCount = items.reduce((n, i) => n + Number(i.quantity || 0), 0)
   const subtotal = items.reduce((n, i) => n + i.lineTotal, 0)
-  const delivery_fee = deliveryFeeForCount(itemCount)
-  const total = Math.max(0, subtotal + delivery_fee)
+
+  // Exact server quote (same pricing as order placement, including each
+  // vendor's self-delivery fee). Guests send their lines; buyers price the
+  // server bag. Falls back to the local estimate until it loads.
+  const quoteBody = isBuyer ? {} : { items: useGuestCartStore.getState().guestLines() }
+  const quoteKey = isBuyer
+    ? ['checkout-quote', 'buyer', itemCount, subtotal]
+    : ['checkout-quote', 'guest', JSON.stringify(quoteBody.items)]
+  const { data: quote } = useQuery({
+    queryKey: quoteKey,
+    queryFn: async () => {
+      const res = await api.post('/orders/quote/', quoteBody)
+      return res.data
+    },
+    retry: 1,
+    staleTime: 1000 * 30,
+  })
+  const delivery_fee = quote ? parseFloat(quote.delivery_fee || 0) : deliveryFeeForCount(itemCount)
+  const total = quote
+    ? parseFloat(quote.total || 0)
+    : Math.max(0, subtotal + delivery_fee)
   const feeEstimate = estimateProcessingFee(total)
   const channels = PAY_OPTIONS.find(o => o.id === payOption)?.channels || null
 
@@ -325,8 +345,22 @@ export default function CheckoutPage() {
               ))}
               <div className="border-t border-[var(--border)] pt-4 space-y-2">
                 <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Subtotal</span><span>GHS {subtotal.toFixed(2)}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Delivery</span><span>GHS {delivery_fee.toFixed(2)}</span></div>
-                <p className="text-[11px] text-[var(--muted)]">Platform delivery estimate. Vendor self-delivery fees (flat per order) are added by the server at order placement — exact total confirmed on Paystack before you pay.</p>
+                {quote ? (
+                  <>
+                    {parseFloat(quote.platform_delivery || 0) > 0 && (
+                      <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Platform delivery</span><span>GHS {parseFloat(quote.platform_delivery).toFixed(2)}</span></div>
+                    )}
+                    {(quote.self_groups || []).map(g => (
+                      <div key={g.store} className="flex justify-between text-sm"><span className="text-[var(--muted)]">{g.store} delivery</span><span>GHS {parseFloat(g.fee).toFixed(2)}</span></div>
+                    ))}
+                    <p className="text-[11px] text-[var(--muted)]">Exact delivery as set by each vendor — matches what Paystack will charge.</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Delivery</span><span>GHS {delivery_fee.toFixed(2)}</span></div>
+                    <p className="text-[11px] text-[var(--muted)]">Platform delivery estimate. Vendor self-delivery fees (flat per order) are added by the server at order placement — exact total confirmed on Paystack before you pay.</p>
+                  </>
+                )}
                 <div className="flex justify-between text-sm"><span className="text-[var(--muted)]">Paystack fee (est.)</span><span>GHS {feeEstimate.toFixed(2)}</span></div>
                 <div className="flex justify-between font-bold text-base pt-2 border-t border-[var(--border)]"><span>Total</span><span>GHS {(total + feeEstimate).toFixed(2)}</span></div>
               </div>

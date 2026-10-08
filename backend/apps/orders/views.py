@@ -207,6 +207,51 @@ class ValidateCouponView(APIView):
         })
 
 
+class QuoteCheckoutView(APIView):
+    """Exact checkout totals BEFORE placing the order (no side effects).
+
+    Authenticated buyers: prices their server bag (no body needed).
+    Guests (or anyone): POST {items: [{product_id, variant_id, quantity}]}.
+    Uses the same price_checkout_lines() as order placement, so the numbers
+    shown — including per-vendor self-delivery fees — match Paystack exactly.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from .payments import price_checkout_lines
+
+        lines = []
+        user = request.user if request.user.is_authenticated else None
+        if user is not None and getattr(user, 'role', '') == 'buyer' and not request.data.get('items'):
+            cart = Cart.objects.filter(buyer=user).first()
+            items = (cart.cart_items.select_related(
+                'product', 'variant', 'product__seller',
+                'product__created_by') if cart else [])
+            for ci in items:
+                if ci.product.is_active and ci.variant.product_id == ci.product.id:
+                    lines.append((ci.product, ci.quantity))
+        else:
+            resolved, err = _resolve_guest_lines(request.data.get('items') or [],
+                                                 enforce_payment=False)
+            if err is not None:
+                return err
+            lines = [(p, q) for p, v, q in resolved]
+
+        priced = price_checkout_lines(lines)
+        return Response({
+            'subtotal': str(priced['subtotal']),
+            'platform_delivery': str(priced['platform_delivery']),
+            'self_groups': [
+                {'store': g['store'], 'fee': str(g['fee'])}
+                for g in priced['self_groups'].values()
+            ],
+            'self_delivery_total': str(priced['self_delivery_total']),
+            'delivery_fee': str(priced['delivery_fee']),
+            'total': str(priced['total']),
+            'needs_driver': priced['needs_driver'],
+        })
+
+
 class PlaceOrderView(APIView):
     """
     Paystack-only checkout with instant split settlement.
@@ -534,11 +579,13 @@ class PlaceOrderView(APIView):
 # GUEST CHECKOUT (no account needed)
 # ============================================================
 
-def _resolve_guest_lines(items):
+def _resolve_guest_lines(items, enforce_payment=True):
     """Validate guest item payload against the DB. Returns (lines, error_response).
 
     lines: list of (product, variant, quantity). Prices are ALWAYS recomputed
     from the database in the view — client totals are never trusted.
+    enforce_payment=False skips the subaccount readiness gate (used by the
+    display-only quote endpoint; real placement always enforces it).
     """
     lines = []
     for entry in items:
@@ -569,7 +616,7 @@ def _resolve_guest_lines(items):
                 {'error': f'Only {variant.stock} left of "{product.name}".'},
                 status=status.HTTP_400_BAD_REQUEST)
         if seller and getattr(seller, 'role', '') == 'seller':
-            if not seller.paystack_subaccount_code or seller.subaccount_status != 'active':
+            if enforce_payment and (not seller.paystack_subaccount_code or seller.subaccount_status != 'active'):
                 return None, Response(
                     {'error': 'Some items in your bag cannot be paid for right now. Try again later.'},
                     status=status.HTTP_400_BAD_REQUEST)
