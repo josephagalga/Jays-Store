@@ -37,7 +37,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
-    'gmailapi_backend',
     'apps.accounts',
     'apps.products',
     'apps.orders',
@@ -232,7 +231,18 @@ FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 # with scope https://www.googleapis.com/auth/gmail.send -> generate a
 # refresh token -> set the three GMAIL_API_* vars. No custom domain needed;
 # mail sends from the authenticated Gmail account (EMAIL_HOST_USER).
-if os.getenv('GMAIL_API_REFRESH_TOKEN'):
+# The gmailapi_backend package is optional at import time: it is only added
+# to INSTALLED_APPS when installed, so a missing/slow package install can
+# never take the whole site down with an startup-time ImportError (which
+# surfaces as a bare 502 on every request, with no Django error body).
+try:
+    import importlib.util as _importlib_util
+    _GMAILAPI_AVAILABLE = _importlib_util.find_spec('gmailapi_backend') is not None
+except Exception:
+    _GMAILAPI_AVAILABLE = False
+if _GMAILAPI_AVAILABLE:
+    INSTALLED_APPS.append('gmailapi_backend')
+if os.getenv('GMAIL_API_REFRESH_TOKEN') and _GMAILAPI_AVAILABLE:
     EMAIL_BACKEND = 'gmailapi_backend.mail.GmailBackend'
 else:
     EMAIL_BACKEND = os.getenv(
