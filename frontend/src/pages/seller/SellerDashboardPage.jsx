@@ -479,8 +479,8 @@ export default function SellerDashboardPage() {
           <div className="text-sm">
             <p className="font-semibold text-amber-800">Connect your payout account</p>
             <p className="text-amber-700 mt-0.5">
-              Buyers pay on Paystack and your share is allocated to you at checkout — but checkout of your
-              items is blocked until you connect it. Payouts reach your account in 1–2 business days.
+              Buyers pay on Paystack and your share is sent to your MoMo within minutes — but checkout of your
+              items is blocked until you connect a payout account.
               {profile?.subaccount_status === 'failed' && profile?.subaccount_note && (
                 <span className="block mt-1 font-medium">Last error: {profile.subaccount_note}</span>
               )}

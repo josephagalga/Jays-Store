@@ -33,7 +33,7 @@ export default function ShippingPage() {
             <ol className="list-decimal ml-5 mt-2 space-y-1">
               <li>Our driver collects the order from the seller</li>
               <li>Driver calls the provided phone number upon arrival</li>
-              <li>You provide the 4-digit OTP from your email</li>
+              <li>You provide the 4-digit OTP from your tracking page</li>
               <li>Item is handed over once OTP is verified</li>
             </ol>
           </section>

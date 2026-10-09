@@ -159,7 +159,10 @@ export default function GuestTrackPage() {
           try {
             const raw = localStorage.getItem('jays-guest-orders')
             const list = raw ? JSON.parse(raw) : []
-            const next = [{ reference: nextRef, guest_email: retryEmail.trim(), createdAt: Date.now() },
+            // Carry the last known snapshot forward so the new link still
+            // shows the receipt even before the first successful fetch.
+            const prev = list.find(e => e?.reference === reference) || {}
+            const next = [{ ...prev, reference: nextRef, guest_email: retryEmail.trim(), createdAt: Date.now() },
               ...list.filter(e => e?.reference !== nextRef && e?.reference !== reference)].slice(0, 10)
             localStorage.setItem('jays-guest-orders', JSON.stringify(next))
           } catch { /* ignore */ }
@@ -207,8 +210,11 @@ export default function GuestTrackPage() {
       <div className="max-w-md mx-auto text-center py-24 px-6">
         <Package size={40} className="mx-auto text-[var(--border)] mb-4" />
         <h2 className="serif text-3xl font-medium text-[var(--ink)] mb-3">Order not found</h2>
-        <p className="text-sm text-[var(--muted)] mb-6">Use the tracking link from your confirmation email.</p>
-        <Button onClick={() => navigate('/catalog')}>Continue shopping</Button>
+        <p className="text-sm text-[var(--muted)] mb-6">Open your tracking link from checkout, or find your orders on the saved-orders page.</p>
+        <div className="flex gap-3 justify-center">
+          <Button onClick={() => navigate('/track-saved')}>My saved orders</Button>
+          <Button variant="secondary" onClick={() => navigate('/catalog')}>Continue shopping</Button>
+        </div>
       </div>
     </MainLayout>
   )

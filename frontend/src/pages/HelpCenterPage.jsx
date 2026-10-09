@@ -19,7 +19,7 @@ const sections = [
       },
       {
         title: 'Delivery & OTP',
-        body: 'Delivery is tiered: GHS 5 (1-5 items), GHS 10 (6-10), GHS 20 (11+). After payment, a 4-digit OTP is emailed to you. Give this code to the driver on arrival — they cannot mark the order delivered without it.'
+        body: 'Delivery is tiered: GHS 5 (1-5 items), GHS 10 (6-10), GHS 20 (11+). After payment, a 4-digit OTP appears on your tracking page and orders inbox. Give this code to the driver on arrival — they cannot mark the order delivered without it.'
       },
       {
         title: 'Returns & Refunds',
@@ -92,7 +92,7 @@ const sections = [
       },
       {
         title: 'Seller Management',
-        body: 'View all sellers, review the fixed 10/5 commission tiers and past rate-change history. Sellers can be self-delivery or platform-delivery; all earnings settle instantly via Paystack splits.'
+        body: 'View all sellers, review the fixed 10/5 commission tiers and past rate-change history. Sellers can be self-delivery or platform-delivery; earnings go out as instant MoMo transfers (GHS 1 fee per payout) — track every transfer on the Settlements page.'
       },
       {
         title: 'Driver Verification',

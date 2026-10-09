@@ -23,8 +23,6 @@ from .payments import (
     compute_processing_fee,
     compute_order_split,
     allocate_fee,
-    create_transaction_split,
-    initialize_split_transaction,
     initialize_plain_transaction,
     notify_buyer_of_otp,
 )
@@ -793,6 +791,12 @@ class GuestOrderTrackView(APIView):
             valid = [c for c in channels if c in ('card', 'mobile_money', 'bank_transfer', 'ussd', 'bank')]
             channels = valid or None
         try:
+            # Transfer era: retries always re-init PLAIN. A legacy split_code
+            # would pay sellers direct AND trigger a transfer at confirm —
+            # paying twice — so it is dropped here.
+            if order.paystack_split_code:
+                order.paystack_split_code = ''
+                order.save(update_fields=['paystack_split_code'])
             gross_total = Decimal(str(order.total)) + Decimal(str(order.processing_fee or 0))
             new_reference = f'JAYS-{order.id}-{uuid.uuid4().hex}'
             callback_base = (getattr(settings, 'FRONTEND_URL', '') or '').strip()
@@ -805,11 +809,7 @@ class GuestOrderTrackView(APIView):
                 callback_url=callback_url,
                 channels=channels,
             )
-            if order.paystack_split_code:
-                init = initialize_split_transaction(
-                    split_code=order.paystack_split_code, **init_kwargs)
-            else:
-                init = initialize_plain_transaction(**init_kwargs)
+            init = initialize_plain_transaction(**init_kwargs)
         except Exception as exc:
             return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
         order.payment_method = 'paystack'
@@ -1445,12 +1445,40 @@ def _confirm_payment_inventory(order, logger):
         delivery_share = _snapshot_delivery(seller.id)
         net = gross + delivery_share
 
+        # Idempotency: a duplicate confirm (webhook+verify race, manual
+        # replay) must never create a second row or fire a second transfer.
+        # The caller-level first_time_paid gate is primary; this is the net.
+        if Settlement.objects.filter(order=order, seller=seller).exists():
+            continue
+        # Legacy split-era charge: money already went direct via the split,
+        # so firing a transfer too would pay twice. Hold for manual release
+        # after verifying the split payout on the Paystack dashboard.
+        legacy_split = bool((order.paystack_split_code or '').strip())
+        if legacy_split:
+            Settlement.objects.create(
+                order=order,
+                seller=seller,
+                subaccount_code=seller.paystack_subaccount_code,
+                gross_share=gross,
+                commission=commission,
+                fee_slice=fee_slice,
+                delivery_share=delivery_share,
+                net_share=net,
+                status='pending',
+                transfer_status='held',
+                transfer_fee=Decimal('0.00'),
+                fee_borne_by='platform',
+                transfer_error='Legacy split charge — verify split payout on Paystack before manual release',
+                paystack_reference=order.paystack_reference,
+            )
+            continue
+
         # Who bears the GHS 1 MoMo fee? Seller — unless the net is tiny,
         # in which case the platform absorbs it. Below GHS 1.00 the transfer
         # can't run at all (Paystack minimum) → held for admin.
         if net <= 0:
             fee, fee_by, amount, tstatus, terror = (
-                _FEE, 'platform', Decimal('0.00'), 'held', 'Non-positive net — held for admin review')
+                Decimal('0.00'), 'platform', Decimal('0.00'), 'held', 'Non-positive net — held for admin review')
         elif net <= _ABSORB:
             fee, fee_by = _FEE, 'platform'
             amount = net
@@ -1792,33 +1820,12 @@ class PaystackInitializeView(APIView):
             )
 
         try:
-            # Reuse the placement-time split; recreate for legacy orders.
-            if not order.paystack_split_code:
-                split_entries = {}
-                for item in order.items.select_related('seller').all():
-                    seller = item.seller
-                    if not seller or seller.role != 'seller':
-                        continue
-                    entry = split_entries.setdefault(
-                        seller.id,
-                        {'seller': seller, 'subaccount': seller.paystack_subaccount_code,
-                         'gross': Decimal('0.00')})
-                    entry['gross'] += Decimal(str(item.unit_price)) * item.quantity
-                rate = Decimal(str(PLATFORM_COMMISSION_RATE))
-                for e in split_entries.values():
-                    e['commission'] = e['gross'] * rate
-                admin_nb = (sum((e['commission'] for e in split_entries.values()), Decimal('0.00'))
-                            + Decimal(str(order.delivery_fee)))
-                allocate_fee(split_entries, admin_nb, Decimal(str(order.processing_fee or 0)))
-                shares = [(v['subaccount'], v['net'])
-                          for v in split_entries.values() if v.get('subaccount')]
-                if shares:
-                    split = create_transaction_split(
-                        name=f'My Jays Store order {order.id}',
-                        seller_shares=shares,
-                    )
-                    order.paystack_split_code = split.get('split_code', '')
-                    order.save(update_fields=['paystack_split_code'])
+            # Transfer era: retries always re-init PLAIN and drop any legacy
+            # split_code. Split-era charges paid sellers direct, while confirm
+            # now also transfers — honoring an old split here would pay twice.
+            if order.paystack_split_code:
+                order.paystack_split_code = ''
+                order.save(update_fields=['paystack_split_code'])
 
             gross_total = Decimal(str(order.total)) + Decimal(str(order.processing_fee or 0))
             # Always mint a brand-new UUID reference. Reusing a previous
@@ -1835,10 +1842,7 @@ class PaystackInitializeView(APIView):
                 order_id=order.id,
                 callback_url=callback_url,
             )
-            if order.paystack_split_code:
-                init = initialize_split_transaction(split_code=order.paystack_split_code, **init_kwargs)
-            else:
-                init = initialize_plain_transaction(**init_kwargs)
+            init = initialize_plain_transaction(**init_kwargs)
         except Exception as exc:
             return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 

@@ -159,6 +159,17 @@ export default function CheckoutPage() {
           toast.error('Order saved but payment could not start. Pay from My Orders.')
           navigate('/orders')
         } else {
+          // No authorization URL and no explicit failure: still record what
+          // the server returned so the placed screen never shows Order #null.
+          setOrderId(order.id ?? order.order_id ?? null)
+          if (order.reference) setTrackRef(order.reference)
+          if (order.processing_fee || order.charged_total) {
+            setCharge({
+              processing_fee: order.processing_fee,
+              charged_total: order.charged_total,
+              authorization_url: null,
+            })
+          }
           setPlaced(true)
         }
       } else {
@@ -193,6 +204,15 @@ export default function CheckoutPage() {
           toast.error('Order saved but payment could not start. Use your tracking link to retry.')
           if (order.reference) navigate(`/track/${order.reference}`)
         } else {
+          setOrderId(order.id ?? order.order_id ?? null)
+          if (order.reference) setTrackRef(order.reference)
+          if (order.processing_fee || order.charged_total) {
+            setCharge({
+              processing_fee: order.processing_fee,
+              charged_total: order.charged_total,
+              authorization_url: null,
+            })
+          }
           setPlaced(true)
         }
       }
@@ -207,7 +227,7 @@ export default function CheckoutPage() {
           try {
             const raw = localStorage.getItem('jays-guest-orders')
             const list = raw ? JSON.parse(raw) : []
-            const next = [{ reference: d.reference, guest_email: '',
+            const next = [{ reference: d.reference, guest_email: data?.guest_email || '',
               // eslint-disable-next-line react-hooks/purity -- event handler, not render
               createdAt: Date.now() },
               ...list.filter(e => e?.reference !== d.reference)].slice(0, 10)
@@ -357,12 +377,12 @@ export default function CheckoutPage() {
                   ))}
                 </div>
                 <p className="text-[11px] text-[var(--muted)] mt-2">
-                  Secured by Paystack · sellers receive their share directly (1–2 business days).
+                  Secured by Paystack · sellers receive their share within minutes.
                 </p>
               </div>
 
               <div className="p-3 bg-green-50 border border-green-100 rounded-xl text-sm text-green-700">
-                <strong>OTP-secured delivery.</strong> Your 4-digit handover code arrives by email after payment — the driver can&apos;t complete delivery without it.
+                <strong>OTP-secured delivery.</strong> Your 4-digit handover code appears on your tracking page after payment — the driver can&apos;t complete delivery without it.
               </div>
               <div className="flex items-start gap-2">
                 <input type="checkbox" id="terms" className="mt-1 w-4 h-4 min-w-[16px] accent-[var(--ink)]"

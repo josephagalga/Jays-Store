@@ -161,8 +161,9 @@ export const adminApi = {
   getFinance: () => api.get('/admin/finance/').then((r) => r.data),
   getSellerEarnings: () => api.get('/admin/seller-earnings/').then((r) => r.data),
 
-  // Settlements (instant payouts — history only)
+  // Settlements (instant MoMo transfers — retry stuck ones per row)
   getSettlements: (params) => api.get('/admin/settlements/', { params }).then((r) => r.data),
+  retrySettlement: (id) => api.post(`/admin/settlements/${id}/retry-transfer/`).then((r) => r.data),
   getStaleOrders: () => api.get('/admin/orders-stale/').then((r) => r.data),
 
   // Products

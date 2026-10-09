@@ -146,7 +146,7 @@ export default function DriverHistoryPage() {
               </div>
             )}
             <p className="text-xs text-[var(--muted)]">
-              Ask the buyer for the 4-digit OTP sent to their email/SMS, verify it above, then mark as delivered.
+              Ask the buyer for the 4-digit OTP shown on their tracking page, verify it above, then mark as delivered.
             </p>
             <Button size="sm" onClick={() => statusMutation.mutate({ id: order.id, status: 'delivered' })}>
               Mark as Delivered

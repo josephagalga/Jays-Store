@@ -1,9 +1,19 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Banknote, ArrowRight, MailWarning, MailCheck } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
-import api from '../../services/api'
+import api, { adminApi } from '../../services/api'
+import toast from 'react-hot-toast'
 
 export default function AdminPayoutsPage() {
+  const qc = useQueryClient()
+  const retryMutation = useMutation({
+    mutationFn: (id) => adminApi.retrySettlement(id),
+    onSuccess: (res) => {
+      toast.success(res?.sent ? 'Transfer sent!' : (res?.error || 'Still pending — see row detail'))
+      qc.invalidateQueries(['admin-settlements'])
+    },
+    onError: (err) => toast.error(err.response?.data?.error || 'Retry failed'),
+  })
   const { data: settlements, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-settlements'],
     queryFn: async () => {
@@ -60,7 +70,7 @@ export default function AdminPayoutsPage() {
         </div>
         <div>
           <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">Settlements</h1>
-          <p className="text-sm text-[var(--muted)]">Instant Paystack split payouts — sellers are paid straight to their own accounts</p>
+          <p className="text-sm text-[var(--muted)]">Instant MoMo transfers — sellers paid within minutes of each order</p>
         </div>
       </div>
 
@@ -141,12 +151,32 @@ export default function AdminPayoutsPage() {
                   <p className="text-[11px] text-[var(--muted)] mt-0.5">
                     {s.subaccount_code || '—'} · {s.paystack_reference || '—'} · {s.created_at ? new Date(s.created_at).toLocaleString('en-GH') : ''}
                   </p>
+                  {(s.transfer_reference || ['sent', 'failed', 'held'].includes(s.transfer_status) || s.transfer_error) && (
+                    <p className="text-[11px] mt-0.5">
+                      <span className="font-semibold text-[var(--ink)]">Transfer: {s.transfer_status || 'pending'}</span>
+                      {s.transfer_fee > 0 && (
+                        <span className="text-[var(--muted)]"> · fee GHS {parseFloat(s.transfer_fee).toFixed(2)} ({s.fee_borne_by === 'platform' ? 'on us' : 'seller'})</span>
+                      )}
+                      {s.transfer_reference && <span className="text-[var(--muted)]"> · {s.transfer_reference}</span>}
+                      {s.transfer_error && <span className="block text-rose-600">{s.transfer_error}</span>}
+                    </p>
+                  )}
                 </div>
+                <div className="flex flex-col items-end gap-2">
                 <span className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${
                   s.status === 'settled' ? 'bg-green-50 text-green-600'
                   : s.status === 'failed' ? 'bg-rose-50 text-rose-600'
                   : 'bg-amber-50 text-amber-600'
                 }`}>{s.status}</span>
+                {(s.transfer_status === 'failed' || (s.transfer_status === 'pending' && s.transfer_error)) && (
+                  <button
+                    onClick={() => retryMutation.mutate(s.id)}
+                    disabled={retryMutation.isPending}
+                    className="text-xs font-semibold text-[var(--ink)] underline underline-offset-2 disabled:opacity-50">
+                    {retryMutation.isPending ? 'Sending…' : 'Retry transfer'}
+                  </button>
+                )}
+                </div>
               </div>
             ))}
           </div>
