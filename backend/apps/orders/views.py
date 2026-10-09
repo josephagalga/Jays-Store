@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import uuid
 
 import requests
@@ -49,6 +50,9 @@ from apps.core.permissions import IsBuyer, IsDriver, IsAdmin, IsAdminOrSeller, I
 from apps.products.models import Product
 from decimal import Decimal
 from django.db.models import Sum, F
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_seller_wallet(seller):
