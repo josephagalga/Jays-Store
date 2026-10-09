@@ -15,7 +15,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">2. Platform Overview</h2>
-            <p>My Jay&apos;s Store is an online marketplace connecting buyers with independent sellers in Ghana. We provide the platform for transactions but are not a party to the direct sale between buyer and seller. Delivery issues, product quality, and returns are between buyer and seller: buyers must contact the seller first (within 7 days, with photos), and the seller must resolve it — replacement, fix, or approved return. The platform mediates only if buyer and seller cannot agree, per the Refund Policy.</p>
+            <p>My Jay&apos;s Store is an online marketplace connecting buyers with independent sellers in Ghana. We provide the platform for transactions but are not a party to the direct sale between buyer and seller. Delivery issues, product quality, and returns are strictly between buyer and seller: buyers must contact the seller first (within 7 days, with photos), and the seller alone resolves it — replacement, fix, or approved return. The platform does not intervene in disputes and does not guarantee any outcome.</p>
           </section>
 
           <section>
@@ -47,7 +47,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">8. Limitation of Liability</h2>
-            <p>My Jay&apos;s Store is not liable for disputes between buyers and sellers beyond mediation, product quality, delivery delays beyond our control, third-party service failures, payouts misdirected by seller-entered details, or unauthorized use of a user&apos;s account.</p>
+            <p>My Jay&apos;s Store is not a party to any sale and assumes no liability for dispute outcomes, product quality, delivery delays beyond our control, third-party service failures, payouts misdirected by seller-entered details, or unauthorized use of a user&apos;s account. We may suspend accounts that violate these terms, but suspension is enforcement — not compensation and not mediation.</p>
           </section>
 
           <section>

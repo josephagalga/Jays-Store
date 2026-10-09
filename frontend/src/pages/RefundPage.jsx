@@ -32,12 +32,13 @@ export default function RefundPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">Damaged or Lost in Transit</h2>
-            <p>If your order arrives damaged or is lost during delivery, report to support within 24 hours with photos of packaging and damage. We will work with the seller to arrange a replacement or refund.</p>
+            <p>If your order arrives damaged or is lost during delivery, report to the seller within 24 hours with photos of packaging and damage. The seller alone arranges the replacement or refund — the platform does not step in.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">Disputes</h2>
-            <p>If you and the seller cannot agree, contact support at myjaysstore@gmail.com with your order number, photos, and explanation. We will mediate and make a fair decision. Sellers are the first and primary resolver — platform mediation is a last resort, not a first step.</p>
+            <p>Any problem with a delivered product is strictly between you and the seller. Contact the seller within 7 days with your order number and photos — the seller alone decides the outcome (replacement, fix, or return), and the seller alone bears it. The platform does not mediate disputes, does not guarantee any outcome, and is not liable for unresolved cases. Sellers with repeated unresolved complaints risk suspension, but suspension is enforcement, not compensation — it does not refund you.</p>
+            <p className="mt-2">For account, login, or payment-system faults (not product issues), contact support at myjaysstore@gmail.com.</p>
           </section>
 
           <section>
