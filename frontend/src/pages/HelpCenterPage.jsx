@@ -50,7 +50,7 @@ const sections = [
       },
       {
         title: 'Payouts',
-        body: 'When a buyer pays, your net share is instantly settled to your Paystack subaccount (MoMo or bank). You can view your settlement history in the Settlements page. No waiting for platform payouts — the money goes straight to you.'
+        body: 'When a buyer pays, your net share is allocated to your Paystack subaccount (MoMo or bank) at checkout, and Paystack sends it to your account in 1–2 business days (weekend/holiday sales arrive the next business day). A newly connected payout account may be held once for verification. You can view your settlement history in the Settlements page — no withdrawals needed.'
       },
       {
         title: 'Order Management',

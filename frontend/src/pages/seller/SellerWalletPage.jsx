@@ -50,7 +50,7 @@ export default function SellerWalletPage() {
           <div>
             <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">My Wallet</h1>
             <p className="text-sm text-[var(--muted)] mt-1">
-              Every sale settles instantly to your payout account — no withdrawals needed.
+              Your share of every sale is allocated at checkout — no withdrawals needed.
             </p>
           </div>
           <button
@@ -69,7 +69,9 @@ export default function SellerWalletPage() {
 
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-8 text-sm text-blue-800">
           <strong>{wallet?.settled_orders || 0} settled order{(wallet?.settled_orders || 0) === 1 ? '' : 's'}.</strong>
-          {' '}Manage your MoMo/bank details and delivery mode in{' '}
+          {' '}Paystack sends each payout to your account in <strong>1–2 business days</strong>
+          (weekend/holiday sales arrive the next business day). A newly connected or changed payout
+          account may be held once for Paystack&apos;s verification. Manage your MoMo/bank details in{' '}
           <Link to="/seller/dashboard" className="underline font-medium">Seller Dashboard</Link>.
         </div>
 

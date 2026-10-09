@@ -440,15 +440,15 @@ export default function SellerDashboardPage() {
         </form>
       </div>
 
-      {/* Payout account — instant settlement target */}
+      {/* Payout account — Paystack settlement target (T+1/T+2, not instant) */}
       {!subaccountActive && !isLoading && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 mb-6 flex items-start gap-3">
           <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="text-sm">
             <p className="font-semibold text-amber-800">Connect your payout account</p>
             <p className="text-amber-700 mt-0.5">
-              Buyers pay on Paystack and your share settles straight to your account — but checkout of your
-              items is blocked until you connect it.
+              Buyers pay on Paystack and your share is allocated to you at checkout — but checkout of your
+              items is blocked until you connect it. Payouts reach your account in 1–2 business days.
               {profile?.subaccount_status === 'failed' && profile?.subaccount_note && (
                 <span className="block mt-1 font-medium">Last error: {profile.subaccount_note}</span>
               )}
@@ -457,7 +457,7 @@ export default function SellerDashboardPage() {
         </div>
       )}
 
-      {/* Instant settlement */}
+      {/* Settlement summary (allocated at checkout, paid out in 1–2 business days) */}
       <div className="bg-[var(--ink)] rounded-2xl p-6 lg:p-8 mb-6 text-white">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
@@ -465,7 +465,7 @@ export default function SellerDashboardPage() {
               <Wallet size={20} />
             </div>
             <div>
-              <p className="text-xs text-white/50 uppercase tracking-wider">Settled to you (instant)</p>
+              <p className="text-xs text-white/50 uppercase tracking-wider">Settled to you</p>
               <p className="text-3xl font-bold">GHS {settledTotal.toFixed(2)}</p>
             </div>
           </div>
@@ -482,8 +482,18 @@ export default function SellerDashboardPage() {
           </div>
         </div>
         <p className="text-xs text-white/40 mt-4">
-          No withdrawals needed — every sale settles instantly to your account (item total minus 10% commission under GHS 100, 5% from GHS 100).
+          No withdrawals needed — your share of every sale is allocated to you at checkout (item total
+          minus commission: 10% under GHS 100, 5% from GHS 100).
         </p>
+        <div className="mt-4 bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-xs text-white/70 leading-relaxed">
+          <p className="font-semibold text-white mb-1">How and when you get paid</p>
+          <p>
+            Paystack sends your money to your payout account in <span className="font-semibold text-white">1–2 business days</span> —
+            it is not instant. Weekend and holiday sales arrive the next business day. After you connect or
+            change your payout account, Paystack may hold the first payout for a one-time verification.
+            If money hasn't arrived after 2 business days, confirm your MoMo/bank details above are correct.
+          </p>
+        </div>
 
         {showPayoutForm && (
           <form onSubmit={savePayoutAccount} className="grid md:grid-cols-4 gap-3 mt-6 pt-6 border-t border-white/10">

@@ -357,7 +357,7 @@ export default function CheckoutPage() {
                   ))}
                 </div>
                 <p className="text-[11px] text-[var(--muted)] mt-2">
-                  Secured by Paystack · sellers are paid instantly to their own accounts.
+                  Secured by Paystack · sellers receive their share directly (1–2 business days).
                 </p>
               </div>
 
