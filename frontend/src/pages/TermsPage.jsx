@@ -5,7 +5,7 @@ export default function TermsPage() {
     <MainLayout>
       <div className="max-w-3xl mx-auto px-6 lg:px-10 py-10">
         <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-2">Terms of Service</h1>
-        <p className="text-xs text-[var(--muted)] mb-8">Last updated: October 1, 2026</p>
+        <p className="text-xs text-[var(--muted)] mb-8">Last updated: October 9, 2026 (v2026-10-2.0)</p>
 
         <div className="space-y-6 text-sm text-[var(--muted)] leading-relaxed">
           <section>
@@ -15,7 +15,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">2. Platform Overview</h2>
-            <p>My Jay&apos;s Store is an online marketplace connecting buyers with independent sellers in Ghana. We provide the platform for transactions but are not a party to the direct sale between buyer and seller.</p>
+            <p>My Jay&apos;s Store is an online marketplace connecting buyers with independent sellers in Ghana. We provide the platform for transactions but are not a party to the direct sale between buyer and seller. Delivery issues, product quality, and returns are between buyer and seller: buyers must contact the seller first (within 7 days, with photos), and the seller must resolve it — replacement, fix, or approved return. The platform mediates only if buyer and seller cannot agree, per the Refund Policy.</p>
           </section>
 
           <section>
@@ -47,7 +47,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">8. Limitation of Liability</h2>
-            <p>My Jay&apos;s Store is not liable for disputes between buyers and sellers beyond mediation, product quality, delivery delays beyond our control, or third-party service failures.</p>
+            <p>My Jay&apos;s Store is not liable for disputes between buyers and sellers beyond mediation, product quality, delivery delays beyond our control, third-party service failures, payouts misdirected by seller-entered details, or unauthorized use of a user&apos;s account.</p>
           </section>
 
           <section>
@@ -58,6 +58,16 @@ export default function TermsPage() {
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">10. Governing Law</h2>
             <p>These terms are governed by the laws of Ghana. Questions? Contact myjaysstore@gmail.com.</p>
+          </section>
+
+          <section>
+            <h2 className="text-base font-semibold text-[var(--ink)] mb-2">11. Seller Payout Liability</h2>
+            <p>You are solely responsible for the correctness of your payout (MoMo/bank) details. Payouts are processed automatically to the account on record and cannot be reversed. If a payout fails or goes to the wrong account because of details you entered, the loss is yours — the platform will help trace it but will not reimburse it. A GHS 1 transfer fee applies per payout (absorbed by the platform on sales under GHS 5). Payouts are sent within minutes of each paid order (up to 24 hours in batch cases).</p>
+          </section>
+
+          <section>
+            <h2 className="text-base font-semibold text-[var(--ink)] mb-2">12. Account Security</h2>
+            <p>You are responsible for keeping your login credentials secret. If someone accesses your account and changes your payout details or otherwise acts as you, those actions are attributed to you. Tell us immediately if you suspect compromise so we can lock the account — but completed payouts made before the lock cannot be recovered by us.</p>
           </section>
         </div>
       </div>

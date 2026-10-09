@@ -213,11 +213,20 @@ PAYSTACK_WEBHOOK_SECRET = os.getenv('PAYSTACK_WEBHOOK_SECRET', '')
 PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY', '')
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '')
 
+# Legal version shown on /terms + stamped on registration acceptance.
+TERMS_VERSION = os.getenv('TERMS_VERSION', '2026-10-2.0')
+
 # Paystack Ghana gateway fee (passed on to buyer + sellers, pro-rata).
 # fee = rate * gross, capped at PAYSTACK_GH_FEE_CAP. Adjust to match
 # Paystack's current Ghana pricing if it changes.
 PAYSTACK_GH_FEE_RATE = os.getenv('PAYSTACK_GH_FEE_RATE', '0.0195')
 PAYSTACK_GH_FEE_CAP = os.getenv('PAYSTACK_GH_FEE_CAP', '10.00')
+
+# Instant MoMo transfers (replaces split settlement): flat GHS 1.00 per
+# seller payout, borne by the seller — absorbed by the platform when the
+# seller's net is at/under SELLER_FEE_ABSORB_BELOW (tiny sales ride free).
+PAYSTACK_TRANSFER_FEE = os.getenv('PAYSTACK_TRANSFER_FEE', '1.00')
+SELLER_FEE_ABSORB_BELOW = os.getenv('SELLER_FEE_ABSORB_BELOW', '5.00')
 
 # Public frontend URL (used for Paystack callback_url + docs)
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')

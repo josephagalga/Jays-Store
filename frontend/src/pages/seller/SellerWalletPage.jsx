@@ -50,7 +50,7 @@ export default function SellerWalletPage() {
           <div>
             <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)]">My Wallet</h1>
             <p className="text-sm text-[var(--muted)] mt-1">
-              Your share of every sale is allocated at checkout — no withdrawals needed.
+              Your share goes to your MoMo within minutes of each paid order — no withdrawals needed.
             </p>
           </div>
           <button
@@ -69,9 +69,9 @@ export default function SellerWalletPage() {
 
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-8 text-sm text-blue-800">
           <strong>{wallet?.settled_orders || 0} settled order{(wallet?.settled_orders || 0) === 1 ? '' : 's'}.</strong>
-          {' '}Paystack sends each payout to your account in <strong>1–2 business days</strong>
-          (weekend/holiday sales arrive the next business day). A newly connected or changed payout
-          account may be held once for Paystack&apos;s verification. Manage your MoMo/bank details in{' '}
+          {' '}A <strong>GHS 1 transfer fee</strong> comes out of each payout (sales under GHS 5 carry no fee).
+          Payouts go only to your saved MoMo/bank account and can&apos;t be reversed — a wrong number means
+          the loss is yours. Manage your details in{' '}
           <Link to="/seller/dashboard" className="underline font-medium">Seller Dashboard</Link>.
         </div>
 
@@ -85,7 +85,7 @@ export default function SellerWalletPage() {
             <table className="w-full min-w-[640px]">
               <thead className="bg-[var(--off)] border-b border-[var(--border)]">
                 <tr>
-                  {['Order', 'Gross', 'Delivery', 'Net', 'Status'].map(h => (
+                  {['Order', 'Gross', 'Fee', 'Net received', 'Status'].map(h => (
                     <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -95,8 +95,12 @@ export default function SellerWalletPage() {
                   <tr key={s.id}>
                     <td className="px-5 py-4 text-sm font-medium text-[var(--ink)]">#{s.order}</td>
                     <td className="px-5 py-4 text-sm text-[var(--ink)]">{money(s.gross_share)}</td>
-                    <td className="px-5 py-4 text-sm text-[var(--muted)]">{money(s.delivery_share)}</td>
-                    <td className="px-5 py-4 text-sm font-semibold text-[var(--ink)]">{money(s.net_share)}</td>
+                    <td className="px-5 py-4 text-sm text-[var(--muted)]">
+                      {money(s.transfer_fee)}{s.fee_borne_by === 'platform' ? ' (on us)' : ''}
+                    </td>
+                    <td className="px-5 py-4 text-sm font-semibold text-[var(--ink)]">
+                      {money(parseFloat(s.net_share || 0) - (s.fee_borne_by === 'seller' ? parseFloat(s.transfer_fee || 0) : 0))}
+                    </td>
                     <td className="px-5 py-4">
                       <span className={`px-2.5 py-1 text-[10px] font-semibold rounded-full capitalize ${
                         s.status === 'settled' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'

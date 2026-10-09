@@ -15,6 +15,7 @@ export default function SellerDashboardPage() {
   const qc = useQueryClient()
   const [payoutForm, setPayoutForm] = useState({ payout_account_number: '', payout_bank_code: '', payout_account_name: '' })
   const [showPayoutForm, setShowPayoutForm] = useState(false)
+  const [termsNoticeSeen, setTermsNoticeSeen] = useState(false)
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['seller-profile'],
@@ -236,6 +237,37 @@ export default function SellerDashboardPage() {
           </p>
         </Link>
       )}
+
+      {/* New payout terms + instant MoMo (existing sellers never signed these) */}
+      {!termsNoticeSeen && (() => {
+        try {
+          if (localStorage.getItem('jays-seller-terms-v2026-10-2.0')) return null
+        } catch { /* show anyway */ }
+        const inPilot = !!profile?.auto_transfer_enabled
+        return (
+          <div className="bg-white border border-[var(--border)] rounded-2xl px-5 py-4 mb-6">
+            <p className="text-sm font-bold text-[var(--ink)] mb-1">
+              New: payouts in minutes{inPilot ? ' — you&apos;re in' : ' — coming to you soon'}
+            </p>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              {inPilot
+                ? 'Your share now goes straight to your MoMo within minutes of each paid order. A GHS 1 fee comes out of each payout (sales under GHS 5 are free). '
+                : 'Instant MoMo payouts are rolling out seller by seller — you&apos;ll be switched on soon. Until then your sales settle on the Paystack schedule. '}
+              Payouts go only to the account below and can&apos;t be reversed — a wrong number means the loss is
+              yours (§11). Keep your login secret (§12). Continued selling means you accept the updated{' '}
+              <Link to="/terms" target="_blank" className="underline font-medium">Terms</Link>.
+            </p>
+            <button
+              onClick={() => {
+                try { localStorage.setItem('jays-seller-terms-v2026-10-2.0', '1') } catch { /* ignore */ }
+                setTermsNoticeSeen(true)
+              }}
+              className="mt-2 text-xs font-semibold text-[var(--ink)] underline underline-offset-2">
+              Got it
+            </button>
+          </div>
+        )
+      })()}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
@@ -488,10 +520,11 @@ export default function SellerDashboardPage() {
         <div className="mt-4 bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-xs text-white/70 leading-relaxed">
           <p className="font-semibold text-white mb-1">How and when you get paid</p>
           <p>
-            Paystack sends your money to your payout account in <span className="font-semibold text-white">1–2 business days</span> —
-            it is not instant. Weekend and holiday sales arrive the next business day. After you connect or
-            change your payout account, Paystack may hold the first payout for a one-time verification.
-            If money hasn't arrived after 2 business days, confirm your MoMo/bank details above are correct.
+            Your share goes straight to your MoMo within <span className="font-semibold text-white">minutes of each paid order</span> (up
+            to 24 hours in batch cases) — no withdrawals, no waiting days. A <span className="font-semibold text-white">GHS 1 transfer fee</span> comes
+            out of each payout (list 50 → receive 49); sales under GHS 5 carry no fee. Payouts go only to the
+            account above and can&apos;t be reversed — a wrong number means the loss is yours (§11). Keep your
+            login secret: anyone in your account can change where money goes (§12).
           </p>
         </div>
 
@@ -513,6 +546,10 @@ export default function SellerDashboardPage() {
             <Button type="submit" loading={payoutMutation.isPending} className="!bg-white !text-[var(--ink)] rounded-xl">
               Save & Verify
             </Button>
+            <p className="md:col-span-4 text-[11px] text-white/50 leading-relaxed">
+              I confirm this MoMo/bank number is mine and correct. I understand payouts go only to this
+              account, transfers can&apos;t be reversed, and a wrong number means the loss is mine (§11).
+            </p>
           </form>
         )}
 

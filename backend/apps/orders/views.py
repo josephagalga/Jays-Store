@@ -508,58 +508,27 @@ class PlaceOrderView(APIView):
             f'Sellers receive: {sellers_total:.2f} GHS'
         )
 
-        # Create the Paystack split + initialize the buyer charge.
-        # (No vendor shares → plain charge, platform keeps everything.)
-        # Split-create and initialize are labeled separately so a 502 names
-        # the exact failing step instead of a generic Paystack error.
+        # Collect 100% to the platform (plain charge — no split). Seller
+        # shares go out as instant MoMo transfers at confirm time. Orders
+        # placed before the transfer era keep their split_code and retry
+        # through it; every new order starts plain.
         try:
-            seller_shares = [
-                (e['seller'].paystack_subaccount_code, e['net'])
-                for e in per_seller.values()
-            ]
-            if seller_shares:
-                try:
-                    split = create_transaction_split(
-                        name=f'My Jays Store order {order.id}',
-                        seller_shares=seller_shares,
-                        bearer_share=admin_gross,  # Expected platform share (for logging/validation)
-                        metadata={
-                            'order_id': order.id,
-                            'commission': float(commission_collected_total),
-                            'delivery_fee': float(delivery_fee),
-                            'platform_items': float(platform_direct),
-                            'expected_platform_total': float(admin_gross),
-                        }
-                    )
-                except Exception as exc:
-                    raise RuntimeError(f'paystack split create failed: {exc}')
-                order.paystack_split_code = split.get('split_code', '')
-                order.save(update_fields=['paystack_split_code'])
+            order.paystack_split_code = ''
+            order.save(update_fields=['paystack_split_code'])
 
             reference = f'JAYS-{order.id}-{uuid.uuid4().hex}'
             callback_base = (getattr(settings, 'FRONTEND_URL', '') or '').strip()
             callback_url = callback_base.rstrip('/') + f'/orders/{order.id}/track' if callback_base else None
             channels = serializer.validated_data.get('channels') or None
             try:
-                if order.paystack_split_code:
-                    init = initialize_split_transaction(
-                        email=request.user.email,
-                        gross_total=total + processing_fee,
-                        reference=reference,
-                        split_code=order.paystack_split_code,
-                        order_id=order.id,
-                        callback_url=callback_url,
-                        channels=channels,
-                    )
-                else:
-                    init = initialize_plain_transaction(
-                        email=request.user.email,
-                        gross_total=total + processing_fee,
-                        reference=reference,
-                        order_id=order.id,
-                        callback_url=callback_url,
-                        channels=channels,
-                    )
+                init = initialize_plain_transaction(
+                    email=request.user.email,
+                    gross_total=total + processing_fee,
+                    reference=reference,
+                    order_id=order.id,
+                    callback_url=callback_url,
+                    channels=channels,
+                )
             except Exception as exc:
                 raise RuntimeError(f'paystack initialize failed: {exc}')
             order.paystack_reference = init.get('reference', reference)
@@ -739,31 +708,11 @@ class GuestPlaceOrderView(APIView):
             is_locked=False,
         )
 
+        # Collect 100% to the platform (plain charge — no split). Seller
+        # shares go out as instant MoMo transfers at confirm time.
         try:
-            seller_shares = [
-                (e['seller'].paystack_subaccount_code, e['net'])
-                for e in per_seller.values()
-            ]
-            split_code = ''
-            if seller_shares:
-                try:
-                    split = create_transaction_split(
-                        name=f'My Jays Store order {order.id}',
-                        seller_shares=seller_shares,
-                        bearer_share=admin_gross,
-                        metadata={
-                            'order_id': order.id,
-                            'commission': float(commission_collected_total),
-                            'delivery_fee': float(delivery_fee),
-                            'platform_items': float(platform_direct),
-                            'expected_platform_total': float(admin_gross),
-                            'guest': True,
-                        }
-                    )
-                except Exception as exc:
-                    raise RuntimeError(f'paystack split create failed: {exc}')
-                order.paystack_split_code = split.get('split_code', '')
-                order.save(update_fields=['paystack_split_code'])
+            order.paystack_split_code = ''
+            order.save(update_fields=['paystack_split_code'])
 
             reference = f'JAYS-{order.id}-{uuid.uuid4().hex}'
             callback_base = (getattr(settings, 'FRONTEND_URL', '') or '').strip()
@@ -777,11 +726,7 @@ class GuestPlaceOrderView(APIView):
                 channels=channels,
             )
             try:
-                if order.paystack_split_code:
-                    init = initialize_split_transaction(
-                        split_code=order.paystack_split_code, **init_kwargs)
-                else:
-                    init = initialize_plain_transaction(**init_kwargs)
+                init = initialize_plain_transaction(**init_kwargs)
             except Exception as exc:
                 raise RuntimeError(f'paystack initialize failed: {exc}')
             order.paystack_reference = init.get('reference', reference)
@@ -1481,16 +1426,45 @@ def _confirm_payment_inventory(order, logger):
         except Exception:
             return Decimal('0.00')
 
-    # Create settlement records
+    # Create settlement records + fire instant MoMo transfers.
+    # Pilot-gated per seller (auto_transfer_enabled): non-pilot settlements
+    # are HELD for the Paystack schedule + admin release, never transferred.
+    from .payments import (
+        transfer_fee as _transfer_fee,
+        transfer_absorb_below as _absorb_below,
+        ensure_transfer_recipient as _ensure_recipient,
+        initiate_seller_transfer as _fire_transfer,
+    )
+    _FEE = _transfer_fee()
+    _ABSORB = _absorb_below()
     for entry in seller_shares.values():
         seller = entry['seller']
         gross = entry['gross']
         commission = Decimal('0.00')  # No commission deducted in buyer-pays model
-        fee_slice = Decimal('0.00')  # Buyer covers gateway fee (bearer_type='account')
+        fee_slice = Decimal('0.00')  # Buyer covers gateway fee (plain collect)
         delivery_share = _snapshot_delivery(seller.id)
         net = gross + delivery_share
 
-        Settlement.objects.create(
+        # Who bears the GHS 1 MoMo fee? Seller — unless the net is tiny,
+        # in which case the platform absorbs it. Below GHS 1.00 the transfer
+        # can't run at all (Paystack minimum) → held for admin.
+        if net <= 0:
+            fee, fee_by, amount, tstatus, terror = (
+                _FEE, 'platform', Decimal('0.00'), 'held', 'Non-positive net — held for admin review')
+        elif net <= _ABSORB:
+            fee, fee_by = _FEE, 'platform'
+            amount = net
+            tstatus, terror = ('pending', '')
+            if amount < Decimal('1.00'):
+                tstatus, terror = ('held', 'Below Paystack transfer minimum — held for admin')
+        else:
+            fee, fee_by = _FEE, 'seller'
+            amount = net - fee
+            tstatus, terror = ('pending', '')
+            if amount < Decimal('1.00'):
+                tstatus, terror = ('held', 'Below Paystack transfer minimum — held for admin')
+
+        settlement = Settlement.objects.create(
             order=order,
             seller=seller,
             subaccount_code=seller.paystack_subaccount_code,
@@ -1499,10 +1473,54 @@ def _confirm_payment_inventory(order, logger):
             fee_slice=fee_slice,
             delivery_share=delivery_share,
             net_share=net,
-            status='settled',  # Immediately settled (Paystack split executed)
-            settled_at=timezone.now(),
+            status='pending',
+            transfer_status=tstatus,
+            transfer_fee=fee,
+            fee_borne_by=fee_by,
+            transfer_error=terror,
             paystack_reference=order.paystack_reference,
         )
+
+        if tstatus == 'held' or not getattr(seller, 'auto_transfer_enabled', False):
+            if tstatus != 'held':
+                settlement.transfer_status = 'held'
+                settlement.transfer_error = 'Pilot not enabled — settles on Paystack schedule'
+                settlement.save(update_fields=['transfer_status', 'transfer_error'])
+            continue
+
+        # Ensure recipient (cached on seller) then push. Any failure leaves
+        # the row retryable — fee bills only on success, so retries are free.
+        try:
+            recipient = (seller.transfer_recipient_code or '').strip()
+            if not recipient:
+                if not (seller.payout_account_number or '').strip() or not (seller.payout_bank_code or '').strip():
+                    raise RuntimeError('Seller payout details missing — held for admin')
+                recipient = _ensure_recipient(
+                    name=seller.store_name or seller.full_name,
+                    account_number=seller.payout_account_number.strip(),
+                    bank_code=seller.payout_bank_code.strip(),
+                )
+                seller.transfer_recipient_code = recipient
+                seller.save(update_fields=['transfer_recipient_code'])
+            reference = f'order-{order.id}/seller-{seller.id}'
+            tcode, tstate = _fire_transfer(
+                amount=amount,
+                recipient_code=recipient,
+                reference=reference,
+                reason=f"Jays Store order {order.id} payout",
+            )
+            settlement.transfer_reference = tcode or reference
+            settlement.transfer_status = 'sent'
+            settlement.transfer_error = ''
+            settlement.status = 'settled'
+            settlement.settled_at = timezone.now()
+            settlement.save()
+        except BaseException as exc:  # noqa: BLE001 — failure must stay retryable, never crash confirm
+            err = getattr(exc, 'message', None) or str(exc) or repr(exc)
+            logger.exception(f'Transfer failed for order {order.id} seller {seller.id}')
+            settlement.transfer_status = 'failed'
+            settlement.transfer_error = err[:500]
+            settlement.save(update_fields=['transfer_status', 'transfer_error'])
 
     # Handoff records for self-delivering sellers (driver board skips if none needed)
     for entry in seller_shares.values():
@@ -2050,6 +2068,77 @@ class AdminSettlementListView(generics.ListAPIView):
         if status_filter:
             qs = qs.filter(status=status_filter)
         return qs
+
+
+class AdminSettlementRetryTransferView(APIView):
+    """Retry a stuck seller transfer (pending/failed/held). Idempotent:
+    already-sent settlements return success without calling Paystack."""
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def post(self, request, pk):
+        from django.db import transaction as _txn
+        from .models import Settlement as SettlementModel
+        try:
+            settlement = SettlementModel.objects.select_related('seller', 'order').get(pk=pk)
+        except SettlementModel.DoesNotExist:
+            return Response({'error': 'Settlement not found'}, status=status.HTTP_404_NOT_FOUND)
+        if settlement.transfer_status == 'sent':
+            return Response({'sent': True, 'transfer_reference': settlement.transfer_reference})
+        seller = settlement.seller
+        if seller is None:
+            return Response({'error': 'Seller missing on settlement'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from decimal import Decimal as _Decimal
+        from .payments import (
+            transfer_fee as _transfer_fee,
+            ensure_transfer_recipient as _ensure_recipient,
+            initiate_seller_transfer as _fire_transfer,
+        )
+        try:
+            with _txn.atomic():
+                settlement = SettlementModel.objects.select_for_update().get(pk=pk)
+                if settlement.transfer_status == 'sent':
+                    return Response({'sent': True, 'transfer_reference': settlement.transfer_reference})
+                net = _Decimal(str(settlement.net_share))
+                fee = _Decimal(str(settlement.transfer_fee or _transfer_fee()))
+                borne = settlement.fee_borne_by or 'seller'
+                amount = net if borne == 'platform' else net - fee
+                if amount < _Decimal('1.00'):
+                    settlement.transfer_status = 'held'
+                    settlement.transfer_error = 'Below Paystack transfer minimum — held for admin'
+                    settlement.save(update_fields=['transfer_status', 'transfer_error'])
+                    return Response({'sent': False, 'held': True,
+                                     'error': settlement.transfer_error})
+                recipient = (seller.transfer_recipient_code or '').strip()
+                if not recipient:
+                    if not (seller.payout_account_number or '').strip() or not (seller.payout_bank_code or '').strip():
+                        raise RuntimeError('Seller payout details missing — held for admin')
+                    recipient = _ensure_recipient(
+                        name=seller.store_name or seller.full_name,
+                        account_number=seller.payout_account_number.strip(),
+                        bank_code=seller.payout_bank_code.strip(),
+                    )
+                    seller.transfer_recipient_code = recipient
+                    seller.save(update_fields=['transfer_recipient_code'])
+                reference = f'order-{settlement.order_id}/seller-{seller.id}'
+                tcode, _tstate = _fire_transfer(
+                    amount=amount, recipient_code=recipient, reference=reference,
+                    reason=f"Jays Store order {settlement.order_id} payout (retry)",
+                )
+                settlement.transfer_reference = tcode or reference
+                settlement.transfer_status = 'sent'
+                settlement.transfer_error = ''
+                settlement.status = 'settled'
+                settlement.settled_at = timezone.now()
+                settlement.save()
+        except BaseException as exc:  # noqa: BLE001 — report, never 500 the admin UI
+            err = getattr(exc, 'message', None) or str(exc) or repr(exc)
+            logger.exception(f'Admin transfer retry failed for settlement {pk}')
+            settlement.transfer_status = 'failed'
+            settlement.transfer_error = err[:500]
+            settlement.save(update_fields=['transfer_status', 'transfer_error'])
+            return Response({'sent': False, 'error': err[:500]})
+        return Response({'sent': True, 'transfer_reference': settlement.transfer_reference})
 
 
 class AdminEmailLogListView(generics.ListAPIView):

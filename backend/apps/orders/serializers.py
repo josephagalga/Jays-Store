@@ -584,6 +584,8 @@ class SettlementSerializer(serializers.ModelSerializer):
             'id', 'order', 'seller', 'seller_name', 'seller_email',
             'subaccount_code', 'gross_share', 'commission', 'fee_slice',
             'delivery_share', 'net_share', 'status', 'paystack_reference',
+            'transfer_reference', 'transfer_status', 'transfer_fee',
+            'fee_borne_by', 'transfer_error',
             'created_at', 'settled_at',
         ]
         read_only_fields = ['id', 'created_at', 'settled_at']

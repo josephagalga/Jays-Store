@@ -50,7 +50,7 @@ const sections = [
       },
       {
         title: 'Payouts',
-        body: 'When a buyer pays, your net share is allocated to your Paystack subaccount (MoMo or bank) at checkout, and Paystack sends it to your account in 1–2 business days (weekend/holiday sales arrive the next business day). A newly connected payout account may be held once for verification. You can view your settlement history in the Settlements page — no withdrawals needed.'
+        body: 'When a buyer pays, your net share goes straight to your MoMo within minutes (up to 24 hours in batch cases) — no withdrawals, no waiting days. A GHS 1 transfer fee comes out of each payout (sales under GHS 5 carry no fee). Payouts go only to your saved account and cannot be reversed. Track every payout in Wallet and the Settlements page.'
       },
       {
         title: 'Order Management',

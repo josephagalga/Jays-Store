@@ -35,6 +35,16 @@ def paystack_fee_cap():
     return Decimal(str(getattr(settings, 'PAYSTACK_GH_FEE_CAP', '10.00')))
 
 
+def transfer_fee():
+    """Flat MoMo transfer fee (GHS) charged per seller payout."""
+    return _q(getattr(settings, 'PAYSTACK_TRANSFER_FEE', '1.00'))
+
+
+def transfer_absorb_below():
+    """Nets at/under this (GHS) ride free — platform absorbs the fee."""
+    return _q(getattr(settings, 'SELLER_FEE_ABSORB_BELOW', '5.00'))
+
+
 def compute_processing_fee(net_total):
     """Gateway fee passed to buyer+sellers for a given net amount.
 
@@ -378,3 +388,67 @@ def notify_buyer_of_otp(order, otp_code, connection=None):
     except Exception as exc:
         logger.warning('Could not update OTP log for order %s: %s', order.id, exc)
     return sent
+
+
+# ============================================================
+# INSTANT TRANSFERS (MoMo payouts, minutes not days)
+# Collect 100% to the platform at charge time (plain init, no split),
+# then push each seller's net to their MoMo here. Fee: GHS 1.00 flat per
+# transfer, borne by the seller — absorbed by the platform when the net
+# is at/under SELLER_FEE_ABSORB_BELOW. Fees bill only on success, so
+# retries are free. Transfers are one-way and irreversible: recipients
+# come only from verified payout details, amounts only from DB recompute.
+# ============================================================
+
+def ensure_transfer_recipient(*, name, account_number, bank_code):
+    """Create (or reuse) a Paystack transfer recipient. Returns recipient code.
+
+    Callers cache the code on the seller; creation is idempotent enough to
+    retry safely (duplicates are harmless clutter, the cached code wins).
+    """
+    _require_secret()
+    code = (bank_code or '').upper()
+    recipient_type = 'mobile_money' if code in ('MTN', 'ATL', 'VOD', 'TIGO', 'AIRTELTIGO') else 'ghipss'
+    resp = requests.post(
+        'https://api.paystack.co/transferrecipient',
+        json={
+            'type': recipient_type,
+            'name': (name or '')[:100],
+            'account_number': account_number,
+            'bank_code': bank_code,
+            'currency': 'GHS',
+        },
+        headers=_headers(), timeout=20,
+    )
+    body = resp.json()
+    if not body.get('status') or 'data' not in body:
+        raise RuntimeError(body.get('message', 'Paystack rejected the transfer recipient'))
+    return body['data']['recipient_code']
+
+
+def initiate_seller_transfer(*, amount, recipient_code, reference, reason=None):
+    """Push GHS amount to a recipient. Returns (transfer_code, status).
+
+    Amount is a Decimal in GHS (converted to pesewas here). Raises RuntimeError
+    with Paystack's message on rejection — callers record it and retry later.
+    Pass a stable reference (order-<id>/seller-<id>) so replays are traceable.
+    """
+    _require_secret()
+    if _q(amount) < _q('1.00'):
+        raise RuntimeError('Transfer below Paystack minimum (GHS 1.00) — held for admin')
+    resp = requests.post(
+        'https://api.paystack.co/transfer',
+        json={
+            'source': 'balance',
+            'amount': int(_q(amount) * 100),
+            'recipient': recipient_code,
+            'reference': reference[:100],
+            'reason': (reason or 'Seller payout')[:100],
+        },
+        headers=_headers(), timeout=20,
+    )
+    body = resp.json()
+    if not body.get('status') or 'data' not in body:
+        raise RuntimeError(body.get('message', 'Paystack rejected the transfer'))
+    data = body['data']
+    return data.get('transfer_code', ''), data.get('status', '')

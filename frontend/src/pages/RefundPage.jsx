@@ -37,7 +37,7 @@ export default function RefundPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">Disputes</h2>
-            <p>If you and the seller cannot agree, contact support at myjaysstore@gmail.com with your order number, photos, and explanation. We will mediate and make a fair decision.</p>
+            <p>If you and the seller cannot agree, contact support at myjaysstore@gmail.com with your order number, photos, and explanation. We will mediate and make a fair decision. Sellers are the first and primary resolver — platform mediation is a last resort, not a first step.</p>
           </section>
 
           <section>

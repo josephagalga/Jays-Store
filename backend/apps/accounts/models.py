@@ -210,12 +210,22 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     payout_account_name = models.CharField(max_length=100, blank=True, default='')
     paystack_subaccount_code = models.CharField(max_length=50, blank=True, default='')
     # ↑ e.g. "ACCT_..." — created via Paystack once payout details are saved
+    #   (split era; retained for historic orders)
+    transfer_recipient_code = models.CharField(max_length=60, blank=True, default='')
+    # ↑ e.g. "RCP_..." — Paystack transfer recipient for instant MoMo payouts
+    auto_transfer_enabled = models.BooleanField(default=False)
+    # ↑ Pilot gate: instant transfers fire only for enabled sellers
     subaccount_status = models.CharField(
         max_length=20,
         choices=[('none', 'None'), ('pending', 'Pending'), ('active', 'Active'), ('failed', 'Failed')],
         default='none',
     )
     subaccount_note = models.TextField(blank=True, default='')
+
+    # LEGAL ACCEPTANCE — Terms version + timestamp (null = accepted before
+    # versioning began; enforced at registration going forward)
+    terms_accepted_at = models.DateTimeField(null=True, blank=True)
+    terms_version = models.CharField(max_length=20, blank=True, default='')
 
     # COMMISSION SYSTEM — Buyer-pays model
     # Commission is added on top of seller's listed price; seller receives full amount

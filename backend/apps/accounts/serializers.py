@@ -75,6 +75,7 @@ class BuyerRegistrationSerializer(serializers.ModelSerializer):
 class SellerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     confirm_password = serializers.CharField(write_only=True)
+    terms_accepted = serializers.BooleanField(write_only=True)
 
     class Meta:
         model = User
@@ -83,12 +84,14 @@ class SellerRegistrationSerializer(serializers.ModelSerializer):
             'phone_number', 'store_name', 'store_description',
             'store_logo', 'store_banner',
             'ghana_card_image', 'selfie_image',
-            'password', 'confirm_password',
+            'password', 'confirm_password', 'terms_accepted',
         ]
 
     def validate(self, data):
         if data['password'] != data['confirm_password']:
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
+        if not data.get('terms_accepted'):
+            raise serializers.ValidationError({'terms_accepted': 'You must accept the Terms of Service'})
         if not data.get('store_name'):
             raise serializers.ValidationError({'store_name': 'Store name is required'})
         if not data.get('store_logo'):
@@ -102,10 +105,15 @@ class SellerRegistrationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        from django.conf import settings as _dj_settings
+        from django.utils import timezone as _tz
         validated_data.pop('confirm_password')
+        validated_data.pop('terms_accepted', None)
         return User.objects.create_user(
             role=User.Role.SELLER,
             verification_status='pending',
+            terms_accepted_at=_tz.now(),
+            terms_version=getattr(_dj_settings, 'TERMS_VERSION', '2026-10-2.0'),
             **validated_data
         )
 
@@ -218,6 +226,8 @@ class SellerProfileSerializer(serializers.ModelSerializer):
             'delivery_mode', 'custom_delivery_fee',
             'payout_account_number', 'payout_bank_code', 'payout_account_name',
             'paystack_subaccount_code', 'subaccount_status', 'subaccount_note',
+            'transfer_recipient_code', 'auto_transfer_enabled',
+            'terms_accepted_at', 'terms_version',
             'seller_total_sales', 'seller_total_revenue',
             'seller_total_products', 'seller_average_rating',
             'seller_total_ratings',
@@ -226,6 +236,8 @@ class SellerProfileSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'email', 'role', 'store_slug', 'is_verified',
             'paystack_subaccount_code', 'subaccount_status', 'subaccount_note',
+            'transfer_recipient_code', 'auto_transfer_enabled',
+            'terms_accepted_at', 'terms_version',
             'seller_total_sales', 'seller_total_revenue',
             'seller_total_products', 'seller_average_rating',
             'seller_total_ratings', 'date_joined', 'last_active',

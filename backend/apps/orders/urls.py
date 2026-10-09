@@ -55,6 +55,7 @@ urlpatterns = [
     # Seller settlements (instant Paystack payouts — history only)
     path('seller/settlements/', views.SellerSettlementListView.as_view(), name='seller-settlements'),
     path('admin/settlements/', views.AdminSettlementListView.as_view(), name='admin-settlements'),
+    path('admin/settlements/<int:pk>/retry-transfer/', views.AdminSettlementRetryTransferView.as_view(), name='admin-settlement-retry'),
     path('admin/finance/', views.AdminFinanceView.as_view(), name='admin-finance'),
     path('admin/seller-earnings/', views.AdminSellerEarningsView.as_view(), name='admin-seller-earnings'),
     path('admin/email-logs/', views.AdminEmailLogListView.as_view(), name='admin-email-logs'),

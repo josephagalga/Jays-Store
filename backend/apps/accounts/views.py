@@ -554,8 +554,23 @@ class SellerPayoutAccountView(APIView):
         except Exception as exc:
             seller.subaccount_status = 'failed'
             seller.subaccount_note = str(exc)
+        # Instant-transfer recipient (MoMo payouts in minutes). Created from
+        # the same details; failure here never blocks subaccount activation —
+        # the recipient is (re)created at confirm time if missing.
+        try:
+            from apps.orders.payments import ensure_transfer_recipient
+            seller.transfer_recipient_code = ensure_transfer_recipient(
+                name=seller.store_name or seller.full_name,
+                account_number=seller.payout_account_number,
+                bank_code=seller.payout_bank_code,
+            )
+        except Exception as exc:
+            seller.transfer_recipient_code = ''
+            note = f'Transfer recipient pending: {exc}'
+            seller.subaccount_note = f'{seller.subaccount_note} {note}'.strip() if seller.subaccount_status == 'failed' else seller.subaccount_note
         seller.save(update_fields=[
-            'paystack_subaccount_code', 'subaccount_status', 'subaccount_note'])
+            'paystack_subaccount_code', 'transfer_recipient_code',
+            'subaccount_status', 'subaccount_note'])
         return Response(PayoutAccountSerializer(seller).data)
 
 

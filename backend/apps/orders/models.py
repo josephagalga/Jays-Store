@@ -507,15 +507,24 @@ PLATFORM_COMMISSION_RATE = 0.10
 
 class Settlement(models.Model):
     """
-    Per-seller share of a Paystack split payment.
-    Paystack settles net_share straight to the seller's subaccount at charge
-    time — the platform never holds the seller's money. This table is the
-    local record of what was settled (powers seller earnings history).
+    Per-seller share of a paid order.
+    Since instant transfers: Paystack collects 100% to the platform, then the
+    backend transfers each seller's net_share to their MoMo (minutes, GHS 1
+    fee from the seller — absorbed by the platform under GHS 5 net).
+    Pre-transfer orders used Paystack splits (subaccount_code); those rows
+    keep status='settled' with empty transfer fields. This table powers
+    seller earnings history for both eras.
     """
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending'
         SETTLED = 'settled', 'Settled'
         FAILED = 'failed', 'Failed'
+
+    class TransferStatus(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        SENT = 'sent', 'Sent'
+        FAILED = 'failed', 'Failed'
+        HELD = 'held', 'Held'
 
     order = models.ForeignKey(
         Order, on_delete=models.CASCADE, related_name='settlements'
@@ -538,6 +547,23 @@ class Settlement(models.Model):
     #   net_share includes this: sellers receive product net + own delivery fee.
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.PENDING)
     paystack_reference = models.CharField(max_length=100, blank=True, default='')
+    # Instant-transfer era (split-era rows leave these blank):
+    transfer_reference = models.CharField(max_length=100, blank=True, default='')
+    # ↑ Paystack transfer reference (idempotency key order-<id>/seller-<id>)
+    transfer_status = models.CharField(
+        max_length=15, choices=TransferStatus.choices, default=TransferStatus.PENDING)
+    # ↑ pending = queued/retryable, sent = MoMo transfer confirmed,
+    #   failed = last attempt errored (see transfer_error), held = below
+    #   minimum or awaiting admin release
+    transfer_fee = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    # ↑ GHS 1.00 MoMo transfer fee for this payout
+    fee_borne_by = models.CharField(
+        max_length=15,
+        choices=[('seller', 'Seller'), ('platform', 'Platform')],
+        default='seller')
+    # ↑ 'platform' only when net was under the absorb threshold (GHS 5)
+    transfer_error = models.TextField(blank=True, default='')
+    # ↑ Last transfer failure message (retryable — fee bills only on success)
     created_at = models.DateTimeField(auto_now_add=True)
     settled_at = models.DateTimeField(null=True, blank=True)
 

@@ -22,6 +22,7 @@ const schema = z.object({
   selfie_image: z.instanceof(FileList).refine(files => files?.length === 1, 'Selfie image is required'),
   password: z.string().min(8, 'Min. 8 characters'),
   confirm_password: z.string(),
+  terms_accepted: z.boolean().refine(v => v === true, 'You must accept the Terms of Service'),
 }).refine(d => d.password === d.confirm_password, {
   message: 'Passwords do not match',
   path: ['confirm_password'],
@@ -52,6 +53,7 @@ export default function SellerRegisterPage() {
       formData.append('selfie_image', data.selfie_image[0])
       formData.append('password', data.password)
       formData.append('confirm_password', data.confirm_password)
+      formData.append('terms_accepted', data.terms_accepted ? 'true' : 'false')
 
       const response = await api.post('/accounts/register/seller/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -152,6 +154,16 @@ export default function SellerRegisterPage() {
 
             <Input label="Password" type="password" error={errors.password?.message} {...register('password')} />
             <Input label="Confirm password" type="password" error={errors.confirm_password?.message} {...register('confirm_password')} />
+
+            <label className="flex items-start gap-2.5 text-xs text-[#0f0f0f] leading-relaxed cursor-pointer">
+              <input type="checkbox" {...register('terms_accepted')}
+                className="mt-0.5 w-4 h-4 accent-[#0f0f0f] flex-shrink-0" />
+              <span>
+                I agree to the <Link to="/terms" target="_blank" className="font-medium underline">Terms of Service</Link>,
+                including payout liability (§11) and account security (§12).
+              </span>
+            </label>
+            {errors.terms_accepted && <p className="text-xs text-red-600">{errors.terms_accepted.message}</p>}
 
             {error && (
               <p className="text-sm text-red-600 bg-red-50 px-4 py-3 rounded-lg">{error}</p>
