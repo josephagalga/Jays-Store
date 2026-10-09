@@ -61,6 +61,7 @@ import AdminEmailLogsPage from './pages/admin/AdminEmailLogsPage'
 import AdminInventoryPage from './pages/admin/AdminInventoryPage'
 import AdminCategoriesPage from './pages/admin/AdminCategoriesPage'
 import AdminReviewsPage from './pages/admin/AdminReviewsPage'
+import NotificationBell from './layouts/NotificationBell'
 
 // General pages
 import AboutPage from './pages/AboutPage'
@@ -285,6 +286,7 @@ function DashboardLayout({ children }) {
           </nav>
 
           <div className="flex items-center gap-3 flex-shrink-0">
+            <NotificationBell />
             <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold text-[var(--ink)] leading-none">
                 {user?.full_name || user?.store_name}
