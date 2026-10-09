@@ -58,6 +58,22 @@ export default function SellerDashboardPage() {
     },
   })
 
+  // Inbox: surface paid orders needing handoff right on the landing page —
+  // sellers land here, not on My Orders, so alerts must live here too.
+  // Same queryKey as SellerOrdersPage: one fetch feeds both + the bell badge.
+  const { data: recentOrders } = useQuery({
+    queryKey: ['seller-orders'],
+    queryFn: async () => {
+      const res = await api.get('/seller/orders/')
+      return Array.isArray(res.data) ? res.data : res.data.results || []
+    },
+    refetchInterval: 30000,
+    retry: 1,
+  })
+  const pendingHandoff = (recentOrders || []).filter(o =>
+    o.payment_status === 'paid' && o.my_handoff === 'pending' &&
+    o.status !== 'cancelled' && o.status !== 'delivered')
+
   const payoutMutation = useMutation({
     mutationFn: (payload) => api.patch('/accounts/seller/payout-account/', payload),
     onSuccess: (res) => {
@@ -204,6 +220,22 @@ export default function SellerDashboardPage() {
           <Plus size={16} /> Add Product
         </Link>
       </div>
+
+      {/* New sales — the alert sellers actually see on login */}
+      {pendingHandoff.length > 0 && (
+        <Link to="/seller/orders"
+          className="block bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 mb-6 hover:border-amber-400 transition-colors">
+          <p className="flex items-center gap-2 text-sm font-bold text-amber-800">
+            <AlertTriangle size={16} />
+            {pendingHandoff.length} new sale{pendingHandoff.length === 1 ? '' : 's'} — confirm handoff
+          </p>
+          <p className="text-xs text-amber-700 mt-1">
+            {pendingHandoff.slice(0, 3).map(o => `#${o.id} (GHS ${parseFloat(o.total).toFixed(2)})`).join(' · ')}
+            {pendingHandoff.length > 3 ? ` +${pendingHandoff.length - 3} more` : ''}
+            {' '}— tap to open My Orders. Payouts land in your wallet.
+          </p>
+        </Link>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
