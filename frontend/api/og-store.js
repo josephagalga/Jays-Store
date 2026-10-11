@@ -86,7 +86,15 @@ async function fetchApi(path) {
 const FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1200&q=80&auto=format&fit=crop';
 
-function page({ status, title, description, image, url }) {
+function page({ status, title, description, image, url, humanRedirect }) {
+  // humanRedirect (share-mode only): crawlers ignore scripts and read the
+  // tags; humans landing here — e.g. served a cached crawler response —
+  // bounce to the real page via JS + a visible link instead of a blank page.
+  const redirect = humanRedirect
+    ? `<body><p style="font-family:sans-serif;text-align:center;margin-top:40px">` +
+      `<a href="${esc(humanRedirect)}">Continue to the store</a></p>` +
+      `<script>window.location.replace(${JSON.stringify(humanRedirect)})</script></body>`
+    : '<body></body>';
   return {
     status,
     html: `<!doctype html><html lang="en"><head><!-- og-store v2 -->${[
@@ -103,7 +111,7 @@ function page({ status, title, description, image, url }) {
       `<meta name="twitter:title" content="${esc(title)}">`,
       `<meta name="twitter:description" content="${esc(description)}">`,
       `<meta name="twitter:image" content="${esc(image)}">`,
-    ].join('')}</head><body></body></html>`,
+    ].join('')}</head>${redirect}</html>`,
   };
 }
 
@@ -158,6 +166,7 @@ export default async function handler(req, res) {
       description: 'Shop from Navrongo vendors. Pay with MoMo. Delivered to your door.',
       image: FALLBACK_IMAGE,
       url: site,
+      humanRedirect: req.query?.share ? site : null,
     });
     res.status(status).setHeader('Content-Type', 'text/html; charset=utf-8').send(html);
     return;
@@ -172,6 +181,7 @@ export default async function handler(req, res) {
       description: 'This store is no longer available.',
       image: FALLBACK_IMAGE,
       url: `${site}/stores/${encodeURIComponent(slug)}`,
+      humanRedirect: req.query?.share ? `${site}/stores/${encodeURIComponent(slug)}` : null,
     });
     res
       .status(status)
@@ -193,6 +203,9 @@ export default async function handler(req, res) {
     description,
     image,
     url: `${site}/stores/${encodeURIComponent(store.store_slug || slug)}`,
+    humanRedirect: req.query?.share
+      ? `${site}/stores/${encodeURIComponent(store.store_slug || slug)}`
+      : null,
   });
 
   res

@@ -51,15 +51,19 @@ const baseSchema = {
   terms_accepted: z.boolean().refine(val => val === true, { message: 'You must accept the terms' }),
 }
 
+const ghanaPhone = z.string()
+  .transform(v => (v || '').replace(/[\s-]/g, ''))
+  .refine(v => /^0\d{9}$/.test(v), 'Enter a valid 10-digit Ghana number (e.g. 0240000000)')
+
 const buyerSchema = z.object({
-  delivery_phone: z.string().min(10, 'Enter a valid phone number'),
+  delivery_phone: ghanaPhone,
   ...baseSchema,
 })
 
 const guestSchema = z.object({
   guest_name: z.string().min(2, 'Enter your full name'),
   guest_email: z.string().email('Enter a valid email for your receipt and OTP'),
-  guest_phone: z.string().min(10, 'Enter a valid phone number'),
+  guest_phone: ghanaPhone,
   ...baseSchema,
 })
 
@@ -318,6 +322,11 @@ export default function CheckoutPage() {
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 mb-10">
           <strong>{deliveryCoverageText()}.</strong> {DELIVERY_COVERAGE_NOTE}
         </div>
+        {new Date().getHours() >= 19 && (
+          <div className="p-3 bg-[var(--ink)] text-white rounded-xl text-sm mb-10">
+            <strong>Ordering after 7pm?</strong> For driver safety, evening orders are handed over at an agreed <strong>public meeting place</strong> — not your home address. The driver will call to agree the spot.
+          </div>
+        )}
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
           <div>
             <h2 className="serif text-2xl font-medium text-[var(--ink)] mb-6">Delivery Details</h2>
@@ -333,15 +342,23 @@ export default function CheckoutPage() {
                   <Input label="Phone Number" type="tel" placeholder="024 000 0000"
                     error={errors.guest_phone?.message} autoComplete="tel"
                     {...register('guest_phone')} />
+                  <p className="-mt-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Double-check this number — the driver calls it to reach you. A wrong number means no delivery.
+                  </p>
                 </>
               )}
               <Input label="Delivery Address" placeholder="House no., Street, Area, City"
                 error={errors.delivery_address?.message} autoComplete="street-address"
                 {...register('delivery_address')} />
               {isBuyer && (
-                <Input label="Phone Number" type="tel" placeholder="024 000 0000"
-                  error={errors.delivery_phone?.message} autoComplete="tel"
-                  {...register('delivery_phone')} />
+                <>
+                  <Input label="Phone Number" type="tel" placeholder="024 000 0000"
+                    error={errors.delivery_phone?.message} autoComplete="tel"
+                    {...register('delivery_phone')} />
+                  <p className="-mt-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Double-check this number — the driver calls it to reach you. A wrong number means no delivery.
+                  </p>
+                </>
               )}
               <Input label="Nearest Landmark" placeholder="e.g. Opposite Palace Mall, near the fuel station (optional)"
                 error={errors.delivery_landmark?.message}

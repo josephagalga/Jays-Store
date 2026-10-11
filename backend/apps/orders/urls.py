@@ -46,7 +46,10 @@ urlpatterns = [
 
     # Admin
     path('admin/orders/', views.AdminOrderListView.as_view(), name='admin-orders'),
-    path('admin/orders/<int:pk>/', views.AdminOrderDetailView.as_view(), name='admin-order-detail'),
+    path('admin/orders/<int:pk>/', views.AdminOrderDetailView.as_view(), 
+name='admin-order-detail'),
+    path('admin/orders/<int:pk>/refund/', views.AdminRefundOrderView.as_view(),
+name='admin-order-refund'),
     path('admin/orders-stale/', views.AdminStaleOrdersView.as_view(), name='admin-orders-stale'),
 
     # Vendor storefront

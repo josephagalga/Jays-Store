@@ -71,6 +71,7 @@ import TermsPage from './pages/TermsPage'
 import RefundPage from './pages/RefundPage'
 import ShippingPage from './pages/ShippingPage'
 import HelpCenterPage from './pages/HelpCenterPage'
+import ComingSoonPage from './pages/ComingSoonPage'
 
 // ── Route guards ──────────────────────────────────────────────
 
@@ -399,6 +400,8 @@ export default function App() {
       <Route path="/refund" element={<RefundPage />} />
       <Route path="/shipping" element={<ShippingPage />} />
       <Route path="/help" element={<HelpCenterPage />} />
+      <Route path="/careers" element={<ComingSoonPage title="Careers — coming soon" />} />
+      <Route path="/press" element={<ComingSoonPage title="Press — coming soon" />} />
 
       {/* Public buyer */}
       <Route path="/" element={<HomePage />} />

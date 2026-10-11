@@ -5,7 +5,7 @@ export default function TermsPage() {
     <MainLayout>
       <div className="max-w-3xl mx-auto px-6 lg:px-10 py-10">
         <h1 className="serif text-3xl md:text-4xl font-medium text-[var(--ink)] mb-2">Terms of Service</h1>
-        <p className="text-xs text-[var(--muted)] mb-8">Last updated: October 9, 2026 (v2026-10-2.0)</p>
+        <p className="text-xs text-[var(--muted)] mb-8">Last updated: October 11, 2026 (v2026-10-3.0)</p>
 
         <div className="space-y-6 text-sm text-[var(--muted)] leading-relaxed">
           <section>
@@ -33,11 +33,14 @@ export default function TermsPage() {
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">5. Delivery</h2>
             <p>Platform delivery fees: GHS 5 (1-5 items), GHS 10 (6-10 items), GHS 20 (11+ items). Vendors who deliver themselves set their own flat per-order fee, shown at checkout. Delivery only within Navrongo and surrounding areas — more towns will be added as we grow. You must provide a valid address and phone number. OTP verification is required upon delivery.</p>
+            <p className="mt-2"><strong>Delivery timing depends on each seller:</strong> some sellers have items ready the same day, others need more time to source or prepare your order — there is no fixed one-day promise. Your tracking page always shows the live status.</p>
+            <p className="mt-2"><strong>Failed delivery attempts:</strong> if the driver cannot complete handoff after a reasonable number of attempts (at least two visits on different days), the item returns to the seller and the buyer is contacted to arrange redelivery or a refund.</p>
+            <p className="mt-2"><strong>Evening orders (driver safety):</strong> orders placed after 7pm are delivered against a public meeting point — the buyer meets the driver at an agreed public place instead of a home address.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">6. Returns and Refunds</h2>
-            <p>Contact the seller within 7 days of delivery for defective items. Defective items may be returned at no extra cost. Refunds are processed through the original payment method. See our Refund Policy for full details.</p>
+            <p>Contact the seller within 7 days of delivery for defective items. Defective items may be returned at no extra cost. <strong>Sellers agree that where a defect comes from their side</strong> (wrong item, faulty product, undisclosed damage — not wear after delivery or damage in the buyer&apos;s hands), <strong>the seller bears the refund or replacement.</strong> Refunds are processed through the original payment method. See our Refund Policy for full details.</p>
           </section>
 
           <section>

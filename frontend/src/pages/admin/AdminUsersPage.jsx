@@ -1,6 +1,6 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Users, Trash2, AlertTriangle } from 'lucide-react'
+import { Users, Trash2, Ban, CheckCircle, AlertTriangle } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
@@ -33,6 +33,15 @@ export default function AdminUsersPage() {
       setConfirmDelete(null)
     },
     onError: () => toast.error('Failed to delete user'),
+  })
+
+  const suspendMutation = useMutation({
+    mutationFn: ({ id, suspend }) => api.patch(`/accounts/admin/users/${id}/suspend/`, { suspend }),
+    onSuccess: (res, vars) => {
+      qc.invalidateQueries(['admin-users'])
+      toast.success(vars.suspend ? 'User suspended' : 'User reinstated')
+    },
+    onError: () => toast.error('Failed to update user'),
   })
 
   return (
@@ -100,11 +109,23 @@ export default function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="px-5 py-4">
-                    <button
-                      onClick={() => setConfirmDelete(user)}
-                      className="p-1.5 text-[var(--muted)] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50">
-                      <Trash2 size={15} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => suspendMutation.mutate({ id: user.id, suspend: user.is_active })}
+                        title={user.is_active ? 'Suspend user' : 'Reinstate user'}
+                        className={`p-1.5 transition-colors rounded-lg ${
+                          user.is_active
+                            ? 'text-[var(--muted)] hover:text-amber-600 hover:bg-amber-50'
+                            : 'text-green-600 hover:bg-green-50'
+                        }`}>
+                        {user.is_active ? <Ban size={15} /> : <CheckCircle size={15} />}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(user)}
+                        className="p-1.5 text-[var(--muted)] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50">
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

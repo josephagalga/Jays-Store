@@ -91,15 +91,19 @@ export default function Navbar() {
               ))}
             </nav>
 
-            {/* Logo */}
+            {/* Logo — left-aligned with room to breathe on mobile */}
             <Link to="/"
-              className="serif text-[22px] font-medium tracking-wide text-[var(--ink)] flex-1 text-center md:flex-none select-none">
-              My Jay's Store
+              className="serif text-lg md:text-[22px] font-medium tracking-wide text-[var(--ink)] flex-1 text-left md:flex-none md:text-center select-none">
+              My Jay&apos;s Store
             </Link>
 
             {/* Right */}
             <div className="flex items-center gap-0.5 flex-1 justify-end">
-              <NotificationBell />
+              {/* Bell + wishlist + bag + account live in the bottom tabs on
+                  mobile — top bar keeps search only (plus menu below) */}
+              <span className="hidden md:block">
+                <NotificationBell />
+              </span>
               <button
                 onClick={() => setSearchOpen(true)}
                 className="w-9 h-9 flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">
@@ -109,7 +113,7 @@ export default function Navbar() {
               {(!isAuthenticated || user?.role === 'buyer') && (
                 <>
                   <Link to="/wishlist"
-                    className="relative w-9 h-9 flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">
+                    className="relative w-9 h-9 hidden md:flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">
                     <Heart size={17} />
                     {wishlistCount > 0 && (
                       <span className="absolute top-1 right-1 w-[14px] h-[14px] bg-rose-500 text-white text-[8px] font-semibold rounded-full flex items-center justify-center">
@@ -119,7 +123,7 @@ export default function Navbar() {
                   </Link>
 
                   <Link to="/cart"
-                    className="relative w-9 h-9 flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">
+                    className="relative w-9 h-9 hidden md:flex items-center justify-center rounded-full text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--off)] transition-all">
                     <ShoppingBag size={17} />
                     {itemCount > 0 && (
                       <span className="absolute top-1 right-1 w-[14px] h-[14px] bg-[var(--ink)] text-white text-[8px] font-semibold rounded-full flex items-center justify-center">
@@ -131,7 +135,7 @@ export default function Navbar() {
               )}
 
               {isAuthenticated ? (
-                <div className="relative ml-1" ref={userMenuRef}>
+                <div className="relative ml-1 hidden md:block" ref={userMenuRef}>
                   <button
                     onClick={() => setUserMenuOpen(v => !v)}
                     aria-haspopup="menu"

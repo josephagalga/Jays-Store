@@ -95,7 +95,15 @@ async function fetchApi(path) {
 const FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1200&q=80&auto=format&fit=crop';
 
-function page({ status, title, description, image, url, price }) {
+function page({ status, title, description, image, url, price, humanRedirect }) {
+  // humanRedirect (share-mode only): crawlers ignore scripts and read the
+  // tags; humans landing here — e.g. served a cached crawler response —
+  // bounce to the real page via JS + a visible link instead of a blank page.
+  const redirect = humanRedirect
+    ? `<body><p style="font-family:sans-serif;text-align:center;margin-top:40px">` +
+      `<a href="${esc(humanRedirect)}">Continue to the product</a></p>` +
+      `<script>window.location.replace(${JSON.stringify(humanRedirect)})</script></body>`
+    : '<body></body>';
   const tags = [
     '<meta charset="utf-8">',
     '<meta name="robots" content="noindex">',
@@ -119,7 +127,7 @@ function page({ status, title, description, image, url, price }) {
   }
   return {
     status,
-    html: `<!doctype html><html lang="en"><head><!-- og-product v2 -->${tags.join('')}</head><body></body></html>`,
+    html: `<!doctype html><html lang="en"><head><!-- og-product v2 -->${tags.join('')}</head>${redirect}</html>`,
   };
 }
 
@@ -141,6 +149,7 @@ export default async function handler(req, res) {
       description: "Shop from Navrongo vendors. Pay with MoMo. Delivered to your door.",
       image: FALLBACK_IMAGE,
       url: site,
+      humanRedirect: req.query?.share ? site : null,
     });
     res.status(status).setHeader('Content-Type', 'text/html; charset=utf-8').send(html);
     return;
@@ -155,6 +164,7 @@ export default async function handler(req, res) {
       description: 'This product is no longer available.',
       image: FALLBACK_IMAGE,
       url: `${site}/products/${encodeURIComponent(slug)}`,
+      humanRedirect: req.query?.share ? `${site}/products/${encodeURIComponent(slug)}` : null,
     });
     res
       .status(status)
@@ -183,6 +193,9 @@ export default async function handler(req, res) {
     image,
     url: `${site}/products/${encodeURIComponent(product.slug || slug)}`,
     price,
+    humanRedirect: req.query?.share
+      ? `${site}/products/${encodeURIComponent(product.slug || slug)}`
+      : null,
   });
 
   res

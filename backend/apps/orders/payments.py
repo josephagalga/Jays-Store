@@ -217,6 +217,28 @@ def _require_secret():
         raise RuntimeError('Paystack is not configured (PAYSTACK_SECRET_KEY missing)')
 
 
+def initiate_refund(*, reference, amount_ghs):
+    """Partial/full refund of one Paystack transaction by its reference.
+
+    Amount is in GHS (converted to pesewas). Returns the refund payload.
+    Used by admin-initiated refunds (items total, never the delivery fee).
+    """
+    from decimal import Decimal as _Decimal
+    _require_secret()
+    pesewas = int((_Decimal(str(amount_ghs)) * 100).quantize(_Decimal('1')))
+    if pesewas <= 0:
+        raise RuntimeError('Refund amount must be positive')
+    resp = requests.post(
+        'https://api.paystack.co/refund',
+        json={'transaction': reference, 'amount': pesewas},
+        headers=_headers(), timeout=20,
+    )
+    body = resp.json()
+    if not body.get('status') or 'data' not in body:
+        raise RuntimeError(body.get('message', 'Paystack rejected the refund'))
+    return body['data']
+
+
 def create_subaccount(*, business_name, account_number, bank_code):
     """Create a Paystack subaccount that settlements pay into."""
     _require_secret()

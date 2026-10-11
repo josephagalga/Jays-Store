@@ -118,9 +118,16 @@ export default function DriverHistoryPage() {
 
         {/* Active order actions */}
         {order.status === 'accepted' && (
-          <Button size="sm" onClick={() => statusMutation.mutate({ id: order.id, status: 'picked_up' })}>
-            Mark as Picked Up
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => statusMutation.mutate({ id: order.id, status: 'picked_up' })}>
+              Mark as Picked Up
+            </Button>
+            <button
+              onClick={() => statusMutation.mutate({ id: order.id, status: 'failed' })}
+              className="px-4 py-2 text-xs font-semibold text-rose-600 bg-rose-50 rounded-xl hover:bg-rose-100 transition-colors">
+              Report failed delivery
+            </button>
+          </div>
         )}
         {order.status === 'picked_up' && (
           <div className="space-y-3">
@@ -151,6 +158,11 @@ export default function DriverHistoryPage() {
             <Button size="sm" onClick={() => statusMutation.mutate({ id: order.id, status: 'delivered' })}>
               Mark as Delivered
             </Button>
+            <button
+              onClick={() => statusMutation.mutate({ id: order.id, status: 'failed' })}
+              className="px-4 py-2 text-xs font-semibold text-rose-600 bg-rose-50 rounded-xl hover:bg-rose-100 transition-colors">
+              Report failed delivery
+            </button>
           </div>
         )}
       </div>

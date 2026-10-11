@@ -39,7 +39,7 @@ export default function ContactPage() {
     {
       icon: <Mail size={20} />,
       label: 'Email us',
-      value: 'josephagalga5@gmail.com',
+      value: 'myjaysstore@gmail.com',
       sub: 'We reply within 24 hours',
     },
     {
@@ -120,7 +120,7 @@ export default function ContactPage() {
               <p className="text-xs font-medium text-[var(--muted)] uppercase tracking-wider mb-1">
                 {label}
               </p>
-              <p className="text-sm font-semibold text-[var(--ink)]">{value}</p>
+              <p className="text-sm font-semibold text-[var(--ink)] break-all">{value}</p>
               <p className="text-xs text-[var(--muted)] mt-0.5">{sub}</p>
             </div>
           ))}

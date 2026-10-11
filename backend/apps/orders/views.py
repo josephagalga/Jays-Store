@@ -448,8 +448,8 @@ class PlaceOrderView(APIView):
         # SETTLEMENT CREATION REMOVED - happens after payment confirms in _confirm_payment()
 
         # OTP log created now; emailed only after payment confirms.
-        # Stored as hash (verify) + encrypted copy (owner display), 7-day
-        # lifespan, 3-attempt lockout.
+        # Stored as hash (verify) + encrypted copy (owner display), never
+        # expires, 3-attempt lockout.
         DeliveryOTPLog.objects.create(
             order=order,
             otp_hash=otp_hash,
@@ -1003,6 +1003,27 @@ class DriverUpdateOrderStatusView(APIView):
         if order.status == 'picked_up':
             order.save()
 
+        # Driver reports the delivery as failed: order goes back for admin
+        # handling (refund/redelivery) and the item returns to the seller.
+        if order.status == 'failed':
+            CustomUser.objects.filter(pk=request.user.pk).update(
+                total_deliveries=F('total_deliveries') + 1,
+                failed_deliveries=F('failed_deliveries') + 1,
+                currently_delivering=False,
+            )
+            from .emails import _send as _notify_send
+            buyer_email = getattr(order, 'buyer_email', '')
+            if buyer_email:
+                _notify_send(
+                    buyer_email,
+                    f"My Jay's Store — delivery issue with Order #{order.id}",
+                    f"Hi {order.buyer_first_name},\n\n"
+                    f"Your driver could not complete delivery of Order #{order.id} "
+                    f"and the item is returning to the seller. Our admin will contact "
+                    f"you shortly about redelivery or a refund.\n\nMy Jay's Store",
+                    kind='delivery_failed', order=order,
+                )
+
         # When order is delivered, update stats.
         # Driver money is out-of-system (admin pays physically) — no crediting.
         if order.status == 'delivered':
@@ -1095,6 +1116,65 @@ class AdminOrderDetailView(generics.RetrieveAPIView):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdmin]
     queryset = Order.objects.all().prefetch_related('items').select_related('buyer', 'driver')
+
+
+class AdminRefundOrderView(APIView):
+    """Admin refunds a paid order via Paystack (items total, NOT delivery fee).
+
+    The delivery fee stays with the platform/driver work done; only the
+    items money (total − delivery_fee) goes back to the buyer through the
+    original payment method. Sets payment_status='refunded'. Idempotent:
+    already-refunded orders return 400, never double-refund.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.prefetch_related('items').get(pk=pk)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+        if order.payment_status != 'paid':
+            return Response(
+                {'error': 'Only paid orders can be refunded.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        amount = (order.total or Decimal('0.00')) - (order.delivery_fee or Decimal('0.00'))
+        if amount <= 0:
+            return Response(
+                {'error': 'Nothing refundable on this order.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        reference = order.paystack_reference or order.payment_reference
+        if not reference:
+            return Response(
+                {'error': 'No Paystack reference on this order.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .payments import initiate_refund
+        try:
+            refund = initiate_refund(reference=reference, amount_ghs=amount)
+        except Exception as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        order.payment_status = 'refunded'
+        order.save(update_fields=['payment_status'])
+        from .emails import _send as _notify_send
+        buyer_email = getattr(order, 'buyer_email', '')
+        if buyer_email:
+            try:
+                _notify_send(
+                    buyer_email,
+                    f"My Jay's Store — refund for Order #{order.id}",
+                    f"Hi {order.buyer_first_name},\n\n"
+                    f"Order #{order.id} has been refunded GHS {amount:.2f} "
+                    f"(items total — delivery fee excluded) to your original "
+                    f"payment method. It should reflect within a few business days.\n\n"
+                    f"My Jay's Store",
+                    kind='refund', order=order,
+                )
+            except Exception:
+                pass
+        return Response({
+            'message': f'Refunded GHS {amount:.2f} (delivery fee excluded).',
+            'refunded_amount': str(amount),
+            'paystack_refund_id': (refund or {}).get('id'),
+        })
 
 
 class AdminStaleOrdersView(APIView):
@@ -1241,7 +1321,7 @@ class VerifyDeliveryOTPView(APIView):
 
     Security:
     - OTP is hashed in database, never stored plaintext
-    - 7-day lifespan (must survive until the driver arrives), resend rotates
+    - Never expires (deliveries are unpredictable), resend rotates
     - Hard lockout after 3 failed attempts
     - Rate limited per order
     """
@@ -1271,7 +1351,7 @@ class VerifyDeliveryOTPView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if timezone.now() > otp_log.otp_expires_at:
+        if otp_log.otp_expires_at and timezone.now() > otp_log.otp_expires_at:
             return Response(
                 {'error': 'OTP expired. Request a new one.'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -1344,7 +1424,7 @@ class SellerConfirmHandoffView(APIView):
             return Response(
                 {'error': 'OTP verification locked. Too many failed attempts. Contact support.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        if timezone.now() > otp_log.otp_expires_at:
+        if otp_log.otp_expires_at and timezone.now() > otp_log.otp_expires_at:
             return Response(
                 {'error': 'OTP expired. Ask the buyer to request a new one.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -1382,6 +1462,39 @@ class SellerConfirmHandoffView(APIView):
         })
 
 
+def _deactivate_sold_out(order, logger):
+    """Hide products with no stock left anywhere and alert their sellers.
+
+    Runs at payment confirmation using the ALREADY-deducted stock levels.
+    Deactivation (not deletion) preserves order history; the seller
+    re-activates by restocking (any variant stock > 0 re-lists it).
+    """
+    from apps.products.models import Product
+    from .emails import _send
+
+    product_ids = {
+        item.product_id for item in order.items.all() if item.product_id
+    }
+    for product in Product.objects.filter(
+            pk__in=product_ids, is_active=True).select_related('seller'):
+        if product.variants.filter(stock__gt=0).exists():
+            continue
+        Product.objects.filter(pk=product.pk, is_active=True).update(is_active=False)
+        logger.info(f'Product {product.id} ({product.name}) sold out — deactivated')
+        seller = getattr(product, 'seller', None)
+        if seller and getattr(seller, 'role', '') == 'seller' and seller.email:
+            _send(
+                seller.email,
+                f"My Jay's Store — '{product.name}' is out of stock",
+                f"Hi {seller.store_name or seller.first_name},\n\n"
+                f"Your product '{product.name}' just sold out and has been "
+                f"hidden from the shop so buyers can't order what you don't have.\n\n"
+                f"Restock it (Seller Dashboard → My Products) and it reappears "
+                f"automatically.\n\nMy Jay's Store",
+                kind='stock_alert', order=order,
+            )
+
+
 def _confirm_payment_inventory(order, logger):
     """Stock, settlements, handoffs + platform-share log. May raise —
     callers must catch so notifications still go out."""
@@ -1402,6 +1515,11 @@ def _confirm_payment_inventory(order, logger):
                 )
                 # Still process payment (money already collected)
                 # Admin handles fulfillment manually
+
+    # STEP 1b: SOLD-OUT PRODUCTS leave the shop. Any touched product with no
+    # variant left in stock is deactivated (kept for order history, hidden
+    # from catalog) and its seller is emailed to restock.
+    _deactivate_sold_out(order, logger)
 
     # STEP 2: CREATE SETTLEMENT RECORDS (for paid orders only)
     # Recalculate seller shares from order items. Self-delivery sellers also

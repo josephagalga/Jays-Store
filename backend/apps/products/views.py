@@ -70,8 +70,11 @@ class ProductListView(generics.ListAPIView):
     def get_queryset(self):
         # Public catalog: active products from verified sellers (or platform items).
         # Products from pending/rejected sellers stay hidden until approval.
+        # Suspended (inactive) sellers' products are hidden too.
         return Product.objects.filter(is_active=True).exclude(
             seller__verification_status__in=['pending', 'rejected']
+        ).exclude(
+            seller__is_active=False,
         ).exclude(
             seller__isnull=True,
             created_by__verification_status__in=['pending', 'rejected'],
@@ -89,6 +92,8 @@ class ProductDetailView(generics.RetrieveAPIView):
         return Product.objects.filter(is_active=True).exclude(
             seller__verification_status__in=['pending', 'rejected']
         ).exclude(
+            seller__is_active=False,
+        ).exclude(
             seller__isnull=True,
             created_by__verification_status__in=['pending', 'rejected'],
         ).select_related(
@@ -104,6 +109,8 @@ class FeaturedProductsView(generics.ListAPIView):
         # Featured rail sells real stock: demo showcase items are excluded.
         return Product.objects.filter(
             is_active=True, is_featured=True, is_demo=False
+        ).exclude(
+            seller__is_active=False,
         ).exclude(
             seller__verification_status__in=['pending', 'rejected']
         ).exclude(

@@ -287,6 +287,15 @@ class ProductVariant(models.Model):
     def __str__(self):
         return f'{self.product.name} | {self.size} | {self.color}'
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Restocking re-lists an auto-hidden product: if any variant now has
+        # stock and the product is inactive, bring it back. (Admin can
+        # re-hide afterwards in one click if the hiding was deliberate.)
+        if self.stock and self.stock > 0:
+            Product.objects.filter(pk=self.product_id, is_active=False).update(
+                is_active=True)
+
     @property
     def image_url(self):
         if self.image:

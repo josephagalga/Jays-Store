@@ -433,7 +433,8 @@ class DeliveryOTPLog(models.Model):
     """
     OTP sent to buyer for delivery confirmation.
     Driver verifies with buyer before marking delivered.
-    OTP is hashed (verify) + encrypted (owner display) and lives 7 days.
+    OTP is hashed (verify) + encrypted (owner display) and never expires —
+    it lives until handoff, however long the seller needs.
     """
     order = models.OneToOneField(
         Order,
@@ -445,7 +446,9 @@ class DeliveryOTPLog(models.Model):
     # on active orders. Verification always uses otp_hash, never this.
     otp_encrypted = models.TextField(blank=True, default='')
     otp_created_at = models.DateTimeField(auto_now_add=True)
-    otp_expires_at = models.DateTimeField()
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+    # ↑ Null = never expires (deliveries are unpredictable; the code lives
+    #   until handoff). All checks treat null as live.
     buyer_notified = models.BooleanField(default=False)
     buyer_notified_at = models.DateTimeField(null=True, blank=True)
     buyer_notification_method = models.CharField(max_length=20, blank=True, default='email')

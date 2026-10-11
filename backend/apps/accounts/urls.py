@@ -38,6 +38,7 @@ urlpatterns = [
     path('admin/sellers/<int:pk>/', views.AdminSellerDetailView.as_view(), name='admin-seller-detail'),
     path('admin/sellers/<int:pk>/verify/', views.AdminVerifySellerView.as_view(), name='admin-verify-seller'),
     path('admin/users/<int:pk>/delete/', views.AdminDeleteUserView.as_view(), name='admin-delete-user'),
+    path('admin/users/<int:pk>/suspend/', views.AdminSuspendUserView.as_view(), name='admin-suspend-user'),
     path('admin/commission-audit-logs/', views.AdminCommissionAuditLogView.as_view(), name='admin-commission-logs'),
     path('admin/contact-messages/', views.ContactMessageListView.as_view(), name='admin-contact-list'),
     path('admin/contact-messages/<int:pk>/', views.ContactMessageDetailView.as_view(), name='admin-contact-detail'),

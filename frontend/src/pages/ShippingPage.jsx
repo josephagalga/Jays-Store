@@ -25,7 +25,7 @@ export default function ShippingPage() {
 
           <section>
             <h2 className="text-base font-semibold text-[var(--ink)] mb-2">Delivery Timeframes</h2>
-            <p>Within Navrongo: 1-2 business days. Surrounding areas: 2-3 business days. Delivery time starts when the seller confirms the order is ready for pickup. Sellers have 3 business days to prepare orders.</p>
+            <p>Delivery time depends on each seller: some have items ready same day, others need more time to source or prepare your order. The seller confirms when your order is ready for pickup, and the driver collects it after that — there is no fixed one-day promise. Your tracking page always shows the live status.</p>
           </section>
 
           <section>

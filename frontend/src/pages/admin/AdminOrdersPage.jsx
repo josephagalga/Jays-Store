@@ -1,9 +1,10 @@
-﻿import { useQuery } from '@tanstack/react-query'
+﻿import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Package } from 'lucide-react'
+import { Package, AlertTriangle } from 'lucide-react'
 import Spinner from '../../components/ui/Spinner'
 import Badge from '../../components/ui/Badge'
 import api from '../../services/api'
+import toast from 'react-hot-toast'
 
 const STATUS_VARIANTS = {
   pending: 'warning', accepted: 'info', picked_up: 'info', shipped: 'info',
@@ -15,6 +16,8 @@ const fmtStatus = (s) => (s || 'unknown').replace(/_/g, ' ').replace(/^\w/, (c) 
 
 export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('')
+  const [confirmRefund, setConfirmRefund] = useState(null)
+  const qc = useQueryClient()
 
   const { data: orders, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-orders', statusFilter],
@@ -25,6 +28,18 @@ export default function AdminOrdersPage() {
     },
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
+  })
+
+  const refundMutation = useMutation({
+    mutationFn: (id) => api.post(`/admin/orders/${id}/refund/`, {}),
+    onSuccess: (res) => {
+      qc.invalidateQueries(['admin-orders'])
+      qc.invalidateQueries(['admin-dashboard'])
+      qc.invalidateQueries(['admin-finance'])
+      toast.success(res.data?.message || 'Order refunded')
+      setConfirmRefund(null)
+    },
+    onError: (err) => toast.error(err.response?.data?.error || 'Refund failed'),
   })
 
   const statuses = ['', 'pending', 'accepted', 'picked_up', 'in_transit', 'shipped', 'delivered', 'cancelled', 'failed', 'refunded']
@@ -71,7 +86,7 @@ export default function AdminOrdersPage() {
           <table className="w-full min-w-[640px]">
             <thead className="bg-[var(--off)] border-b border-[var(--border)]">
               <tr>
-                {['Order', 'Buyer', 'Driver', 'Items', 'Total', 'Status', 'Date'].map(h => (
+                {['Order', 'Buyer', 'Driver', 'Items', 'Total', 'Status', 'Payment', 'Date', 'Action'].map(h => (
                   <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
                     {h}
                   </th>
@@ -91,8 +106,24 @@ export default function AdminOrdersPage() {
                       {fmtStatus(order.status)}
                     </Badge>
                   </td>
+                  <td className="px-5 py-4">
+                    <Badge variant={order.payment_status === 'paid' ? 'success' : order.payment_status === 'refunded' ? 'default' : 'warning'}>
+                      {fmtStatus(order.payment_status)}
+                    </Badge>
+                  </td>
                   <td className="px-5 py-4 text-xs text-[var(--muted)]">
                     {order.created_at ? new Date(order.created_at).toLocaleDateString('en-GH') : '—'}
+                  </td>
+                  <td className="px-5 py-4">
+                    {order.payment_status === 'paid' ? (
+                      <button
+                        onClick={() => setConfirmRefund(order)}
+                        className="px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 rounded-lg hover:bg-rose-100 transition-colors">
+                        Refund
+                      </button>
+                    ) : (
+                      <span className="text-xs text-[var(--border)]">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -100,6 +131,40 @@ export default function AdminOrdersPage() {
           </table>
         )}
       </div>
+
+      {/* Confirm refund modal — items total back, delivery fee excluded */}
+      {confirmRefund && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setConfirmRefund(null)}>
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-5">
+              <AlertTriangle size={22} className="text-rose-500" />
+            </div>
+            <h2 className="serif text-2xl font-medium text-[var(--ink)] text-center mb-2">
+              Refund Order #{confirmRefund.id}
+            </h2>
+            <p className="text-sm text-[var(--muted)] text-center mb-6">
+              GHS {(parseFloat(confirmRefund.total ?? 0) - parseFloat(confirmRefund.delivery_fee ?? 0)).toFixed(2)} goes
+              back to the buyer via Paystack. <strong>Delivery fee is not refunded.</strong> The driver should
+              return the item to the seller.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmRefund(null)}
+                className="flex-1 py-2.5 border border-[var(--border)] text-sm font-medium rounded-xl hover:bg-[var(--off)] transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => refundMutation.mutate(confirmRefund.id)}
+                disabled={refundMutation.isPending}
+                className="flex-1 py-2.5 bg-rose-500 text-white text-sm font-semibold rounded-xl hover:bg-rose-600 transition-colors disabled:opacity-50">
+                {refundMutation.isPending ? 'Refunding…' : 'Refund'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

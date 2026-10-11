@@ -523,11 +523,15 @@ class UpdateOrderStatusSerializer(serializers.ModelSerializer):
 
     def validate_status(self, value):
         order = self.instance
-        # Define valid status transitions for drivers
+        # Define valid status transitions for drivers. 'failed' is terminal
+        # from accepted/picked_up: driver could not complete the delivery
+        # (item returns to seller; admin handles refund/redelivery).
         valid_transitions = {
             'accepted': 'picked_up',
             'picked_up': 'delivered',
         }
+        if value == 'failed' and order.status in ('accepted', 'picked_up'):
+            return value
         expected_next = valid_transitions.get(order.status)
         if value != expected_next:
             raise serializers.ValidationError(

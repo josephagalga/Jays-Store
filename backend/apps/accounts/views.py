@@ -462,6 +462,29 @@ class AdminDeleteUserView(generics.DestroyAPIView):
             status=status.HTTP_200_OK
         )
 
+
+class AdminSuspendUserView(APIView):
+    """Suspend (is_active=False) or reinstate any non-admin user.
+
+    Suspended users are locked out everywhere: JWT login rejects inactive
+    accounts, and their stores/products vanish from public listings the
+    same way pending sellers' do. Reversible — unlike delete.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def patch(self, request, pk):
+        try:
+            user = User.objects.exclude(role=User.Role.ADMIN).get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        suspend = request.data.get('suspend', True)
+        user.is_active = not bool(suspend)
+        user.save(update_fields=['is_active'])
+        return Response({
+            'message': f'{user.full_name} has been {"suspended" if suspend else "reinstated"}',
+            'is_active': user.is_active,
+        })
+
 # ============================================================
 # PUBLIC STORE
 # ============================================================

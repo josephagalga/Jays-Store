@@ -23,9 +23,11 @@ def verify_otp(provided_otp, stored_hash):
 
 
 def get_otp_expiry():
-    """Delivery OTPs must survive until the driver arrives (hours/days later),
-    so they live 7 days, not minutes. Resending rotates to a fresh code."""
-    return timezone.now() + timedelta(days=7)
+    """Delivery OTPs never expire: vendors source from others and delivery
+    dates are unpredictable, so the code must stay live until handoff.
+    Returns None (field is nullable); all expiry checks treat None as live.
+    Resending still rotates to a fresh code."""
+    return None
 
 
 def _fernet():

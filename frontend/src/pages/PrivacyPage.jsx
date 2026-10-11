@@ -41,7 +41,7 @@ export default function PrivacyPage() {
               <li>Account data: retained while your account is active</li>
               <li>Identity documents: deleted within 30 days of account closure</li>
               <li>Order records: retained for 6 years for legal purposes</li>
-              <li>Delivery OTPs: deleted after 24 hours</li>
+              <li>Delivery OTPs: kept until handoff, then cleared</li>
             </ul>
           </section>
 
