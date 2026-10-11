@@ -182,6 +182,10 @@ class Order(models.Model):
     # ↑ Paystack transaction-split code created per order (SPL_...) so each
     #   seller's net share settles straight to their subaccount instantly.
     paid_at = models.DateTimeField(null=True, blank=True)
+    hold_expires_at = models.DateTimeField(null=True, blank=True)
+    # ↑ Unpaid stock holds die here (30 min after placement). The sweeper releases
+    #   holds on orders still unpaid past this time, then clears the field as
+    #   its done-marker. Paid/cancelled/failed orders clear it immediately.
 
     # Code on Delivery PIN
     delivery_pin = models.CharField(max_length=4, blank=True, null=True)

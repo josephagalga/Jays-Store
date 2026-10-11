@@ -162,9 +162,10 @@ class UpdateCartItemView(APIView):
             )
         try:
             cart_item = CartItem.objects.get(id=item_id, cart__buyer=request.user)
-            if int(quantity) > cart_item.variant.stock:
+            from .inventory import available_of
+            if int(quantity) > available_of(cart_item.variant):
                 return Response(
-                    {'error': f'Only {cart_item.variant.stock} units available'},
+                    {'error': f'Only {available_of(cart_item.variant)} units available'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             cart_item.quantity = int(quantity)
@@ -309,14 +310,16 @@ class PlaceOrderView(APIView):
                     + '. Please review your bag and try again.'
                 )},
                 status=status.HTTP_400_BAD_REQUEST)
+        from .inventory import available_of
         short = next(
             (ci for ci in cart_items
-             if ci.product.fulfillment != 'made_to_order' and ci.variant.stock < ci.quantity),
+             if ci.product.fulfillment != 'made_to_order'
+             and available_of(ci.variant) < ci.quantity),
             None)
         if short is not None:
             return Response(
                 {'error': (
-                    f'Only {short.variant.stock} left of "{short.product.name}". '
+                    f'Only {available_of(short.variant)} left of "{short.product.name}". '
                     'Please reduce the quantity.'
                 )},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -410,6 +413,22 @@ class PlaceOrderView(APIView):
 
             # STOCK DEDUCTION REMOVED - happens after payment confirms in _confirm_payment()
 
+        # Reserve stock NOW (30-min holds): the units are yours while you pay.
+        # On shortfall the just-created order is deleted (reserve itself
+        # rolls back partial holds) and the bag stays for a retry.
+        from .inventory import reserve_lines, OutOfStock
+        try:
+            reserve_lines(order)
+        except OutOfStock as exc:
+            order.delete()
+            return Response(
+                {'error': (
+                    'Someone just grabbed the last of: '
+                    + ', '.join(sorted(set(exc.names)))
+                    + '. Please review your bag and try again.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+
         # Per-seller shares: product nets (commission already collected from buyer).
         per_seller, _ = compute_order_split(
             [(s, t) for s, t in seller_lines.values()]
@@ -490,13 +509,20 @@ class PlaceOrderView(APIView):
                 f'Sellers total: {sellers_total:.2f} | '
                 f'Processing fee: {processing_fee:.2f}'
             )
-            # STRICT MODE: Fail order creation to prevent incorrect split
-            raise ValueError(
-                f'Payment split validation failed: Platform share mismatch. '
-                f'Expected {expected_platform_share:.2f} GHS but Paystack will give '
-                f'{actual_platform_share:.2f} GHS. Difference: {calculation_diff:.2f} GHS. '
-                f'This indicates a calculation error. Please contact support.'
-            )
+            # STRICT MODE: deterministic pricing bug — retry would fail the
+            # same way, so release holds and delete the order instead of
+            # leaving an unpayable orphan blocking stock until expiry.
+            from .inventory import release_order_holds
+            try:
+                release_order_holds(order)
+            except Exception:
+                logger.exception(f'Order {order.id} hold release failed after split validation')
+            order.delete()
+            return Response(
+                {'error': (
+                    'Could not price this order. Please try again or contact support.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
 
         # Log successful validation
         logger.info(
@@ -539,7 +565,8 @@ class PlaceOrderView(APIView):
 
         except Exception as exc:
             # Order stays UNPAID — buyer retries from My Orders → Pay Now.
-            # Cart is PRESERVED on failure so buyer can retry
+            # Holds are KEPT (retry reuses them; sweeper releases after
+            # 30 min if never paid). Cart is PRESERVED on failure.
             logger.exception(f'Buyer order {order.id} payment init failed')
             response_data = OrderSerializer(order, context={'request': request}).data
             response_data['payment_init_failed'] = str(exc)
@@ -593,9 +620,10 @@ def _resolve_guest_lines(items, enforce_payment=True):
                 {'error': f'Selected option for "{product.name}" is invalid.'},
                 status=status.HTTP_400_BAD_REQUEST)
         qty = entry['quantity']
-        if product.fulfillment != 'made_to_order' and variant.stock < qty:
+        from .inventory import available_of
+        if product.fulfillment != 'made_to_order' and available_of(variant) < qty:
             return None, Response(
-                {'error': f'Only {variant.stock} left of "{product.name}".'},
+                {'error': f'Only {available_of(variant)} left of "{product.name}".'},
                 status=status.HTTP_400_BAD_REQUEST)
         if seller and getattr(seller, 'role', '') == 'seller':
             if enforce_payment and (not seller.paystack_subaccount_code or seller.subaccount_status != 'active'):
@@ -680,6 +708,21 @@ class GuestPlaceOrderView(APIView):
         per_seller, _ = compute_order_split(
             [(s, t) for s, t in priced['seller_nets'].values()]
         )
+
+        # Reserve stock NOW (30-min holds, same as the buyer path).
+        # On shortfall the just-created order is deleted and the buyer retries.
+        from .inventory import reserve_lines, OutOfStock
+        try:
+            reserve_lines(order)
+        except OutOfStock as exc:
+            order.delete()
+            return Response(
+                {'error': (
+                    'Someone just grabbed the last of: '
+                    + ', '.join(sorted(set(exc.names)))
+                    + '. Please review your bag and try again.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
         admin_gross = (
             commission_collected_total + priced['platform_delivery'] + platform_direct
         )
@@ -693,6 +736,12 @@ class GuestPlaceOrderView(APIView):
         actual_platform_share = (total + processing_fee) - sellers_total - processing_fee
         if abs(admin_gross - actual_platform_share) > Decimal('0.10'):
             logger.error(f'Guest order split validation failed for order {order.id}')
+            from .inventory import release_order_holds
+            try:
+                release_order_holds(order)
+            except Exception:
+                logger.exception(f'Guest order {order.id} hold release failed after split validation')
+            order.delete()
             return Response(
                 {'error': 'Could not price this order. Please try again or contact support.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -732,6 +781,7 @@ class GuestPlaceOrderView(APIView):
             order.paystack_reference = init.get('reference', reference)
             order.save(update_fields=['paystack_reference'])
         except Exception as exc:
+            # Holds KEPT for tracking-link retry; sweeper releases after 30 min.
             logger.exception(f'Guest order {order.id} payment init failed')
             response_data = GuestOrderResponseSerializer(order).data
             response_data['payment_init_failed'] = str(exc)
@@ -792,6 +842,19 @@ class GuestOrderTrackView(APIView):
         if channels:
             valid = [c for c in channels if c in ('card', 'mobile_money', 'bank_transfer', 'ussd', 'bank')]
             channels = valid or None
+        # Holds lapse after 30 min — re-reserve so retry fails cleanly
+        # (sold out) instead of charging then auto-refunding at confirm.
+        from .inventory import ensure_holds, OutOfStock
+        try:
+            ensure_holds(order)
+        except OutOfStock as exc:
+            return Response(
+                {'error': (
+                    'Someone just grabbed the last of: '
+                    + ', '.join(sorted(set(exc.names)))
+                    + '. This order can no longer be fulfilled — please cancel it and order again.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             # Transfer era: retries always re-init PLAIN. A legacy split_code
             # would pay sellers direct AND trigger a transfer at confirm —
@@ -871,14 +934,10 @@ class CancelOrderView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Restore stock only if payment was confirmed (stock was deducted)
-        # Unpaid orders never deducted stock in the new flow
-        if order.payment_status == 'paid':
-            for item in order.items.select_related('variant'):
-                if item.variant:
-                    from apps.products.models import ProductVariant
-                    ProductVariant.objects.filter(pk=item.variant.pk).update(
-                        stock=F('stock') + item.quantity)
+        # Release this order's unpaid stock holds (paid orders can't reach
+        # here — they're rejected above — so this only ever frees holds).
+        from .inventory import release_order_holds
+        release_order_holds(order)
 
         order.status = 'cancelled'
         order.save()
@@ -1366,8 +1425,10 @@ class VerifyDeliveryOTPView(APIView):
         if not otp_log:
             return Response({'error': 'OTP log not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        if otp_log.is_verified:
-            return Response({'message': 'OTP already verified', 'verified': True})
+        # No bypass: even if a self-delivering seller already verified this
+        # order's code, the driver must still enter it. One code per order,
+        # but each deliverer independently proves buyer contact.
+        # (is_verified below only records that proof happened at least once.)
 
         if otp_log.is_locked:
             return Response(
@@ -1552,23 +1613,11 @@ def _deactivate_sold_out(order, logger):
 def _confirm_payment_inventory(order, logger):
     """Stock, settlements, handoffs + platform-share log. May raise —
     callers must catch so notifications still go out."""
-    # STEP 1: DEDUCT STOCK (payment confirmed). Atomic guarded decrement:
-    # only deducts when enough stock remains, so concurrent confirmations
-    # can never drive stock negative or lose updates.
-    for item in order.items.select_related('variant', 'product'):
-        if item.variant and getattr(item.product, 'fulfillment', 'stock') != 'made_to_order':
-            from apps.products.models import ProductVariant
-            updated = ProductVariant.objects.filter(
-                pk=item.variant.pk, stock__gte=item.quantity
-            ).update(stock=F('stock') - item.quantity)
-            if not updated:
-                # Edge case: stock sold out between order placement and payment
-                logger.warning(
-                    f'Stock shortage for variant {item.variant.pk} in order {order.id}: '
-                    f'needed {item.quantity} (insufficient stock at confirm time)'
-                )
-                # Still process payment (money already collected)
-                # Admin handles fulfillment manually
+    # STEP 1: CONVERT HOLDS (payment confirmed). Placement reserved every
+    # tracked line, so stock is guaranteed barring data repair. Raises
+    # OutOfStock instead of charging for missing goods (caller voids).
+    from .inventory import convert_order_holds
+    convert_order_holds(order)
 
     # STEP 1b: SOLD-OUT PRODUCTS leave the shop. Any touched product with no
     # variant left in stock is deactivated (kept for order history, hidden
@@ -1762,6 +1811,45 @@ def _confirm_payment_inventory(order, logger):
     )
 
 
+def _void_unfulfillable_order(order, logger):
+    """Refund everything and stop: stock vanished despite placement holds.
+
+    Data-repair edge only — holds make it near-impossible in practice. The
+    buyer gets the FULL charge back (delivery included: nothing ships), the
+    order is marked refunded so it never fulfils, and buyer + admins are
+    notified. Never raises.
+    """
+    try:
+        from .payments import initiate_refund
+        reference = order.paystack_reference or order.payment_reference
+        amount = (order.total or Decimal('0.00')) + (order.processing_fee or Decimal('0.00'))
+        if reference and amount > 0:
+            initiate_refund(reference=reference, amount_ghs=amount)
+            logger.info(f'Order {order.id} voided — refunded GHS {amount:.2f}')
+        else:
+            logger.warning(f'Order {order.id} voided — nothing to refund (no reference/amount)')
+    except Exception:
+        logger.exception(f'Auto-refund FAILED for voided order {order.id} — admin must refund manually')
+    try:
+        order.payment_status = 'refunded'
+        order.save(update_fields=['payment_status'])
+    except Exception:
+        logger.exception(f'Could not mark order {order.id} refunded')
+    try:
+        if order.buyer is not None:
+            _notify_user(order.buyer, 'refund',
+                         f'Order #{order.id} could not be fulfilled — refunded',
+                         'The item just sold out. You have been refunded in full.',
+                         link=f'/orders/{order.id}/track')
+        for admin in CustomUser.objects.filter(role='admin', is_active=True):
+            _notify_user(admin, 'order_failed',
+                         f'VOIDED unfulfillable Order #{order.id}',
+                         'Stock vanished despite holds — auto-refund attempted. Check it.',
+                         link='/admin/orders')
+    except Exception:
+        pass
+
+
 def _confirm_payment(order):
     """First-paid actions: deduct stock, create settlements, OTP + notifications.
 
@@ -1782,8 +1870,16 @@ def _confirm_payment(order):
     # failure here used to 500 the whole confirmation AND permanently skip
     # every notification (retries see "already paid" and skip again). Each
     # step is guarded so the inbox always reflects money actually collected.
+    # OutOfStock is special: stock vanished despite the placement hold
+    # (data-repair edge) — void the charge instead of taking money for
+    # goods that don't exist.
+    from .inventory import OutOfStock as _OutOfStock
     try:
         _confirm_payment_inventory(order, logger)
+    except _OutOfStock as exc:
+        logger.error(f'Stock void for order {order.id}: {exc} — auto-refunding')
+        _void_unfulfillable_order(order, logger)
+        return
     except BaseException:  # noqa: BLE001 — inventory failure must not skip OTP/inbox
         logger.exception(f'Stock/settlement step failed for order {order.id} — continuing')
 
@@ -1977,12 +2073,14 @@ class PaystackWebhookView(APIView):
                             f'_confirm_payment failed for order {order.id} — payment stands')
                 
                 return Response({'message': 'Payment verified and order marked as paid'})
-
             if event == 'charge.failed':
                 if order is None:
-                    return Response({'message': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+                    return Response({'message': 'Order not found'}, 
+status=status.HTTP_404_NOT_FOUND)
                 order.payment_status = 'failed'
                 order.save()
+                from .inventory import release_order_holds
+                release_order_holds(order)
                 return Response({'message': 'Payment marked as failed'})
 
             return Response({'message': 'Webhook received'}, status=status.HTTP_200_OK)
@@ -2028,6 +2126,20 @@ class PaystackInitializeView(APIView):
                 {'error': 'Paystack is not configured on the server (PAYSTACK_SECRET_KEY missing)'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+
+        # Holds lapse after 30 min — re-reserve so retry fails cleanly
+        # (sold out) instead of charging then auto-refunding at confirm.
+        from .inventory import ensure_holds, OutOfStock
+        try:
+            ensure_holds(order)
+        except OutOfStock as exc:
+            return Response(
+                {'error': (
+                    'Someone just grabbed the last of: '
+                    + ', '.join(sorted(set(exc.names)))
+                    + '. This order can no longer be fulfilled — please cancel it and order again.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
 
         try:
             # Transfer era: retries always re-init PLAIN and drop any legacy

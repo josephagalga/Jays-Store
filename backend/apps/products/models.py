@@ -58,16 +58,17 @@ class SubCategory(models.Model):
 
 def sellable_products(queryset):
     """Only products a buyer can actually order: made-to-order always,
-    stocked products only when some variant has stock > 0.
+    stocked products only when some variant has buyable units
+    (on-hand minus unpaid holds).
 
     Dead-on-arrival rows (zero/empty stock, never purchased) vanish from
     every public listing without any wipe. Sellers still see them in
     My Products to fix or delete.
     """
-    from django.db.models import Exists, OuterRef, Q
+    from django.db.models import Exists, OuterRef, F, Q
     return queryset.annotate(
         _has_stock=Exists(
-            ProductVariant.objects.filter(product=OuterRef('pk'), stock__gt=0))
+            ProductVariant.objects.filter(product=OuterRef('pk'), stock__gt=F('held_stock')))
     ).filter(Q(_has_stock=True) | Q(fulfillment='made_to_order'))
 
 
@@ -306,6 +307,11 @@ class ProductVariant(models.Model):
     #   Falls back to the product's primary image when empty.
     stock = models.PositiveIntegerField(default=0)
     # ↑ How many of this exact variant are in stock
+    held_stock = models.PositiveIntegerField(default=0)
+    # ↑ Units reserved by UNPAID orders (30-minute holds). Buyable quantity is
+    #   stock − held_stock; holds convert to real deductions at payment
+    #   confirmation and release on cancel/fail/expiry. Never negative:
+    #   all writes go through guarded F() updates.
 
     class Meta:
         db_table = 'product_variants'
@@ -335,7 +341,12 @@ class ProductVariant(models.Model):
 
     @property
     def is_in_stock(self):
-        return self.stock > 0
+        return self.available_stock > 0
+
+    @property
+    def available_stock(self):
+        """Units a buyer can still take: on-hand minus unpaid holds."""
+        return max(0, (self.stock or 0) - (self.held_stock or 0))
 
 
 class ProductImage(models.Model):

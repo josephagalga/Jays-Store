@@ -11,7 +11,11 @@ An order qualifies when ALL of these hold:
 Each qualifying order is stamped (idempotent — re-runs skip it) and the
 admin gets one email per order. Nothing about money or status changes.
 
-Schedule (production): Render Cron Job every 6 hours:
+Also releases expired unpaid stock holds (30-minute holds, see
+apps.orders.inventory). Run hourly now that holds expire in 30 minutes —
+every 6h would leave dead holds blocking stock for hours.
+
+Schedule (production): Render Cron Job every hour:
     python manage.py escalate_stale_orders
 Local dev: run it by hand, or add `--dry-run` to preview without emailing.
 """
@@ -37,10 +41,18 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from apps.orders.models import Order
         from apps.orders.emails import send_stale_escalation
+        from apps.orders.inventory import release_expired_holds
 
         hours = options['hours']
         dry_run = options['dry_run']
         cutoff = timezone.now() - timedelta(hours=hours)
+
+        if dry_run:
+            self.stdout.write('  [dry-run] expired-hold release skipped (no writes).')
+        else:
+            released = release_expired_holds()
+            if released:
+                self.stdout.write(f'Released expired holds on {released} order(s).')
 
         stale = list(Order.objects.filter(
             payment_status='paid',

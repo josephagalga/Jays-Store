@@ -74,9 +74,10 @@ class CartItemSerializer(serializers.ModelSerializer):
     def validate(self, data):
         variant = data.get('variant')
         quantity = data.get('quantity', 1)
-        if variant and variant.stock < quantity:
+        from .inventory import available_of
+        if variant and available_of(variant) < quantity:
             raise serializers.ValidationError({
-                'quantity': f'Only {variant.stock} units available in stock'
+                'quantity': f'Only {available_of(variant)} units available in stock'
             })
         return data
 
@@ -124,9 +125,11 @@ class AddToCartSerializer(serializers.Serializer):
 
         # Make sure there is enough stock (made-to-order items are
         # procured after payment, so stock is irrelevant for them)
-        if product.fulfillment != 'made_to_order' and variant.stock < data['quantity']:
+        from .inventory import available_of
+        if (product.fulfillment != 'made_to_order'
+                and available_of(variant) < data['quantity']):
             raise serializers.ValidationError({
-                'quantity': f'Only {variant.stock} units available in stock'
+                'quantity': f'Only {available_of(variant)} units available in stock'
             })
 
         data['product'] = product

@@ -66,9 +66,15 @@ class ProductFilter(django_filters.FilterSet):
         return with_display_price(queryset).filter(display_price_calc__lte=value)
 
     def filter_in_stock(self, queryset, name, value):
-        """Filter to only show products that have at least one variant in stock."""
+        """Filter to only show products that have at least one variant with
+        buyable units (on-hand minus unpaid holds)."""
+        from django.db.models import Exists, OuterRef, F
+        from .models import ProductVariant
         if value:
-            return queryset.filter(variants__stock__gt=0).distinct()
+            return queryset.filter(Exists(
+                ProductVariant.objects.filter(
+                    product=OuterRef('pk'), stock__gt=F('held_stock'))
+            )).distinct()
         return queryset
 
     def filter_seller_store(self, queryset, name, value):
