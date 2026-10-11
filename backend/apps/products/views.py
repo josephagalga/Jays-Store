@@ -71,7 +71,10 @@ class ProductListView(generics.ListAPIView):
         # Public catalog: active products from verified sellers (or platform items).
         # Products from pending/rejected sellers stay hidden until approval.
         # Suspended (inactive) sellers' products are hidden too.
-        return Product.objects.filter(is_active=True).exclude(
+        # Unsellable rows (no variant with stock, and not made-to-order)
+        # are hidden as well — sellers fix or delete them in My Products.
+        from .models import sellable_products
+        return sellable_products(Product.objects.filter(is_active=True)).exclude(
             seller__verification_status__in=['pending', 'rejected']
         ).exclude(
             seller__is_active=False,
@@ -89,7 +92,8 @@ class ProductDetailView(generics.RetrieveAPIView):
     lookup_field = 'slug'
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True).exclude(
+        from .models import sellable_products
+        return sellable_products(Product.objects.filter(is_active=True)).exclude(
             seller__verification_status__in=['pending', 'rejected']
         ).exclude(
             seller__is_active=False,
@@ -107,9 +111,10 @@ class FeaturedProductsView(generics.ListAPIView):
 
     def get_queryset(self):
         # Featured rail sells real stock: demo showcase items are excluded.
-        return Product.objects.filter(
+        from .models import sellable_products
+        return sellable_products(Product.objects.filter(
             is_active=True, is_featured=True, is_demo=False
-        ).exclude(
+        )).exclude(
             seller__is_active=False,
         ).exclude(
             seller__verification_status__in=['pending', 'rejected']

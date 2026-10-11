@@ -50,6 +50,12 @@ export default function SellerAddProductPage() {
 
   const onSubmit = async (data) => {
     try {
+      // A product with no complete variant can never be bought — block
+      // publish up front instead of listing a dead product.
+      const complete = variants.filter(v => v.size && v.color)
+      if (!complete.length) {
+        return toast.error('Add at least one size + color variant — otherwise buyers cannot order it.')
+      }
       const payload = {
         name: data.name,
         description: data.description,

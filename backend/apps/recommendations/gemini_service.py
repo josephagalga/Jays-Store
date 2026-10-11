@@ -28,7 +28,9 @@ def get_client():
 
 def get_product_context(queryset=None):
     if queryset is None:
-        queryset = Product.objects.filter(is_active=True).select_related(
+        from apps.products.models import sellable_products
+        queryset = sellable_products(
+            Product.objects.filter(is_active=True)).select_related(
             'category', 'subcategory'
         ).prefetch_related('variants')[:100]
 
@@ -128,7 +130,9 @@ def catalog_smart_fallback(user_message):
     rate-limited, or has an invalid/expired key.
     """
     msg_lower = user_message.lower()
-    products_qs = Product.objects.filter(is_active=True).select_related('category', 'subcategory')
+    from apps.products.models import sellable_products
+    products_qs = sellable_products(
+        Product.objects.filter(is_active=True)).select_related('category', 'subcategory')
 
     # 1. Budget extraction
     budget_match = re.search(r'(?:under|below|less than|within|max|budget(?: of)?)\s*(?:ghs|ghc|cedis?|\$)?\s*(\d+(?:\.\d+)?)', msg_lower)
@@ -252,11 +256,12 @@ def get_similar_products(product_id, limit=6):
     except Product.DoesNotExist:
         return []
 
+    from apps.products.models import sellable_products
     fallback = list(
-        Product.objects.filter(
+        sellable_products(Product.objects.filter(
             is_active=True,
             category=product.category,
-        ).exclude(id=product_id).values_list('id', flat=True)[:limit]
+        )).exclude(id=product_id).values_list('id', flat=True)[:limit]
     )
 
     try:

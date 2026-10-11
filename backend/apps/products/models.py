@@ -56,6 +56,21 @@ class SubCategory(models.Model):
         return f'{self.category.name} → {self.name}'
 
 
+def sellable_products(queryset):
+    """Only products a buyer can actually order: made-to-order always,
+    stocked products only when some variant has stock > 0.
+
+    Dead-on-arrival rows (zero/empty stock, never purchased) vanish from
+    every public listing without any wipe. Sellers still see them in
+    My Products to fix or delete.
+    """
+    from django.db.models import Exists, OuterRef, Q
+    return queryset.annotate(
+        _has_stock=Exists(
+            ProductVariant.objects.filter(product=OuterRef('pk'), stock__gt=0))
+    ).filter(Q(_has_stock=True) | Q(fulfillment='made_to_order'))
+
+
 class Product(models.Model):
     """
     A product is a clothing item listed by the admin.

@@ -1256,7 +1256,9 @@ class StorePageView(APIView):
         # NOTE: seller earnings are NEVER public — sellers see their own via
         # /seller/wallet/, admins via the earnings leaderboard.
         from apps.products.serializers import ProductListSerializer
-        products = vendor.store_products.filter(is_active=True)
+        from apps.products.models import sellable_products
+        products = sellable_products(
+            vendor.store_products.filter(is_active=True))
 
         data = {
             'vendor_id': vendor.id,
