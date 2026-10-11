@@ -258,6 +258,80 @@ def create_subaccount(*, business_name, account_number, bank_code):
     return body['data']  # contains subaccount_code, account_number, etc.
 
 
+def normalize_holder_name(value):
+    """Uppercase alphanumeric only: 'AgAlGa JoSePh A.' -> 'AGALGAJOSEPHA'."""
+    return ''.join(ch for ch in str(value or '').upper() if ch.isalnum())
+
+
+def _name_tokens(value):
+    import re
+    return [t for t in re.findall(r'[A-Z0-9]+', str(value or '').upper())
+            if len(t) >= 2]
+
+
+def names_match(entered, resolved):
+    """Token-based holder match tolerant of bank formatting.
+
+    Bank/MoMo records shout, truncate and reorder ('AGALGA JOSEPH A' vs
+    'Joseph Agalga'), so containment is checked on name tokens, not raw
+    strings. Passes when every entered token appears in the resolved name
+    or vice versa, or when at least 2 tokens overlap. Single initials and
+    sub-2-char fragments never decide alone.
+    """
+    entered_tokens = _name_tokens(entered)
+    resolved_tokens = _name_tokens(resolved)
+    if not entered_tokens or not resolved_tokens:
+        return False
+    if all(t in resolved_tokens for t in entered_tokens):
+        return True
+    if all(t in entered_tokens for t in resolved_tokens):
+        return True
+    return len(set(entered_tokens) & set(resolved_tokens)) >= 2
+
+
+def resolve_account_name(*, account_number, bank_code):
+    """Ask Paystack who owns this number (works for banks and MoMo).
+
+    Returns the registered holder name. Raises on failure.
+    """
+    _require_secret()
+    resp = requests.get(
+        'https://api.paystack.co/bank/resolve',
+        params={'account_number': account_number, 'bank_code': bank_code},
+        headers=_headers(), timeout=20,
+    )
+    body = resp.json()
+    if not body.get('status') or 'data' not in body:
+        raise RuntimeError(body.get('message', 'Paystack could not resolve this account'))
+    name = (body['data'] or {}).get('account_name', '')
+    if not name:
+        raise RuntimeError('Paystack returned no holder name for this account')
+    return name
+
+
+def create_verified_subaccount(*, business_name, account_number, bank_code, expected_name):
+    """Resolve the holder first, create the subaccount only on a name match.
+
+    Returns (subaccount_data, resolved_name). Raises RuntimeError naming the
+    registered holder on mismatch, so the seller sees whose account their
+    number actually points to. A typo that lands on a stranger's valid
+    account is blocked instead of activated — and no junk subaccount is left
+    behind for rejected numbers.
+    """
+    resolved = resolve_account_name(
+        account_number=account_number, bank_code=bank_code)
+    if not names_match(expected_name, resolved):
+        raise RuntimeError(
+            f"Name mismatch: this number is registered to '{resolved}', "
+            f"not '{expected_name}'. Check the account number and try again.")
+    sub = create_subaccount(
+        business_name=business_name,
+        account_number=account_number,
+        bank_code=bank_code,
+    )
+    return sub, resolved
+
+
 def list_ghana_banks():
     """Paystack bank list (includes Ghana settlement banks)."""
     _require_secret()

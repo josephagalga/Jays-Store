@@ -563,12 +563,13 @@ class SellerPayoutAccountView(APIView):
             'subaccount_status', 'subaccount_note',
         ])
 
-        from apps.orders.payments import create_subaccount
+        from apps.orders.payments import create_verified_subaccount
         try:
-            sub = create_subaccount(
+            sub, _resolved = create_verified_subaccount(
                 business_name=seller.store_name or seller.full_name,
                 account_number=seller.payout_account_number,
                 bank_code=seller.payout_bank_code,
+                expected_name=seller.payout_account_name,
             )
             seller.paystack_subaccount_code = sub.get('subaccount_code', '')
             seller.subaccount_status = 'active' if seller.paystack_subaccount_code else 'failed'
