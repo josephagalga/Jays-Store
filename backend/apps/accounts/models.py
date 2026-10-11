@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.conf import settings
 from django.db import models
 from apps.core.validators import validate_image_file_size
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -336,6 +337,44 @@ class NewsletterSubscriber(models.Model):
     class Meta:
         db_table = 'newsletter_subscribers'
         ordering = ['-created_at']
+
+
+class Notification(models.Model):
+    """In-app inbox row — the reliable channel alongside email.
+
+    Kinds mirror the email triggers (order_paid, new_sale, verification,
+    payout, refund, stock, system) so anything emailed is also visible
+    in-app, even when mail delivery fails.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='notifications', db_index=True)
+    kind = models.CharField(max_length=30, default='system')
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True)
+    link = models.CharField(max_length=300, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'notifications'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Notif for {self.user_id} <{self.kind}> {self.title[:40]}'
+
+
+def notify(user, kind, title, body='', link=''):
+    """Create an inbox row. Never raises — notifications ride along, they
+    never break the flow that triggered them."""
+    try:
+        if user is None:
+            return None
+        return Notification.objects.create(
+            user=user, kind=kind or 'system', title=(title or '')[:200],
+            body=body or '', link=link or '')
+    except Exception:
+        return None
 
     def __str__(self):
         return self.email

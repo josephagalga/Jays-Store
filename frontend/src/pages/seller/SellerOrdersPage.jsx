@@ -192,6 +192,31 @@ export default function SellerOrdersPage() {
                   {order.delivery_note && <p className="text-[var(--muted)] italic">Note: {order.delivery_note}</p>}
                 </div>
               )}
+              {order.items?.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider mb-2">
+                    Your items to prepare ({order.items.length})
+                  </p>
+                  <div className="space-y-2">
+                    {order.items.map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 bg-[var(--off)] rounded-xl p-3">
+                        {item.image ? (
+                          <img src={item.image} alt="" className="w-12 h-14 object-cover rounded-lg flex-shrink-0" />
+                        ) : (
+                          <div className="w-12 h-14 bg-white rounded-lg flex-shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[var(--ink)] line-clamp-1">{item.product_name}</p>
+                          <p className="text-xs text-[var(--muted)]">
+                            {[item.size, item.color].filter(Boolean).join(' · ')} · x{item.quantity}
+                          </p>
+                        </div>
+                        <p className="text-sm font-bold flex-shrink-0">GHS {parseFloat(item.total).toFixed(2)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
                 <CheckCircle size={12} />
                 {new Date(order.created_at).toLocaleString('en-GH')}

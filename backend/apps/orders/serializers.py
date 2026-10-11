@@ -395,6 +395,7 @@ class SellerOrderListSerializer(serializers.ModelSerializer):
     driver_name = serializers.CharField(source='driver.full_name', read_only=True)
     item_count = serializers.SerializerMethodField()
     my_handoff = serializers.SerializerMethodField()
+    items = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -404,12 +405,47 @@ class SellerOrderListSerializer(serializers.ModelSerializer):
             'payment_method', 'item_count', 'created_at',
             'delivery_address', 'delivery_phone', 'delivery_note', 'delivery_landmark',
             'delivery_fee', 'delivery_pin', 'pin_verified',
-            'needs_driver', 'my_handoff',
+            'needs_driver', 'my_handoff', 'items',
         ]
         read_only_fields = ['id', 'created_at']
 
+    def _my_items(self, obj):
+        """Only this seller's rows — never another vendor's items.
+        Admins see everything (same endpoint serves the admin view)."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if getattr(user, 'role', '') == 'admin':
+            return list(obj.items.all())
+        seller_id = getattr(user, 'id', None)
+        return [i for i in obj.items.all()
+                if seller_id and i.seller_id == seller_id]
+
     def get_item_count(self, obj):
-        return obj.items.count()
+        return sum(i.quantity for i in self._my_items(obj))
+
+    def get_items(self, obj):
+        from apps.products.serializers import absolute_media_url
+        request = self.context.get('request')
+        out = []
+        for i in self._my_items(obj):
+            image = None
+            try:
+                images = list((i.product.images.all() if i.product else []))
+                primary = next((im for im in images if im.is_primary), None) or (images[0] if images else None)
+                if primary is not None:
+                    image = absolute_media_url(primary.url, request)
+            except Exception:
+                image = None
+            out.append({
+                'product_name': i.product_name,
+                'size': i.size,
+                'color': i.color,
+                'quantity': i.quantity,
+                'unit_price': str(i.unit_price),
+                'total': str(i.total_price),
+                'image': image,
+            })
+        return out
 
     def get_my_handoff(self, obj):
         """This seller's handoff state: 'none' (platform delivery),

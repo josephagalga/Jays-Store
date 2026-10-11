@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import ContactMessage, NewsletterSubscriber
+from .models import ContactMessage, NewsletterSubscriber, Notification
 
 User = get_user_model()
 
@@ -488,6 +488,13 @@ class NewsletterSubscriberSerializer(serializers.ModelSerializer):
         model = NewsletterSubscriber
         fields = ['id', 'email', 'is_active', 'created_at']
         read_only_fields = ['id', 'is_active', 'created_at']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['id', 'kind', 'title', 'body', 'link', 'is_read', 'created_at']
+        read_only_fields = ['id', 'kind', 'title', 'body', 'link', 'is_read', 'created_at']
 
 
 class VendorListSerializer(serializers.ModelSerializer):

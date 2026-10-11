@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
 from .models import Order, OrderItem, Cart, CartItem, DeliveryRating, Coupon, Settlement, PLATFORM_COMMISSION_RATE, DeliveryOTPLog
-from apps.accounts.models import CustomUser
+from apps.accounts.models import CustomUser, notify as _notify_user
 from .otp_utils import generate_otp, hash_otp, verify_otp, get_otp_expiry, encrypt_otp
 from .emails import (
     send_payment_confirmation,
@@ -1035,6 +1035,11 @@ class DriverUpdateOrderStatusView(APIView):
                     f"you shortly about redelivery or a refund.\n\nMy Jay's Store",
                     kind='delivery_failed', order=order,
                 )
+            if order.buyer is not None:
+                _notify_user(order.buyer, 'order_failed',
+                             f'Delivery failed — Order #{order.id}',
+                             'The item is returning to the seller. Admin will contact you about redelivery or a refund.',
+                             link=f'/orders/{order.id}/track')
 
         # When order is delivered, update stats.
         # Driver money is out-of-system (admin pays physically) — no crediting.
@@ -1182,6 +1187,11 @@ class AdminRefundOrderView(APIView):
                 )
             except Exception:
                 pass
+        if order.buyer is not None:
+            _notify_user(order.buyer, 'refund',
+                         f'Refund issued — Order #{order.id}',
+                         f'GHS {amount:.2f} (delivery fee excluded) is on its way back.',
+                         link=f'/orders/{order.id}/track')
         return Response({
             'message': f'Refunded GHS {amount:.2f} (delivery fee excluded).',
             'refunded_amount': str(amount),
@@ -1237,7 +1247,6 @@ class StorePageView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, store_slug):
-        from apps.accounts.models import CustomUser
         try:
             vendor = CustomUser.objects.get(store_slug=store_slug, role='seller')
         except CustomUser.DoesNotExist:
@@ -1301,7 +1310,8 @@ class SellerOrderListView(generics.ListAPIView):
         seller = self.request.user
         if seller.role == 'admin':
             return Order.objects.all().prefetch_related('items', 'handoffs').select_related('buyer', 'driver').order_by('-created_at')
-        return Order.objects.filter(items__seller=seller).distinct().prefetch_related('items', 'handoffs').select_related('buyer', 'driver').order_by('-created_at')
+        return Order.objects.filter(items__seller=seller).distinct().prefetch_related(
+            'items', 'items__product__images', 'handoffs').select_related('buyer', 'driver').order_by('-created_at')
 
 
 def _complete_order_if_ready(order):
@@ -1531,6 +1541,10 @@ def _deactivate_sold_out(order, logger):
                 f"automatically.\n\nMy Jay's Store",
                 kind='stock_alert', order=order,
             )
+            _notify_user(seller, 'stock_alert',
+                         f"'{product.name}' sold out — hidden from shop",
+                         'Restock it from My Products to relist automatically.',
+                         link='/seller/products')
 
 
 def _confirm_payment_inventory(order, logger):
@@ -1827,6 +1841,28 @@ def _confirm_payment(order):
     if not buyer_ok:
         logger.error(f'Payment confirmation email failed for order {order.id} buyer {order.buyer_email}')
         # Don't raise - payment already processed, just log the email failure
+
+    # In-app inbox mirrors (buyers/sellers/admins see it even if mail fails)
+    if order.buyer is not None:
+        _notify_user(order.buyer, 'order_paid',
+                     f'Payment confirmed — Order #{order.id}',
+                     f'GHS {order.charged_total:.2f} received. Track it in My Orders.',
+                     link=f'/orders/{order.id}/track')
+    seen_sellers = set()
+    for item in order.items.select_related('seller').all():
+        seller = item.seller
+        if not seller or seller.id in seen_sellers:
+            continue
+        seen_sellers.add(seller.id)
+        _notify_user(seller, 'new_sale',
+                     f'New sale! Order #{order.id}',
+                     f'{item.product_name} x{item.quantity} — see My Orders to prepare it.',
+                     link='/seller/orders')
+    for admin in CustomUser.objects.filter(role='admin', is_active=True):
+        _notify_user(admin, 'order_paid',
+                     f'Payment received — Order #{order.id}',
+                     f'GHS {order.charged_total:.2f} confirmed.',
+                     link=f'/admin/orders')
 
 
 class PaystackWebhookView(APIView):

@@ -16,6 +16,11 @@ urlpatterns = [
     # Own buyer account (GET/PATCH/DELETE own profile incl. soft-delete)
     path('me/', views.BuyerProfileView.as_view(), name='my-profile'),
 
+    # In-app notifications (own inbox)
+    path('notifications/', views.NotificationListView.as_view(), name='notification-list'),
+    path('notifications/read-all/', views.NotificationReadAllView.as_view(), name='notification-read-all'),
+    path('notifications/<int:pk>/read/', views.NotificationReadView.as_view(), name='notification-read'),
+
     # Profiles
     path('profile/buyer/', views.BuyerProfileView.as_view(), name='buyer-profile'),
     path('profile/seller/', views.SellerProfileView.as_view(), name='seller-profile'),

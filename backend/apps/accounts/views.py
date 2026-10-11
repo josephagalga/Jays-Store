@@ -25,6 +25,7 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
     ContactMessageSerializer,
     NewsletterSubscriberSerializer,
+    NotificationSerializer,
     PayoutAccountSerializer,
 )
 from apps.core.permissions import IsAdmin, IsDriver, IsBuyer, IsSeller
@@ -388,6 +389,15 @@ class AdminVerifyDriverView(generics.UpdateAPIView):
             driver.avatar = driver.selfie_image
             driver.save()
 
+        from .models import notify as _notify
+        if driver.verification_status == 'approved':
+            _notify(driver, 'verification', 'Driver application approved',
+                    'You can now accept delivery orders.', link='/driver/orders')
+        elif driver.verification_status == 'rejected':
+            _notify(driver, 'verification', 'Driver application update',
+                    f'Not approved. {driver.verification_note or ""}'.strip(),
+                    link='/driver/dashboard')
+
         return Response({
             'message': f'Driver has been {driver.verification_status}',
             'driver': AdminDriverDetailSerializer(driver, context={'request': request}).data,
@@ -412,6 +422,16 @@ class AdminVerifySellerView(generics.UpdateAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         seller.refresh_from_db()
+
+        from .models import notify as _notify
+        if seller.verification_status == 'approved':
+            _notify(seller, 'verification', 'Store approved — start selling',
+                    'Your store is live. List products from your dashboard.',
+                    link='/seller/dashboard')
+        elif seller.verification_status == 'rejected':
+            _notify(seller, 'verification', 'Store application update',
+                    f'Not approved. {seller.verification_note or ""}'.strip(),
+                    link='/seller/dashboard')
 
         return Response({
             'message': f'Seller has been {seller.verification_status}',
@@ -595,6 +615,15 @@ class SellerPayoutAccountView(APIView):
         seller.save(update_fields=[
             'paystack_subaccount_code', 'transfer_recipient_code',
             'subaccount_status', 'subaccount_note'])
+        from .models import notify as _notify
+        if seller.subaccount_status == 'active':
+            _notify(seller, 'payout', 'Payout account connected',
+                    'Buyers can now check out your items; payouts settle to your MoMo.',
+                    link='/seller/dashboard')
+        else:
+            _notify(seller, 'payout', 'Payout account needs attention',
+                    seller.subaccount_note or 'Could not verify the account. Check the details.',
+                    link='/seller/dashboard')
         return Response(PayoutAccountSerializer(seller).data)
 
 
@@ -676,6 +705,52 @@ class NewsletterDeleteView(APIView):
             return Response({'error': 'Subscriber not found'}, status=status.HTTP_404_NOT_FOUND)
         sub.delete()
         return Response({'message': 'Subscriber removed'})
+
+
+# ============================================================
+# NOTIFICATIONS (in-app inbox — the reliable channel next to email)
+# ============================================================
+
+class NotificationListView(generics.ListAPIView):
+    """Own inbox, newest first + unread count."""
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        from .models import Notification
+        return Notification.objects.filter(user=self.request.user).order_by('-created_at')[:50]
+
+    def list(self, request, *args, **kwargs):
+        from .models import Notification
+        response = super().list(request, *args, **kwargs)
+        data = response.data
+        items = data if isinstance(data, list) else data.get('results', data)
+        unread = Notification.objects.filter(user=request.user, is_read=False).count()
+        if isinstance(data, list):
+            return Response({'results': items, 'unread_count': unread})
+        data['unread_count'] = unread
+        return Response(data)
+
+
+class NotificationReadView(APIView):
+    """Mark one row read (owners only — queryset scoped to self)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        from .models import Notification
+        updated = Notification.objects.filter(pk=pk, user=request.user).update(is_read=True)
+        if not updated:
+            return Response({'error': 'Notification not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'message': 'Marked as read'})
+
+
+class NotificationReadAllView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from .models import Notification
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({'message': 'All marked as read'})
 
 
 # ============================================================
