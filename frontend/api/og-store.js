@@ -116,6 +116,34 @@ export default async function handler(req, res) {
   const slug = req.query?.slug;
   const site = siteOrigin();
 
+  // Temporary diagnostics (?debug=1): reports which backend the function
+  // actually reaches. Remove once the live env is confirmed.
+  if (req.query?.debug) {
+    const bases = [apiBase()];
+    const fallback = 'https://myjays-store.onrender.com/api';
+    if (!bases[0].startsWith(fallback)) bases.push(fallback);
+    const attempts = [];
+    for (const base of bases) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      try {
+        const r = await fetch(`${base}/accounts/stores/${encodeURIComponent(slug || 'agalgas-closset')}/`, {
+          signal: ctrl.signal,
+          headers: { Accept: 'application/json' },
+        });
+        attempts.push({ base, status: r.status, ok: r.ok });
+      } catch (e) {
+        attempts.push({ base, error: String(e && e.message || e).slice(0, 120) });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    res.status(200).setHeader('Content-Type', 'application/json; charset=utf-8').send(
+      JSON.stringify({ apiBase: bases[0], vercelUrl: process.env.VERCEL_URL || null, attempts })
+    );
+    return;
+  }
+
   // Preview-link visits by humans bounce straight to the real store page
   // (crawlers ignore the redirect and read the tags below instead).
   if (req.query?.share && !BOT_UA.test(req.headers?.['user-agent'] || '')) {
