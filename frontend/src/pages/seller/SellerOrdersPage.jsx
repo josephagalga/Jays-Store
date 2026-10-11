@@ -56,6 +56,32 @@ function HandoffConfirm({ orderId, onDone }) {
   )
 }
 
+function ProcurementReady({ orderId }) {
+  const qc = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/seller/orders/${orderId}/ready/`, {}),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Marked ready')
+      qc.invalidateQueries(['seller-orders'])
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.error || 'Could not mark ready')
+    },
+  })
+
+  return (
+    <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+      <p className="text-sm font-medium text-blue-900 mb-1">Made-to-order items needed</p>
+      <p className="text-xs text-blue-800 mb-3">
+        Source or make the items, then mark them ready — drivers only see the order after that. No code needed.
+      </p>
+      <Button onClick={() => mutation.mutate()} loading={mutation.isPending} className="rounded-xl sm:w-auto w-full">
+        Mark items ready
+      </Button>
+    </div>
+  )
+}
+
 export default function SellerOrdersPage() {
   const { data: orders, isLoading } = useQuery({
     queryKey: ['seller-orders'],
@@ -82,7 +108,7 @@ export default function SellerOrdersPage() {
   }, [orders?.length])
 
   const needsAction = (o) =>
-    o.payment_status === 'paid' && o.my_handoff === 'pending' &&
+    o.payment_status === 'paid' && (o.my_handoff === 'pending' || o.my_handoff === 'procurement_pending') &&
     o.status !== 'cancelled' && o.status !== 'delivered'
   const actionCount = useMemo(() => (orders || []).filter(needsAction).length, [orders])
   const sorted = useMemo(() => {
@@ -109,10 +135,10 @@ export default function SellerOrdersPage() {
       {actionCount > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 mb-6 flex items-center gap-3">
           <BellRing size={18} className="text-amber-600 flex-shrink-0" />
-          <p className="text-sm text-amber-800">
-            <span className="font-bold">{actionCount} order{actionCount === 1 ? '' : 's'} need{actionCount === 1 ? 's' : ''} your handoff</span>
-            {' '}— ask the buyer for their delivery code below. Payouts land in your wallet.
-          </p>
+            <p className="text-sm text-amber-800">
+              <span className="font-bold">{actionCount} order{actionCount === 1 ? '' : 's'} need{actionCount === 1 ? 's' : ''} your action</span>
+              {' '}— confirm handoffs with the buyer's code, or mark made-to-order items ready below. Payouts land in your wallet.
+            </p>
         </div>
       )}
 
@@ -174,6 +200,9 @@ export default function SellerOrdersPage() {
               </div>
               {order.my_handoff === 'pending' && order.payment_status === 'paid' && order.status !== 'cancelled' && order.status !== 'delivered' && (
                 <HandoffConfirm orderId={order.id} />
+              )}
+              {order.my_handoff === 'procurement_pending' && order.payment_status === 'paid' && order.status !== 'cancelled' && order.status !== 'delivered' && (
+                <ProcurementReady orderId={order.id} />
               )}
               {order.my_handoff === 'confirmed' && (
                 <p className="mt-3 text-xs font-medium text-green-600">✓ Your handoff is confirmed</p>

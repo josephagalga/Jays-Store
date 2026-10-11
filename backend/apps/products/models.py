@@ -109,6 +109,19 @@ class Product(models.Model):
     is_active = models.BooleanField(default=True)
     # ↑ Admin can deactivate a product without deleting it
 
+    class Fulfillment(models.TextChoices):
+        IN_STOCK = 'stock', 'In stock'
+        MADE_TO_ORDER = 'made_to_order', 'Made to order'
+
+    fulfillment = models.CharField(
+        max_length=20, choices=Fulfillment.choices, default=Fulfillment.IN_STOCK)
+    # ↑ Made-to-order: seller procures/makes it AFTER the buyer pays
+    #   (dropshippers, tailors). No stock tracking; seller confirms readiness.
+
+    lead_time_days = models.PositiveIntegerField(default=3)
+    # ↑ Expected days before a made-to-order item is ready for pickup.
+    #   Shown to buyers so expectations are honest.
+
     is_featured = models.BooleanField(default=False)
     # ↑ Featured products appear on the homepage
 

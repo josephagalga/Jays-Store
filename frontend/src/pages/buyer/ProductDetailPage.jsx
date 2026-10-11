@@ -732,6 +732,12 @@ export default function ProductDetailPage() {
 
             {/* Add to bag — guests shop with a local bag, no account needed.
                 Demo showcase items are display-only and cannot be purchased. */}
+            {!product.is_demo && product.fulfillment === 'made_to_order' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                <strong>Made to order.</strong> The seller sources this item after you pay —
+                expect it ready in about {product.lead_time_days || 3} days. No stock limits.
+              </div>
+            )}
             {product.is_demo ? (
               <div className="bg-[var(--off)] border border-[var(--border)] rounded-xl px-4 py-3.5 text-center">
                 <p className="text-sm font-semibold text-[var(--ink)]">Display only</p>

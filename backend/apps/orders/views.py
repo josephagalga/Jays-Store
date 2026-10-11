@@ -310,7 +310,9 @@ class PlaceOrderView(APIView):
                 )},
                 status=status.HTTP_400_BAD_REQUEST)
         short = next(
-            (ci for ci in cart_items if ci.variant.stock < ci.quantity), None)
+            (ci for ci in cart_items
+             if ci.product.fulfillment != 'made_to_order' and ci.variant.stock < ci.quantity),
+            None)
         if short is not None:
             return Response(
                 {'error': (
@@ -591,7 +593,7 @@ def _resolve_guest_lines(items, enforce_payment=True):
                 {'error': f'Selected option for "{product.name}" is invalid.'},
                 status=status.HTTP_400_BAD_REQUEST)
         qty = entry['quantity']
-        if variant.stock < qty:
+        if product.fulfillment != 'made_to_order' and variant.stock < qty:
             return None, Response(
                 {'error': f'Only {variant.stock} left of "{product.name}".'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -903,9 +905,13 @@ class DriverAvailableOrdersView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated, IsDriver]
 
     def get_queryset(self):
-        # All-self-delivery orders need no driver — sellers hand off themselves.
+        # All-self-delivery orders need no driver - sellers hand off themselves.
+        # Orders with unconfirmed PROCUREMENT handoffs stay hidden until the
+        # seller marks their made-to-order items ready.
         return Order.objects.filter(
             status='pending', payment_status='paid', needs_driver=True
+        ).exclude(
+            handoffs__kind='procurement', handoffs__confirmed_at__isnull=True,
         ).prefetch_related('items').order_by('created_at')
 
 
@@ -926,6 +932,12 @@ class DriverAcceptOrderView(APIView):
             return Response(
                 {'error': 'Order not available (it may be unpaid or already taken)'},
                 status=status.HTTP_404_NOT_FOUND
+            )
+
+        if order.handoffs.filter(kind='procurement', confirmed_at__isnull=True).exists():
+            return Response(
+                {'error': 'A seller is still procuring made-to-order items. Try again once it is marked ready.'},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         order.driver = request.user
@@ -1386,6 +1398,31 @@ class VerifyDeliveryOTPView(APIView):
             )
 
 
+class SellerMarkReadyView(APIView):
+    """A seller marks their made-to-order items procured/ready (no OTP —
+    nothing changes hands yet). Clears their procurement handoffs so the
+    order appears on the driver board (platform delivery) or proceeds
+    (self delivery, where the OTP handoff still applies at delivery).
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSeller]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        from .models import SellerHandoff
+        try:
+            order = Order.objects.select_for_update().get(
+                pk=pk, items__seller=request.user, payment_status='paid')
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+        updated = SellerHandoff.objects.filter(
+            order=order, seller=request.user,
+            kind=SellerHandoff.Kind.PROCUREMENT, confirmed_at__isnull=True,
+        ).update(confirmed_at=timezone.now())
+        if not updated:
+            return Response({'message': 'Nothing waiting on you for this order.'})
+        return Response({'message': 'Marked ready — drivers can now pick it up.'})
+
+
 class SellerConfirmHandoffView(APIView):
     """A self-delivering seller confirms their handoff with the buyer's OTP.
 
@@ -1476,7 +1513,8 @@ def _deactivate_sold_out(order, logger):
         item.product_id for item in order.items.all() if item.product_id
     }
     for product in Product.objects.filter(
-            pk__in=product_ids, is_active=True).select_related('seller'):
+            pk__in=product_ids, is_active=True).exclude(
+            fulfillment='made_to_order').select_related('seller'):
         if product.variants.filter(stock__gt=0).exists():
             continue
         Product.objects.filter(pk=product.pk, is_active=True).update(is_active=False)
@@ -1501,8 +1539,8 @@ def _confirm_payment_inventory(order, logger):
     # STEP 1: DEDUCT STOCK (payment confirmed). Atomic guarded decrement:
     # only deducts when enough stock remains, so concurrent confirmations
     # can never drive stock negative or lose updates.
-    for item in order.items.select_related('variant'):
-        if item.variant:
+    for item in order.items.select_related('variant', 'product'):
+        if item.variant and getattr(item.product, 'fulfillment', 'stock') != 'made_to_order':
             from apps.products.models import ProductVariant
             updated = ProductVariant.objects.filter(
                 pk=item.variant.pk, stock__gte=item.quantity
@@ -1674,6 +1712,22 @@ def _confirm_payment_inventory(order, logger):
         mode = ((breakdown.get(str(seller.id)) or {}).get('mode', 'platform'))
         if mode == 'self':
             SellerHandoff.objects.get_or_create(order=order, seller=seller)
+
+    # Procurement handoffs for made-to-order items going via platform
+    # drivers: the driver board hides the order until the seller marks it
+    # ready (no OTP — nothing changes hands yet, the seller is still
+    # sourcing the item). Self-mode sellers are covered by the OTP handoff.
+    mto_seller_ids = {
+        item.seller_id for item in order.items.select_related('seller', 'product').all()
+        if item.seller_id
+        and getattr(item.product, 'fulfillment', 'stock') == 'made_to_order'
+        and (breakdown.get(str(item.seller_id)) or {}).get('mode', 'platform') != 'self'
+    }
+    for sid in mto_seller_ids:
+        SellerHandoff.objects.get_or_create(
+            order=order, seller_id=sid,
+            defaults={'kind': SellerHandoff.Kind.PROCUREMENT},
+        )
 
     # Log expected vs actual platform share for verification
     # Platform keeps commission + PLATFORM delivery only (self fees bypass it).

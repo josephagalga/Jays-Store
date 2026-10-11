@@ -122,8 +122,9 @@ class AddToCartSerializer(serializers.Serializer):
         except ProductVariant.DoesNotExist:
             raise serializers.ValidationError({'variant_id': 'Variant not found'})
 
-        # Make sure there is enough stock
-        if variant.stock < data['quantity']:
+        # Make sure there is enough stock (made-to-order items are
+        # procured after payment, so stock is irrelevant for them)
+        if product.fulfillment != 'made_to_order' and variant.stock < data['quantity']:
             raise serializers.ValidationError({
                 'quantity': f'Only {variant.stock} units available in stock'
             })
@@ -412,7 +413,8 @@ class SellerOrderListSerializer(serializers.ModelSerializer):
 
     def get_my_handoff(self, obj):
         """This seller's handoff state: 'none' (platform delivery),
-        'pending' (enter buyer OTP to confirm), or 'confirmed'."""
+        'pending' (enter buyer OTP to confirm), 'procurement_pending'
+        (mark made-to-order items ready, no OTP), or 'confirmed'."""
         try:
             request = self.context.get('request')
             seller_id = getattr(getattr(request, 'user', None), 'id', None)
@@ -424,7 +426,11 @@ class SellerOrderListSerializer(serializers.ModelSerializer):
             )
             if not handoff:
                 return 'none'
-            return 'confirmed' if handoff.confirmed_at else 'pending'
+            if handoff.confirmed_at:
+                return 'confirmed'
+            if getattr(handoff, 'kind', '') == 'procurement':
+                return 'procurement_pending'
+            return 'pending'
         except Exception:
             return 'none'
 

@@ -593,6 +593,16 @@ class SellerHandoff(models.Model):
     confirmed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Kind(models.TextChoices):
+        SELF_DELIVERY = 'self_delivery', 'Self delivery'
+        PROCUREMENT = 'procurement', 'Procurement'
+
+    kind = models.CharField(
+        max_length=20, choices=Kind.choices, default=Kind.SELF_DELIVERY)
+    # ↑ self_delivery: seller hands to buyer themselves (OTP proof).
+    #   procurement: seller sources/makes a made-to-order item; the driver
+    #   board hides the order until the seller marks it ready.
+
     class Meta:
         db_table = 'seller_handoffs'
         ordering = ['created_at']

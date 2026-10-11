@@ -20,8 +20,14 @@ function apiBase() {
 function siteOrigin() {
   const env = (process.env.FRONTEND_URL || '').trim().replace(/\/+$/, '');
   if (env) return env;
+  // Production domain first: VERCEL_URL is the per-deployment hash domain,
+  // which sits behind Vercel's login wall — humans tapped there hit auth,
+  // and crawlers distrust it as the canonical URL.
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return 'https://jays-store-steel.vercel.app';
+  return 'https://myjays-store.vercel.app';
 }
 
 function backendOrigin() {

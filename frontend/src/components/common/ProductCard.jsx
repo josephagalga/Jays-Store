@@ -71,6 +71,13 @@ export default function ProductCard({ product, index = 0 }) {
             </span>
           )}
 
+          {/* Made-to-order: procured after payment */}
+          {!product.is_demo && product.fulfillment === 'made_to_order' && (
+            <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full">
+              Made to order · ~{product.lead_time_days || 3}d
+            </span>
+          )}
+
           {/* Wishlist — always visible on touch, scales on hover for desktop */}
           <button onClick={e => { e.preventDefault(); e.stopPropagation(); toggleWishlist(product) }}
             aria-label={wished ? 'Remove from wishlist' : 'Add to wishlist'}

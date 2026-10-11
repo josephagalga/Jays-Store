@@ -43,6 +43,7 @@ urlpatterns = [
 
     # Seller orders
     path('seller/orders/', views.SellerOrderListView.as_view(), name='seller-orders'),
+    path('seller/orders/<int:pk>/ready/', views.SellerMarkReadyView.as_view(), name='seller-order-ready'),
 
     # Admin
     path('admin/orders/', views.AdminOrderListView.as_view(), name='admin-orders'),

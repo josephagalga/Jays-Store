@@ -19,6 +19,8 @@ const schema = z.object({
   brand: z.string().optional(),
   tags: z.string().optional(),
   category: z.string().optional(),
+  fulfillment: z.string().optional(),
+  lead_time_days: z.string().optional(),
 })
 
 export default function SellerAddProductPage() {
@@ -61,6 +63,11 @@ export default function SellerAddProductPage() {
       // Only include optional fields if they have values
       if (data.discount_price) payload.discount_price = parseFloat(data.discount_price)
       if (data.category) payload.category = parseInt(data.category)
+      if (data.fulfillment === 'made_to_order') {
+        payload.fulfillment = 'made_to_order'
+        const lead = parseInt(data.lead_time_days)
+        if (!Number.isNaN(lead) && lead > 0) payload.lead_time_days = lead
+      }
 
       const productRes = await api.post('/products/manage/create/', payload)
       const productId = productRes.data.id
@@ -153,6 +160,17 @@ export default function SellerAddProductPage() {
             {errors.description && <p className="text-xs text-rose-500">{errors.description.message}</p>}
           </div>
           <Input label="Tags" placeholder="e.g. casual, summer, cotton (comma separated)" {...register('tags')} />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-[var(--ink)] uppercase tracking-wider">Fulfillment</label>
+            <select {...register('fulfillment')}
+              className="w-full px-4 py-3 text-sm rounded-xl border border-[var(--border)] bg-white outline-none focus:border-[var(--ink)] transition-colors">
+              <option value="">I have it in stock</option>
+              <option value="made_to_order">Made to order — I source it after payment</option>
+            </select>
+            <p className="text-xs text-[var(--muted)]">Made-to-order items skip stock checks; buyers see your lead time and drivers wait until you mark them ready.</p>
+          </div>
+          <Input label="Ready in (days)" type="number" min="1" placeholder="e.g. 3 — only for made-to-order"
+            error={errors.lead_time_days?.message} {...register('lead_time_days')} />
         </div>
 
         {/* Images */}

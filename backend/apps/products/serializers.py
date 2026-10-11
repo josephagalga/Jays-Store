@@ -89,6 +89,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             'category_name', 'subcategory_name',
             'average_rating', 'total_ratings', 'total_sold',
             'primary_image', 'is_featured', 'is_demo', 'variants',
+            'fulfillment', 'lead_time_days',
             'store_name', 'store_slug', 'store_verified', 'store_logo_url',
         ]
 
@@ -155,6 +156,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'category', 'subcategory', 'tags',
             'average_rating', 'total_ratings', 'total_sold',
             'images', 'variants', 'is_featured', 'is_demo', 'is_active',
+            'fulfillment', 'lead_time_days',
             'created_at', 'updated_at',
         ]
 
@@ -214,6 +216,7 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
             'name', 'slug', 'description', 'brand', 'gender',
             'price', 'discount_price', 'category', 'subcategory',
             'tags', 'is_active', 'is_featured',
+            'fulfillment', 'lead_time_days',
         ]
         read_only_fields = ['id']
 

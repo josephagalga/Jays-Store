@@ -15,8 +15,14 @@ function apiBase() {
 function siteOrigin() {
   const env = (process.env.FRONTEND_URL || '').trim().replace(/\/+$/, '');
   if (env) return env;
+  // Production domain first: VERCEL_URL is the per-deployment hash domain,
+  // which sits behind Vercel's login wall — humans tapped there hit auth,
+  // and crawlers distrust it as the canonical URL.
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return 'https://jays-store-steel.vercel.app';
+  return 'https://myjays-store.vercel.app';
 }
 
 // Absolute + WhatsApp-friendly: relative backend paths are expanded, and
@@ -147,7 +153,7 @@ export default async function handler(req, res) {
       }
     }
     res.status(200).setHeader('Content-Type', 'application/json; charset=utf-8').send(
-      JSON.stringify({ apiBase: bases[0], vercelUrl: process.env.VERCEL_URL || null, attempts })
+      JSON.stringify({ apiBase: bases[0], siteOrigin: siteOrigin(), attempts })
     );
     return;
   }
